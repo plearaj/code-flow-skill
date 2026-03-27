@@ -1,0 +1,30 @@
+{
+  "name": "@red-sea/code-flow-skill",
+  "version": "0.1.0",
+  "description": "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "code-flow-skill": "bin/install.js"
+  },
+  "files": [
+    "bin",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "node bin/install.js --help"
+  },
+  "keywords": [
+    "code-flow",
+    "documentation",
+    "skill",
+    "claude",
+    "gemini",
+    "copilot"
+  ]
+}

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "red-sea-code-flow-skill"
+version = "0.1.0"
+description = "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Red Sea Maintainers" }]
+keywords = ["code-flow", "skill", "claude", "gemini", "copilot", "documentation"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Environment :: Console"
+]
+
+[project.scripts]
+code-flow-skill = "code_flow_skill.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/code_flow_skill"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/code_flow_skill/templates" = "code_flow_skill/templates"
