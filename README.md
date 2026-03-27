@@ -1,22 +1,22 @@
 # Code Flow Skill Package
 
 Standalone packaging of the Code Flow skill as:
-- npm package: `@red-sea/code-flow-skill`
-- Python package for `uvx`: `red-sea-code-flow-skill`
+- npm package: `@htst/code-flow-skill`
+- Python package for `uvx`: `htst-code-flow-skill`
 
 ## Install
 
 ### npm
 
 ```bash
-npm i -g @red-sea/code-flow-skill
+npm i -g @htst/code-flow-skill
 code-flow-skill --tool all --target .
 ```
 
 ### uvx
 
 ```bash
-uvx red-sea-code-flow-skill --tool all --target .
+uvx htst-code-flow-skill --tool all --target .
 ```
 
 ## CLI Options

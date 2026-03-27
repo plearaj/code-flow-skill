@@ -1,5 +1,5 @@
 {
-  "name": "@red-sea/code-flow-skill",
+  "name": "@htst/code-flow-skill",
   "version": "0.1.0",
   "description": "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows.",
   "license": "MIT",
