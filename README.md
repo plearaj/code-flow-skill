@@ -109,6 +109,43 @@ code-flow-skill --tool all --target .
 uvx htst-code-flow-skill --tool all --target .
 ```
 
+### Manual install (no npm, no uvx)
+
+If neither `npm` nor `uvx` is available, you only need to copy two or three small text files into your project. There is no code to build and no runtime dependency.
+
+**1. Get the templates.** Either clone the repo or download a zip from GitHub:
+
+```bash
+git clone https://github.com/plearaj/code-flow-skill.git
+# or: download https://github.com/plearaj/code-flow-skill/archive/refs/heads/master.zip and unzip
+```
+
+You only need the `templates/` directory. The rest of the repo (packaging, installer script, `src/`) can be ignored.
+
+**2. Copy the template(s) for the tool(s) you use** into your target project.
+
+From the project root where you want the skill available:
+
+```bash
+# Claude Code
+mkdir -p .claude/commands
+cp /path/to/code-flow-skill/templates/claude/code-flow.md .claude/commands/code-flow.md
+
+# Gemini CLI
+mkdir -p .gemini/commands
+cp /path/to/code-flow-skill/templates/gemini/code-flow.toml .gemini/commands/code-flow.toml
+
+# GitHub Copilot — append to (or create) the instructions file
+mkdir -p .github
+cat /path/to/code-flow-skill/templates/copilot/code-flow.instructions.md >> .github/copilot-instructions.md
+```
+
+On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` / `Add-Content` for `cp` / `cat >>`.
+
+**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list the new `/code-flow` command. For Copilot, the instructions will be picked up automatically on the next chat turn.
+
+That's it — no install step runs any code on your machine. If you later want to update the skill, just re-copy the template files.
+
 ## CLI options
 
 ```text
