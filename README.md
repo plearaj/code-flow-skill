@@ -137,7 +137,7 @@ cp /path/to/code-flow-skill/templates/gemini/code-flow.toml .gemini/commands/cod
 
 # GitHub Copilot — append to (or create) the instructions file
 mkdir -p .github
-cat /path/to/code-flow-skill/templates/copilot/code-flow.instructions.md >> .github/copilot-instructions.md
+cat /path/to/code-flow-skill/templates/copilot/code-flow.instructions.md >> .github/code-flowd-instructions.md
 ```
 
 On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` / `Add-Content` for `cp` / `cat >>`.
