@@ -22,12 +22,12 @@ Follow these steps exactly:
 
 The user's input (`$ARGUMENTS`) describes the functionality to document. If the input is empty, analyze the project structure and suggest 3-5 key flows, then ask the user to pick one.
 
-Use the functionality name to derive the output filename. Convert to snake_case (e.g., "spectral attention" → `spectral_attention.md`, "training loop" → `training_loop.md`).
+Use the functionality name to derive the output filename. Convert to snake_case (e.g., "user login" → `user_login.md`, "password reset" → `password_reset.md`).
 
 #### 2. Discover Relevant Files and Functions
 
 Find all code related to the target flow:
-- Use `Glob` to find relevant files (e.g., `**/*attention*.py`, `**/*training*.py`)
+- Use `Glob` to find relevant files (e.g., `**/*auth*.py`, `**/*login*.py`)
 - Use `Grep` to find functions, classes, keywords, and entry points related to the flow
 - Read the contents of discovered files to trace the call chain
 

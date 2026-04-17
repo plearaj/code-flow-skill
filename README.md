@@ -4,7 +4,7 @@ A portable **Code Flow** skill for AI coding assistants — Claude Code, Gemini 
 
 ## What the skill does
 
-Given a feature or flow name (e.g. `spectral attention`, `training loop`, `login`), the assistant will:
+Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), the assistant will:
 
 1. **Discover** the relevant files and functions using glob + grep searches.
 2. **Trace the call chain** from entry point to final output, following every function that participates in the flow.
@@ -25,13 +25,13 @@ After installing (see below), invoke from inside your project:
 **Claude Code**
 
 ```text
-/code-flow spectral attention
+/code-flow user login
 ```
 
 **Gemini CLI**
 
 ```text
-/code-flow training loop
+/code-flow password reset
 ```
 
 **GitHub Copilot**
@@ -46,10 +46,10 @@ In all three, the assistant writes its output to `Code_Flows/<feature_name>.md` 
 
 ### Example output
 
-`Code_Flows/spectral_attention.md` will look roughly like:
+`Code_Flows/user_login.md` will look roughly like:
 
 ````markdown
-# Spectral Attention — Flow
+# User Login — Flow
 
 Brief description of what the flow does and when it runs.
 
@@ -57,24 +57,24 @@ Brief description of what the flow does and when it runs.
 
 ```mermaid
 flowchart TD
-    A[forward] --> B[spectral_transform]
-    B --> C[apply_attention]
-    C --> D[project_output]
+    A[handle_login] --> B[validate_credentials]
+    B --> C[create_session]
+    C --> D[issue_token]
 ```
 
 ## Functions
 
-- `forward`
-- `spectral_transform`
-- `apply_attention`
-- `project_output`
+- `handle_login`
+- `validate_credentials`
+- `create_session`
+- `issue_token`
 
 ## Reference
 
 | Function | Description | File |
 |----------|-------------|------|
-| `forward` | Entry point for the attention layer | `src/model/attention.py:42` |
-| `spectral_transform` | Applies FFT to the input tensor | `src/model/spectral.py:18` |
+| `handle_login` | HTTP handler for POST /login | `src/auth/login.py:42` |
+| `validate_credentials` | Verifies email + password against the user store | `src/auth/credentials.py:18` |
 | ...
 ````
 

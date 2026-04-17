@@ -4,7 +4,7 @@ The project includes a **Code Flow** skill that analyzes and documents code exec
 
 ### Using Code Flow
 
-When asked to document a code flow (e.g., "document the spectral attention flow"), follow these steps:
+When asked to document a code flow (e.g., "document the user login flow"), follow these steps:
 
 1. **Identify the target flow** from the user's request. Derive a snake_case filename.
 2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain.

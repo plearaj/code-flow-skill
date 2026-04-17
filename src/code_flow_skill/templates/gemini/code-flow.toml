@@ -15,7 +15,7 @@ If the input is empty, analyze the project structure and suggest 3-5 key flows, 
 
 #### 1. Identify the Target Flow
 
-Use the user's input to determine which functionality to document. Derive the output filename in snake_case (e.g., "spectral attention" → `spectral_attention.md`).
+Use the user's input to determine which functionality to document. Derive the output filename in snake_case (e.g., "user login" → `user_login.md`).
 
 #### 2. Discover Relevant Files and Functions
 
