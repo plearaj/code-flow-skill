@@ -8,13 +8,13 @@ version = "0.1.0"
 description = "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { text = "Apache-2.0" }
 authors = [{ name = "Hightower Software Technologies" }]
 keywords = ["code-flow", "skill", "claude", "gemini", "copilot", "documentation"]
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
   "Environment :: Console"
 ]
 

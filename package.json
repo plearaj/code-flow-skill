@@ -2,7 +2,7 @@
   "name": "@htst/code-flow-skill",
   "version": "0.1.0",
   "description": "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "code-flow-skill": "bin/install.js"
@@ -11,13 +11,15 @@
     "bin",
     "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "check": "node bin/install.js --help"
+    "check": "node bin/install.js --help",
+    "postinstall": "node bin/postinstall.js"
   },
   "keywords": [
     "code-flow",
