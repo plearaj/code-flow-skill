@@ -25,6 +25,18 @@ def _install_gemini(target: Path) -> None:
     print(f"Installed Gemini template: {out}")
 
 
+def _install_viewer(target: Path) -> None:
+    """Install the tool-agnostic interactive HTML viewer scaffold.
+
+    Every command template references this file, so it is installed
+    regardless of the selected tool.
+    """
+    out = target / ".code-flow" / "viewer.template.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(_read_template("shared", "viewer.template.html"), encoding="utf-8")
+    print(f"Installed interactive viewer template: {out}")
+
+
 def _install_copilot(target: Path) -> None:
     out = target / ".github" / "copilot-instructions.md"
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -59,6 +71,8 @@ def main() -> None:
             _install_gemini(target)
         else:
             _install_copilot(target)
+
+    _install_viewer(target)
 
 
 if __name__ == "__main__":

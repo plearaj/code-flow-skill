@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "feature": "User Login",
+    "slug": "user_login",
+    "description": "Handles a POST /login request: rate-limits the client, parses and validates the submitted credentials, authenticates against the user database, and on success creates a session and fires a welcome email through the external gateway. Validation or auth failures re-render the login form.",
+    "generated": "2026-07-19",
+    "root": "C:/Users/ajple/Programming_Projects/my-app",
+    "tool": "code-flow"
+  },
+  "nodes": [
+    { "id": "login_view", "label": "login_view()", "file": "src/web/views.py", "line": 12, "kind": "entry", "description": "HTTP handler for POST /login. Orchestrates the whole flow and returns either a redirect or the re-rendered form.", "snippet": "def login_view(request):\n    limit = rate_limiter(request.client_ip)\n    if not limit.ok:\n        return HttpResponse(status=429)\n    creds = parse_credentials(request)\n    return _dispatch(creds)" },
+    { "id": "rate_limiter", "label": "rate_limiter()", "file": "src/web/middleware.py", "line": 8, "kind": "step", "description": "Sliding-window rate limit keyed by client IP; 10 attempts per minute.", "snippet": "def rate_limiter(ip):\n    window = store.incr(f\"rl:{ip}\", ttl=60)\n    return Limit(ok=window < 10, remaining=10 - window)" },
+    { "id": "parse_credentials", "label": "parse_credentials()", "file": "src/web/forms.py", "line": 21, "kind": "step", "description": "Extracts username/password from the form body and normalizes the username." },
+    { "id": "validate_input", "label": "validate_input()", "file": "src/web/forms.py", "line": 44, "kind": "step", "description": "Schema-level checks: non-empty fields, username length, password length >= 8.", "snippet": "def validate_input(creds):\n    if len(creds.password) < 8:\n        raise ValidationError(\"password too short\")\n    if not USERNAME_RE.match(creds.username):\n        raise ValidationError(\"bad username\")\n    return creds" },
+    { "id": "authenticate_user", "label": "authenticate_user()", "file": "src/auth/service.py", "line": 17, "kind": "step", "description": "Loads the user record and verifies the password hash. Returns a User or raises AuthError." },
+    { "id": "query_user_db", "label": "query_user_db()", "file": "src/auth/repo.py", "line": 30, "kind": "io", "description": "SELECT on the users table by normalized username. Returns row or None." },
+    { "id": "verify_password", "label": "verify_password()", "file": "src/auth/crypto.py", "line": 9, "kind": "step", "description": "Constant-time argon2id verification of the submitted password against the stored hash.", "snippet": "def verify_password(pw, stored):\n    try:\n        return hasher.verify(stored, pw)\n    except VerifyMismatchError:\n        return False" },
+    { "id": "create_session", "label": "create_session()", "file": "src/auth/session.py", "line": 14, "kind": "step", "description": "Mints a signed session token, sets the cookie, and persists the session row." },
+    { "id": "session_store", "label": "session_store.put()", "file": "src/auth/session.py", "line": 58, "kind": "io", "description": "Writes the session record to Redis with a 30-day TTL." },
+    { "id": "send_welcome_email", "label": "send_welcome_email()", "file": "src/notify/mailer.py", "line": 11, "kind": "step", "description": "Queued after login succeeds; renders the template and hands off to the gateway. Runs off the request path." },
+    { "id": "email_gateway", "label": "EmailGateway.send()", "file": "src/notify/gateway.py", "line": 5, "kind": "external", "description": "Third-party SMTP/API provider client (Postmark). Network call with retry." },
+    { "id": "render_error", "label": "render_error()", "file": "src/web/views.py", "line": 71, "kind": "step", "description": "Re-renders the login form with a flash message; the user can retry, looping back to the entry point." }
+  ],
+  "edges": [
+    { "from": "login_view", "to": "rate_limiter", "kind": "call" },
+    { "from": "login_view", "to": "parse_credentials", "kind": "call" },
+    { "from": "parse_credentials", "to": "validate_input", "kind": "call" },
+    { "from": "validate_input", "to": "authenticate_user", "kind": "conditional", "label": "valid" },
+    { "from": "validate_input", "to": "render_error", "kind": "conditional", "label": "invalid" },
+    { "from": "authenticate_user", "to": "query_user_db", "kind": "call" },
+    { "from": "authenticate_user", "to": "verify_password", "kind": "call" },
+    { "from": "authenticate_user", "to": "render_error", "kind": "conditional", "label": "bad creds" },
+    { "from": "verify_password", "to": "create_session", "kind": "call" },
+    { "from": "create_session", "to": "session_store", "kind": "call" },
+    { "from": "create_session", "to": "send_welcome_email", "kind": "async" },
+    { "from": "send_welcome_email", "to": "email_gateway", "kind": "call" },
+    { "from": "render_error", "to": "login_view", "kind": "call", "back": true }
+  ]
+}

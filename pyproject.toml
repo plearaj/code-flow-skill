@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "htst-code-flow-skill"
-version = "0.1.0"
+version = "0.2.0"
 description = "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,3 @@ code-flow-skill = "code_flow_skill.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/code_flow_skill"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/code_flow_skill/templates" = "code_flow_skill/templates"

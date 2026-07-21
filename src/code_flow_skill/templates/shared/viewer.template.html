@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Flow</title>
+<style>
+/* ============ theme tokens ============ */
+:root{
+  --bg:#15171c; --panel:#1a1d24; --border:#2b2f3a; --text:#d7dae1; --dim:#868d9a;
+  --accent:#e8a33d; --grid:#22252d; --edge:#5a6170; --err:#e06c5f;
+  --node-entry:#243529; --node-step:#232833; --node-ext:#2f2639; --node-io:#1f3340;
+}
+[data-theme="light"]{
+  --bg:#f3f2ee; --panel:#fbfaf7; --border:#d7d4ca; --text:#2c2e34; --dim:#767b86;
+  --accent:#b57511; --grid:#e1dfd6; --edge:#9aa0ab; --err:#b3372a;
+  --node-entry:#d9e8d9; --node-step:#e7e5de; --node-ext:#e5dcef; --node-io:#d7e5ee;
+}
+/* ============ app frame ============ */
+*{box-sizing:border-box; margin:0}
+html,body{height:100%; overflow:hidden}
+body{background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
+#app{display:flex; flex-direction:column; height:100%}
+header{display:flex; align-items:center; gap:10px; padding:0 14px; height:46px; border-bottom:1px solid var(--border); background:var(--panel); flex:none}
+#ftitle{font-size:12px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+header .spacer{flex:1}
+#search{width:220px; max-width:34vw; padding:5px 9px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font:12px ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; outline:none}
+#search:focus{border-color:var(--accent)}
+header button{padding:5px 11px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font:12px system-ui,sans-serif; cursor:pointer}
+header button:hover{border-color:var(--accent); color:var(--accent)}
+#main{display:flex; flex:1; min-height:0}
+#canvas{flex:1; min-width:0; position:relative; cursor:grab;
+  background-image:radial-gradient(var(--grid) 1px, transparent 1.5px); background-size:26px 26px}
+#canvas.panning{cursor:grabbing}
+#graph{width:100%; height:100%; display:block}
+/* ============ error card ============ */
+#err{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg)}
+#err[hidden]{display:none}
+#err>div{max-width:640px; width:100%; border:1px solid var(--err); border-left:4px solid var(--err); border-radius:8px; background:var(--panel); padding:18px 20px}
+#err h2{color:var(--err); font-size:14px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px}
+#err pre{white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.7; color:var(--text); font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+/* ============ graph elements ============ */
+.node{cursor:pointer}
+.node rect{stroke:var(--border); stroke-width:1; rx:8}
+.node.k-entry rect{fill:var(--node-entry)} .node.k-step rect{fill:var(--node-step)}
+.node.k-external rect{fill:var(--node-ext)} .node.k-io rect{fill:var(--node-io)}
+.node text{font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; fill:var(--text); font-size:13px}
+.node text.f{font-size:10px; fill:var(--dim)}
+.node.sel rect{stroke:var(--accent); stroke-width:2}
+.edge path{fill:none; stroke:var(--edge); stroke-width:1.4; marker-end:url(#ar)}
+.edge.async path,.edge.backe path{stroke-dasharray:5 4}
+.edge text{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px; fill:var(--dim); paint-order:stroke; stroke:var(--bg); stroke-width:3px}
+.edge.hot path{stroke:var(--accent); stroke-width:1.8; marker-end:url(#arh)}
+.edge.hot text{fill:var(--accent)}
+.node,.edge{transition:opacity .12s ease}
+.faded{opacity:.15}
+/* ============ detail panel ============ */
+#panel{width:360px; flex:none; border-left:1px solid var(--border); background:var(--panel); overflow-y:auto; padding:16px 18px}
+#panel h1{font-size:15px; margin-bottom:2px}
+#panel .kind{display:inline-block; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); border:1px solid var(--border); border-radius:4px; padding:1px 6px; margin-bottom:10px}
+#panel p{font-size:13px; color:var(--text); margin:8px 0}
+#panel .floc{font-size:12px; color:var(--dim); margin:10px 0 6px; word-break:break-all; font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+#panel .acts{display:flex; gap:8px; margin:6px 0 12px}
+#panel .acts button,#panel .acts a{font-size:11.5px; padding:4px 9px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); text-decoration:none; cursor:pointer; font-family:system-ui,sans-serif}
+#panel .acts button:hover,#panel .acts a:hover{border-color:var(--accent); color:var(--accent)}
+#panel pre{border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:10px 12px; font-size:12px; line-height:1.55; overflow:auto; max-height:260px; margin:8px 0 14px; font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+#panel h3{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:14px 0 6px}
+#panel ul{list-style:none}
+#panel li{padding:5px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:5px; cursor:pointer; font-size:12.5px; display:flex; justify-content:space-between; gap:8px; font-family:ui-monospace,Menlo,Consolas,monospace}
+#panel li:hover{border-color:var(--accent)}
+#panel li .ek{color:var(--dim); font-size:10px}
+#panel .none{color:var(--dim); font-size:12px}
+.legend{display:grid; grid-template-columns:16px 1fr; gap:6px 8px; align-items:center; font-size:12px; color:var(--dim); margin-top:8px}
+.legend .sw{width:16px; height:12px; border-radius:3px; border:1px solid var(--border)}
+.legend svg{width:16px; height:12px; overflow:visible}
+@media (max-width:760px){ #panel{display:none} }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div id="ftitle">Code Flow</div>
+    <div class="spacer"></div>
+    <input id="search" type="text" placeholder="search nodes… (Enter selects)" autocomplete="off" spellcheck="false">
+    <button id="fitbtn" title="Fit graph to view">Fit</button>
+    <button id="themebtn" title="Toggle light/dark">◐</button>
+  </header>
+  <div id="main">
+    <div id="canvas">
+      <svg id="graph" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--edge)"/></marker>
+          <marker id="arh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+        </defs>
+        <g id="world"></g>
+      </svg>
+      <div id="err" hidden></div>
+    </div>
+    <aside id="panel"></aside>
+  </div>
+</div>
+
+<!-- Flow data. The token below is replaced verbatim with a JSON object matching the
+     code-flow schema. IMPORTANT for whoever fills this in: any literal "</" inside
+     snippet strings must be written as "<\/" (e.g. "<\/div>"), otherwise a
+     "</script>" sequence inside the JSON would terminate this script block. -->
+<script type="application/json" id="flow-data">__FLOW_DATA__</script>
+
+<script>
+(function(){
+"use strict";
+/* ============ boot: parse + validate ============ */
+var TOKEN = "__FLOW" + "_DATA__"; // built dynamically so installer string-replace can't touch it
+var errBox = document.getElementById("err");
+function fail(title, lines){
+  errBox.hidden = false;
+  errBox.innerHTML = "";
+  var card = document.createElement("div");
+  var h = document.createElement("h2"); h.textContent = title; card.appendChild(h);
+  var pre = document.createElement("pre"); pre.textContent = lines.join("\n"); card.appendChild(pre);
+  errBox.appendChild(card);
+}
+var raw = (document.getElementById("flow-data").textContent || "").trim();
+if (raw === TOKEN){ fail("No flow data", ["The " + TOKEN + " placeholder was never replaced.", "This template must be filled with a JSON data block before viewing."]); return; }
+var data;
+try { data = JSON.parse(raw); }
+catch(e){ fail("Invalid JSON in #flow-data", [String(e.message || e), "", "Tip: literal </ inside snippet strings must be escaped as <\\/."]); return; }
+
+var meta  = (data && typeof data === "object" && data.meta) || {};
+var nodes = Array.isArray(data && data.nodes) ? data.nodes : null;
+var edges = Array.isArray(data && data.edges) ? data.edges : [];
+var problems = [];
+if (!nodes || !nodes.length) problems.push("`nodes` must be a non-empty array.");
+var byId = new Map();
+(nodes || []).forEach(function(n, i){
+  if (!n || typeof n.id !== "string" || !n.id) { problems.push("nodes[" + i + "] is missing a string `id`."); return; }
+  if (!/^[\w.\-]+$/.test(n.id)) problems.push("node id \"" + n.id + "\" has unexpected characters (want [a-z0-9_]).");
+  if (byId.has(n.id)) problems.push("duplicate node id \"" + n.id + "\".");
+  byId.set(n.id, n);
+});
+edges.forEach(function(e, i){
+  if (!e || typeof e !== "object") { problems.push("edges[" + i + "] is not an object."); return; }
+  if (!byId.has(e.from)) problems.push("edge[" + i + "].from \"" + e.from + "\" does not match any node id.");
+  if (!byId.has(e.to))   problems.push("edge[" + i + "].to \"" + e.to + "\" does not match any node id.");
+});
+if (problems.length){ fail("Flow data failed validation", problems); return; }
+edges = edges.filter(function(e){ return byId.has(e.from) && byId.has(e.to); });
+
+/* ============ layout: layered DAG (Sugiyama-lite) ============ */
+var NW = 176, NH = 54, COL = 216, ROW = 122;
+var outF = new Map(), inF = new Map();
+nodes.forEach(function(n){ outF.set(n.id, []); inF.set(n.id, []); });
+// cycle detection: honor explicit back:true, and mark any remaining DFS back edges
+var tmpOut = new Map(); nodes.forEach(function(n){ tmpOut.set(n.id, []); });
+edges.forEach(function(e){ if (!e.back) tmpOut.get(e.from).push(e); });
+var state = new Map();
+function dfs(id){
+  state.set(id, 1);
+  tmpOut.get(id).forEach(function(e){
+    if (e.back) return;
+    var s = state.get(e.to);
+    if (s === 1) e.back = true;           // cycle: force to back edge so ranking terminates
+    else if (!s) dfs(e.to);
+  });
+  state.set(id, 2);
+}
+nodes.forEach(function(n){ if ((n.kind === "entry" || !inHasFwd(n.id)) && !state.get(n.id)) dfs(n.id); });
+nodes.forEach(function(n){ if (!state.get(n.id)) dfs(n.id); });
+function inHasFwd(id){ return edges.some(function(e){ return !e.back && e.to === id; }); }
+edges.forEach(function(e){ if (!e.back){ outF.get(e.from).push(e); inF.get(e.to).push(e); } });
+// ranks: longest path from sources (Kahn over forward edges)
+var indeg = new Map(); nodes.forEach(function(n){ n.rank = 0; indeg.set(n.id, inF.get(n.id).length); });
+var q = nodes.filter(function(n){ return indeg.get(n.id) === 0; });
+while (q.length){
+  var n = q.shift();
+  outF.get(n.id).forEach(function(e){
+    var m = byId.get(e.to);
+    m.rank = Math.max(m.rank, n.rank + 1);
+    indeg.set(m.id, indeg.get(m.id) - 1);
+    if (indeg.get(m.id) === 0) q.push(m);
+  });
+}
+var maxRank = 0; nodes.forEach(function(n){ maxRank = Math.max(maxRank, n.rank); });
+var ranks = []; for (var r = 0; r <= maxRank; r++) ranks.push([]);
+nodes.forEach(function(n){ ranks[n.rank].push(n); });
+// crossing reduction: median-of-neighbors sweeps
+function median(a){ if (!a.length) return null; a.sort(function(x,y){return x-y;}); return a[(a.length-1)>>1]; }
+function reorder(row, nbr){
+  var pos = new Map();
+  ranks.forEach(function(rw){ rw.forEach(function(n,i){ pos.set(n.id, i); }); });
+  var key = new Map();
+  row.forEach(function(n,i){
+    var m = median(nbr(n).map(function(id){ return pos.get(id); }));
+    key.set(n.id, m == null ? i : m);
+  });
+  row.sort(function(a,b){ return key.get(a.id) - key.get(b.id); });
+}
+for (var pass = 0; pass < 3; pass++){
+  for (var d = 1; d < ranks.length; d++) reorder(ranks[d], function(n){ return inF.get(n.id).map(function(e){ return e.from; }); });
+  for (var u = ranks.length - 2; u >= 0; u--) reorder(ranks[u], function(n){ return outF.get(n.id).map(function(e){ return e.to; }); });
+}
+var maxX = 0;
+ranks.forEach(function(row, ri){
+  row.forEach(function(n, i){
+    n.x = (i - (row.length - 1) / 2) * COL - NW / 2;
+    n.y = ri * ROW;
+    maxX = Math.max(maxX, n.x + NW);
+  });
+});
+
+/* ============ render SVG ============ */
+var svg = document.getElementById("graph"), world = document.getElementById("world");
+var SVGNS = "http://www.w3.org/2000/svg";
+function sEl(tag, attrs, parent){
+  var el = document.createElementNS(SVGNS, tag);
+  for (var k in attrs) el.setAttribute(k, attrs[k]);
+  (parent || world).appendChild(el); return el;
+}
+function trunc(s, n){ s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+function basename(p){ return String(p || "").split("/").pop(); }
+var edgeEls = [], nodeEls = new Map();
+edges.forEach(function(e){
+  var a = byId.get(e.from), b = byId.get(e.to), dPath;
+  if (e.back){ // dashed curve routed around the right side
+    var sx = a.x + NW, sy = a.y + NH / 2, tx = b.x + NW, ty = b.y + NH / 2, side = maxX + 90;
+    dPath = "M" + sx + " " + sy + " C" + side + " " + sy + " " + side + " " + ty + " " + (tx + 6) + " " + ty;
+  } else {
+    var fx = a.x + NW / 2, fy = a.y + NH, gx = b.x + NW / 2, gy = b.y;
+    var dy = Math.max(30, (gy - fy) / 2);
+    dPath = "M" + fx + " " + fy + " C" + fx + " " + (fy + dy) + " " + gx + " " + (gy - dy) + " " + gx + " " + (gy - 4);
+  }
+  var kind = e.back ? "backe" : (e.kind === "async" ? "async" : (e.kind === "conditional" ? "cond" : "call"));
+  var g = sEl("g", { "class": "edge " + kind });
+  var p = sEl("path", { d: dPath }, g);
+  if (e.kind === "conditional" && e.label){
+    var mp = p.getPointAtLength ? p.getTotalLength() * 0.48 : 0;
+    var pt = p.getPointAtLength ? p.getPointAtLength(mp) : { x: 0, y: 0 };
+    sEl("text", { x: pt.x + 6, y: pt.y + 3 }, g).textContent = trunc(e.label, 20);
+  }
+  edgeEls.push({ e: e, el: g });
+});
+nodes.forEach(function(n){
+  var kind = ["entry","step","external","io"].indexOf(n.kind) >= 0 ? n.kind : "step";
+  var g = sEl("g", { "class": "node k-" + kind, transform: "translate(" + n.x + "," + n.y + ")" });
+  sEl("rect", { width: NW, height: NH, rx: 8 }, g);
+  sEl("text", { x: NW / 2, y: 23, "text-anchor": "middle" }, g).textContent = trunc(n.label || n.id, 21);
+  sEl("text", { x: NW / 2, y: 40, "text-anchor": "middle", "class": "f" }, g).textContent =
+    trunc(basename(n.file) + (n.line != null ? ":" + n.line : ""), 28);
+  g.addEventListener("click", function(ev){ ev.stopPropagation(); select(n.id); });
+  nodeEls.set(n.id, g);
+});
+
+/* ============ pan / zoom / fit (viewBox math) ============ */
+var vb = { x: 0, y: 0, w: 100, h: 100 };
+function applyVB(){ svg.setAttribute("viewBox", vb.x + " " + vb.y + " " + vb.w + " " + vb.h); }
+function fit(){
+  var bb = world.getBBox(), pad = 60;
+  vb = { x: bb.x - pad, y: bb.y - pad, w: Math.max(bb.width + pad * 2, 200), h: Math.max(bb.height + pad * 2, 200) };
+  applyVB();
+}
+var canvas = document.getElementById("canvas");
+var drag = null;
+svg.addEventListener("pointerdown", function(e){
+  if (e.target.closest(".node")) return;
+  drag = { x: e.clientX, y: e.clientY, moved: false };
+  canvas.classList.add("panning");
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener("pointermove", function(e){
+  if (!drag) return;
+  var r = svg.getBoundingClientRect();
+  var dx = (e.clientX - drag.x) * vb.w / r.width, dy = (e.clientY - drag.y) * vb.h / r.height;
+  if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 3) drag.moved = true;
+  vb.x -= dx; vb.y -= dy; drag.x = e.clientX; drag.y = e.clientY; applyVB();
+});
+svg.addEventListener("pointerup", function(){
+  if (drag && !drag.moved) select(null); // click on empty canvas clears selection
+  drag = null; canvas.classList.remove("panning");
+});
+svg.addEventListener("wheel", function(e){
+  e.preventDefault();
+  var r = svg.getBoundingClientRect(), f = e.deltaY < 0 ? 0.85 : 1.18;
+  var mx = vb.x + (e.clientX - r.left) / r.width * vb.w, my = vb.y + (e.clientY - r.top) / r.height * vb.h;
+  vb.x = mx - (mx - vb.x) * f; vb.y = my - (my - vb.y) * f; vb.w *= f; vb.h *= f; applyVB();
+}, { passive: false });
+function centerOn(n){ vb.x = n.x + NW / 2 - vb.w / 2; vb.y = n.y + NH / 2 - vb.h / 2; applyVB(); }
+
+/* ============ selection + path highlight + search ============ */
+var selId = null, matchSet = null;
+function bfsSet(start, useIn){
+  var seen = new Set(), qq = [start];
+  while (qq.length){
+    var id = qq.shift();
+    (useIn ? inF : outF).get(id).forEach(function(e){
+      var nx = useIn ? e.from : e.to;
+      if (!seen.has(nx)){ seen.add(nx); qq.push(nx); }
+    });
+  }
+  return seen;
+}
+function applyState(){
+  var anc = null, des = null;
+  if (selId){ anc = bfsSet(selId, true); des = bfsSet(selId, false); }
+  nodeEls.forEach(function(el, id){
+    var dimSearch = matchSet && !matchSet.has(id);
+    var rel = !selId || id === selId || anc.has(id) || des.has(id);
+    el.classList.toggle("faded", !!(dimSearch || !rel));
+    el.classList.toggle("sel", id === selId);
+  });
+  edgeEls.forEach(function(o){
+    var e = o.e, hot = false, rel = true;
+    if (selId){
+      hot = ((e.to === selId || anc.has(e.to)) && anc.has(e.from)) ||
+            ((e.from === selId || des.has(e.from)) && des.has(e.to));
+      rel = hot;
+    }
+    var dimSearch = matchSet && !(matchSet.has(e.from) && matchSet.has(e.to));
+    o.el.classList.toggle("faded", !!(dimSearch || !rel));
+    o.el.classList.toggle("hot", !!(hot && !dimSearch));
+  });
+}
+function select(id){ selId = id; renderPanel(); applyState(); }
+
+/* ============ detail panel ============ */
+var panel = document.getElementById("panel");
+function el(tag, cls, text, parent){
+  var d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (text != null) d.textContent = text;
+  (parent || panel).appendChild(d); return d;
+}
+function edgeList(title, list, pick){
+  el("h3", null, title);
+  if (!list.length){ el("div", "none", "—"); return; }
+  var ul = el("ul");
+  list.forEach(function(e){
+    var id = pick(e), li = el("li", null, null, ul);
+    el("span", null, (byId.get(id).label || id), li);
+    el("span", "ek", e.back ? "back" : (e.kind || "call"), li);
+    li.addEventListener("click", function(){ select(id); centerOn(byId.get(id)); });
+  });
+}
+function renderPanel(){
+  panel.innerHTML = "";
+  if (!selId){ // default: description + legend
+    el("h1", null, meta.feature || "Code flow");
+    if (meta.generated) el("div", "kind", "generated " + meta.generated);
+    el("p", null, meta.description || "Click a node to inspect it. Search filters; Enter jumps to the first match.");
+    el("h3", null, "Node kinds");
+    var lg = el("div", "legend");
+    [["entry","--node-entry"],["step","--node-step"],["external","--node-ext"],["io","--node-io"]].forEach(function(k){
+      var sw = el("div", "sw", null, lg); sw.style.background = "var(" + k[1] + ")";
+      el("div", null, k[0], lg);
+    });
+    el("h3", null, "Edge kinds");
+    var le = el("div", "legend");
+    [["call","solid"],["async","dashed"],["conditional","solid + label"],["back / cycle","dashed, side-routed"]].forEach(function(k){
+      var sv = document.createElementNS(SVGNS, "svg"); sv.setAttribute("viewBox","0 0 16 12");
+      var ln = document.createElementNS(SVGNS, "line");
+      ln.setAttribute("x1",0); ln.setAttribute("y1",6); ln.setAttribute("x2",16); ln.setAttribute("y2",6);
+      ln.setAttribute("stroke","var(--edge)"); ln.setAttribute("stroke-width",1.5);
+      if (k[1].indexOf("dashed") >= 0) ln.setAttribute("stroke-dasharray","4 3");
+      sv.appendChild(ln); le.appendChild(sv);
+      el("div", null, k[0] + "  ·  " + k[1], le);
+    });
+    return;
+  }
+  var n = byId.get(selId);
+  el("h1", "mono", n.label || n.id);
+  el("div", "kind", n.kind || "step");
+  if (n.description) el("p", null, n.description);
+  var loc = String(n.file || "?") + (n.line != null ? ":" + n.line : "");
+  el("div", "floc", loc);
+  var acts = el("div", "acts");
+  var cp = el("button", null, "Copy file:line", acts);
+  cp.addEventListener("click", function(){
+    var done = function(){ cp.textContent = "Copied"; setTimeout(function(){ cp.textContent = "Copy file:line"; }, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(loc).then(done, function(){ fbCopy(loc); done(); }); }
+    else { fbCopy(loc); done(); }
+  });
+  if (n.file && meta.root){
+    var a = el("a", null, "Open in VS Code", acts);
+    a.href = "vscode://file/" + String(meta.root).replace(/\/+$/, "") + "/" + String(n.file).replace(/^\/+/, "") + (n.line != null ? ":" + n.line : "");
+  }
+  if (n.snippet) el("pre", "mono", n.snippet);
+  edgeList("Called by", edges.filter(function(e){ return e.to === selId; }), function(e){ return e.from; });
+  edgeList("Calls",     edges.filter(function(e){ return e.from === selId; }), function(e){ return e.to; });
+}
+function fbCopy(t){
+  var ta = document.createElement("textarea");
+  ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand("copy"); } catch (e) {}
+  document.body.removeChild(ta);
+}
+
+/* ============ header: search, fit, theme, keys ============ */
+var searchEl = document.getElementById("search");
+function matches(nd, qy){
+  return (nd.label || "").toLowerCase().indexOf(qy) >= 0 ||
+         (nd.file || "").toLowerCase().indexOf(qy) >= 0 ||
+         (nd.description || "").toLowerCase().indexOf(qy) >= 0 ||
+         nd.id.toLowerCase().indexOf(qy) >= 0;
+}
+searchEl.addEventListener("input", function(){
+  var qy = searchEl.value.trim().toLowerCase();
+  matchSet = qy ? new Set(nodes.filter(function(nd){ return matches(nd, qy); }).map(function(nd){ return nd.id; })) : null;
+  applyState();
+});
+searchEl.addEventListener("keydown", function(e){
+  if (e.key !== "Enter" || !matchSet) return;
+  var first = nodes.find(function(nd){ return matchSet.has(nd.id); });
+  if (first){ select(first.id); centerOn(first); }
+});
+document.getElementById("fitbtn").addEventListener("click", fit);
+document.addEventListener("keydown", function(e){
+  if (e.key === "Escape"){ select(null); searchEl.value = ""; matchSet = null; applyState(); }
+});
+var themeBtn = document.getElementById("themebtn"), rootEl = document.documentElement;
+function setTheme(t){ rootEl.setAttribute("data-theme", t); try { localStorage.setItem("codeflow-theme", t); } catch (e) {} }
+var saved = null; try { saved = localStorage.getItem("codeflow-theme"); } catch (e) {}
+rootEl.setAttribute("data-theme", saved || (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+themeBtn.addEventListener("click", function(){ setTheme(rootEl.getAttribute("data-theme") === "light" ? "dark" : "light"); });
+
+/* ============ finish ============ */
+if (meta.feature){
+  document.getElementById("ftitle").textContent = meta.feature;
+  document.title = meta.feature + " · code flow";
+}
+renderPanel();
+fit();
+})();
+</script>
+</body>
+</html>

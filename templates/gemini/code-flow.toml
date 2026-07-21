@@ -1,6 +1,6 @@
-description = "Analyze and document the flow of a code feature, generating a markdown file with flow diagrams and function reference tables."
+description = "Analyze and document the flow of a code feature, generating a markdown file and an interactive HTML page with flow diagrams and function reference tables."
 
-prompt = """
+prompt = '''
 ## Code Flow — Documentation Generator
 
 Analyze the codebase and generate flow documentation for the requested functionality.
@@ -33,7 +33,7 @@ For each function in the flow that lacks a docstring:
 2. Generate a clear, concise docstring
 3. Add the docstring to the function
 
-#### 4. Generate Flow Documentation
+#### 4. Generate the Markdown Documentation
 
 Create `Code_Flows/<functionality_name>.md` with these sections:
 
@@ -65,9 +65,67 @@ A table with every function's description and exact file location:
 
 The **File** column MUST include the file path and line number in `file:line` format.
 
-#### 5. Finalize
+#### 5. Generate the Interactive HTML View
+
+By default, **also** produce a self-contained interactive HTML page next to the markdown. It renders the same flow as a browsable graph: pan/zoom, click a node for its description + `file:line` + code snippet, search functions, and highlight a path. The page is a single file with everything inlined — it works by double-clicking, with no internet or build step.
+
+**5a. Build the flow-data JSON.** Assemble ONE JSON object describing the same flow you diagrammed in step 4:
+
+```json
+{
+  "meta": {
+    "feature": "User Login",
+    "slug": "user_login",
+    "description": "<the same plain-language description from 4a>",
+    "generated": "<today's date, YYYY-MM-DD>",
+    "root": "<absolute path to the project root, forward slashes>",
+    "tool": "code-flow"
+  },
+  "nodes": [
+    { "id": "login_view", "label": "login_view()", "file": "src/web/views.py", "line": 12, "kind": "entry", "description": "HTTP handler for POST /login.", "snippet": "def login_view(request):\n    ..." }
+  ],
+  "edges": [
+    { "from": "login_view", "to": "authenticate_user", "kind": "call", "label": "", "back": false }
+  ]
+}
+```
+
+Rules — follow these exactly, or the page will refuse to render:
+
+- One node per function in the diagram. `id` is a unique slug of `[a-z0-9_]` characters. **Every `edge.from` and `edge.to` MUST match a node `id`.**
+- `kind` on a **node** is one of `entry` | `step` | `external` | `io` (default `step`). `entry` = where the flow starts; `external` = a third-party/library boundary; `io` = a DB/network/file side effect. This drives node color.
+- `kind` on an **edge** is one of `call` | `async` | `conditional` (default `call`). Set `"back": true` on any edge that closes a loop or recursion (points back to an ancestor) so it is drawn as a routed dashed curve.
+- All file paths use **forward slashes**, repo-relative. `meta.root` is the absolute project root with forward slashes (used only to build editor links).
+- `snippet` is optional — a short excerpt (up to ~40 lines). **Inside every `snippet` string, replace each `</` with `<\/`** (a literal `</script>` would terminate the data block). No trailing commas anywhere.
+
+**5b. Fill the template.** Read `.code-flow/viewer.template.html`. Write `Code_Flows/<functionality_name>.html` as an **exact copy** of that template with the single token `__FLOW_DATA__` replaced by the JSON object from 5a. Change nothing else in the template. The page self-validates on load: if the JSON is malformed or an edge points at a missing node, it shows a specific error card instead of a blank page — read it and fix the JSON.
+
+**5c. Fallback if the template is missing.** If `.code-flow/viewer.template.html` does not exist (the skill was only partially installed), write this minimal page to `Code_Flows/<functionality_name>.html` instead, then tell the user to reinstall `code-flow` for the full interactive viewer:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title><FEATURE> — Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>body{font-family:system-ui,sans-serif;margin:2rem;max-width:60rem}
+.banner{background:#fff3cd;border:1px solid #e0c060;padding:.5rem .75rem;border-radius:6px}</style>
+</head>
+<body>
+<p class="banner">Reduced interactive mode — reinstall <code>code-flow</code> for the full interactive viewer.</p>
+<h1><FEATURE> — Flow</h1>
+<pre class="mermaid">
+<!-- paste the SAME mermaid source from step 4b here -->
+</pre>
+<script>mermaid.initialize({ startOnLoad: true });</script>
+</body>
+</html>
+```
+
+#### 6. Finalize
 
 - Create the `Code_Flows/` directory if it doesn't exist
-- Write the markdown file to `Code_Flows/<functionality_name>.md`
-- Report the output file path to the user
-"""
+- Write both `Code_Flows/<functionality_name>.md` and `Code_Flows/<functionality_name>.html`
+- Report **both** output file paths to the user
+'''

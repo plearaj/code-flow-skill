@@ -24,6 +24,16 @@ const target = path.resolve(process.cwd(), parseArg("--target", "."));
 const tool = parseArg("--tool", "all");
 const selected = tool === "all" ? ["claude", "gemini", "copilot"] : [tool];
 
+// The interactive HTML viewer scaffold is tool-agnostic: every command
+// template references it, so install it regardless of the selected tool.
+function installViewer() {
+  const src = path.join(pkgRoot, "templates", "shared", "viewer.template.html");
+  const dst = path.join(target, ".code-flow", "viewer.template.html");
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.copyFileSync(src, dst);
+  console.log(`Installed interactive viewer template: ${dst}`);
+}
+
 const toolMap = {
   claude: {
     src: path.join(pkgRoot, "templates", "claude", "code-flow.md"),
@@ -62,3 +72,5 @@ for (const name of selected) {
   fs.copyFileSync(src, dst);
   console.log(`Installed ${name} template: ${dst}`);
 }
+
+installViewer();
