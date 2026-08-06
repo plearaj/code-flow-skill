@@ -25,16 +25,16 @@ def _read_template(*parts: str) -> str:
 
 
 def _install_claude(target: Path) -> None:
-    out = target / ".claude" / "commands" / "code-flow.md"
+    out = target / ".claude" / "commands" / "code-flow.map.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_read_template("claude", "code-flow.md"), encoding="utf-8")
+    out.write_text(_read_template("claude", "code-flow.map.md"), encoding="utf-8")
     print(f"Installed Claude template: {out}")
 
 
 def _install_gemini(target: Path) -> None:
-    out = target / ".gemini" / "commands" / "code-flow.toml"
+    out = target / ".gemini" / "commands" / "code-flow.map.toml"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_read_template("gemini", "code-flow.toml"), encoding="utf-8")
+    out.write_text(_read_template("gemini", "code-flow.map.toml"), encoding="utf-8")
     print(f"Installed Gemini template: {out}")
 
 

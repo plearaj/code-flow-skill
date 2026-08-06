@@ -36,12 +36,12 @@ function installViewer() {
 
 const toolMap = {
   claude: {
-    src: path.join(pkgRoot, "templates", "claude", "code-flow.md"),
-    dst: path.join(target, ".claude", "commands", "code-flow.md"),
+    src: path.join(pkgRoot, "templates", "claude", "code-flow.map.md"),
+    dst: path.join(target, ".claude", "commands", "code-flow.map.md"),
   },
   gemini: {
-    src: path.join(pkgRoot, "templates", "gemini", "code-flow.toml"),
-    dst: path.join(target, ".gemini", "commands", "code-flow.toml"),
+    src: path.join(pkgRoot, "templates", "gemini", "code-flow.map.toml"),
+    dst: path.join(target, ".gemini", "commands", "code-flow.map.toml"),
   },
 };
 

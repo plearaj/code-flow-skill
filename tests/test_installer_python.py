@@ -15,3 +15,15 @@ def test_tool_selection_installs_only_that_tool(tmp_path: Path, run_python_insta
     run_python_installer(tmp_path, tool="gemini")
     assert not (tmp_path / ".claude").exists()
     assert (tmp_path / ".gemini").is_dir()
+
+
+def test_installs_claude_map_command(tmp_path: Path, run_python_installer) -> None:
+    run_python_installer(tmp_path, tool="claude")
+    assert (tmp_path / ".claude" / "commands" / "code-flow.map.md").is_file()
+    assert not (tmp_path / ".claude" / "commands" / "code-flow.md").exists()
+
+
+def test_installs_gemini_map_command(tmp_path: Path, run_python_installer) -> None:
+    run_python_installer(tmp_path, tool="gemini")
+    assert (tmp_path / ".gemini" / "commands" / "code-flow.map.toml").is_file()
+    assert not (tmp_path / ".gemini" / "commands" / "code-flow.toml").exists()

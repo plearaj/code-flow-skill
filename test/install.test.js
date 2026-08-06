@@ -33,3 +33,19 @@ test("tool selection installs only that tool", () => {
   assert.ok(!fs.existsSync(path.join(target, ".claude")));
   assert.ok(fs.existsSync(path.join(target, ".gemini")));
 });
+
+test("installs the claude map command under its dotted name", () => {
+  const target = tempTarget();
+  runInstaller(target, "claude");
+  const commands = path.join(target, ".claude", "commands");
+  assert.ok(fs.existsSync(path.join(commands, "code-flow.map.md")));
+  assert.ok(!fs.existsSync(path.join(commands, "code-flow.md")));
+});
+
+test("installs the gemini map command under its dotted name", () => {
+  const target = tempTarget();
+  runInstaller(target, "gemini");
+  const commands = path.join(target, ".gemini", "commands");
+  assert.ok(fs.existsSync(path.join(commands, "code-flow.map.toml")));
+  assert.ok(!fs.existsSync(path.join(commands, "code-flow.toml")));
+});
