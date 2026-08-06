@@ -84,18 +84,34 @@ the major version bump. The README must document the rename, and users upgrading
 should delete the old `code-flow` command file — the installer writes new files
 and does not remove the superseded one.
 
-**Open item for implementation:** each host tool derives command names from file
-paths, and the exact mechanism for a dotted name must be confirmed against each
-tool before the templates are finalized:
+### Naming mechanism per host
 
-- Claude Code: expected `.claude/commands/code-flow.map.md` → `/code-flow.map`
-- Gemini CLI: expected `.gemini/commands/code-flow.map.toml` → `/code-flow.map`
-- Copilot: no command concept; the instructions file gains one section per
-  capability, headed to match the command names.
+Dotted command names are confirmed working, not assumed. GitHub Spec Kit ships
+exactly this pattern, and its installed files were inspected on 2026-08-06:
 
-If a host does not accept a dot in a command name, fall back to that host's
-native namespacing (a `code-flow/` directory yielding `code-flow:map`) and record
-the divergence in the README rather than renaming the whole family.
+| Host | File | Verified |
+|---|---|---|
+| Claude Code | `.claude/commands/code-flow.map.md` | Yes — `.claude/commands/speckit.analyze.md` observed |
+| Gemini CLI | `.gemini/commands/code-flow.map.toml` | Yes — `.gemini/commands/speckit.analyze.toml` observed |
+| Copilot | `.github/prompts/code-flow.map.prompt.md` | No local install available to inspect |
+
+If a host rejects a dot, fall back to a dash (`code-flow-map`) rather than that
+host's directory-based namespacing, so the command name reads the same
+everywhere. Record any divergence in the README.
+
+### Copilot uses prompt files
+
+Copilot moves from appended prose in `.github/copilot-instructions.md` to prompt
+files at `.github/prompts/<command>.prompt.md`. Prompt files are invocable, which
+gives Copilot true parity with Claude and Gemini instead of ambient instructions
+the model may or may not act on.
+
+This also removes machinery rather than adding it: the idempotent-append logic
+and its guard strings disappear from both installers, which become plain file
+copies for all three hosts. That mattered more with each added capability —
+ambient prose does not scale to three commands sharing one file.
+
+`templates/copilot/code-flow.instructions.md` is deleted.
 
 ## Artifacts
 
@@ -371,10 +387,10 @@ copies of all four template files. npm packages the first, Python packaging the
 second. There is no sync script and no drift check; they match today only through
 manual discipline. This was verified on 2026-08-06: all four files diff clean.
 
-This change adds three template files — a Claude quality command, a Gemini
-quality command, and `report.template.html` (Copilot appends a section to its
-existing instructions file rather than adding one). That raises the duplication
-from 4 mirrored files to 7, in the very tool that is shipping DRY detection.
+After this change each host has one file per command, plus two shared scaffolds:
+two Claude commands, two Gemini commands, two Copilot prompt files,
+`viewer.template.html`, and `report.template.html`. That raises the duplication
+from 4 mirrored files to 8, in the very tool that is shipping DRY detection.
 
 **Resolution:** delete the `src/code_flow_skill/templates/` mirror and make root
 `templates/` the single source, letting hatchling place it into the wheel:
@@ -396,16 +412,17 @@ on discipline.
 
 ## Installer changes
 
-Both installers gain the same two capabilities, and their template lists must
-stay in step:
+Both installers simplify to the same shape, and their template lists must stay in
+step:
 
-- `bin/install.js` and `src/code_flow_skill/cli.py`: install the second command
-  template per tool, and install `report.template.html` alongside the existing
-  `viewer.template.html`.
-- Copilot handling appends a second section. The existing idempotency guard keys
-  on `## Code Flow — Documentation Generator`; a second, distinct guard string is
-  needed for the quality section so the two are independently idempotent.
-- Command file names change per the rename; `--tool` semantics are unchanged.
+- Every host is now a plain file copy: one file per command into that host's
+  command directory, plus both shared scaffolds into `.code-flow/`.
+- The Copilot special case is deleted — no read-modify-write, no guard strings,
+  no idempotency logic. Copying a prompt file is idempotent by construction.
+- `--tool` semantics are unchanged.
+
+This is a net reduction in installer code despite doubling the number of
+installed files.
 
 ## Testing
 
@@ -414,8 +431,8 @@ and cannot be unit tested conventionally, but the mechanical surface can be, and
 should be:
 
 - **Installer smoke tests**, npm and Python: install into a temporary directory,
-  assert every expected file lands, assert the Copilot append is idempotent for
-  both sections independently.
+  assert every expected file lands for each `--tool` value, and assert a second
+  run over an existing install is a no-op producing identical bytes.
 - **Template contract tests:** `report.template.html` contains exactly one
   `__REPORT_DATA__` token; `viewer.template.html` contains exactly one
   `__FLOW_DATA__` token; each command template names the artifacts it must write.
@@ -446,6 +463,10 @@ phases 2 and 3 are additive within 1.x.
 - Version 1.0.0.
 - `/code-flow` becomes `/code-flow.map`. Users must remove the superseded command
   file; the installer does not delete it.
+- Copilot users must delete the `## Code Flow — Documentation Generator` section
+  from `.github/copilot-instructions.md` by hand. The installer will not edit
+  that file any more, so a stale section would otherwise linger and contradict
+  the new prompt files. The README must call this out explicitly.
 - Artifacts are additive. An existing `Code_Flows/` directory from 0.2.0 keeps
   working; `index.json` and `inventory.json` are created on the next map run, and
   flows mapped before 1.0.0 have no `.json` sidecar until re-mapped.
@@ -454,8 +475,9 @@ phases 2 and 3 are additive within 1.x.
 
 ## Open items
 
-1. Dotted command naming must be confirmed per host tool before templates are
-   finalized (see Command surface).
+1. Copilot prompt-file naming (`.github/prompts/<command>.prompt.md`) is taken
+   from GitHub Spec Kit's convention but was not verifiable against a local
+   install. Confirm during phase 1; fall back to a dash if a dot is rejected.
 2. `force-include` packaging must be verified against a built wheel and a `uvx`
    install.
 3. `code-flow.violations` is reserved. Its design follows after
