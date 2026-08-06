@@ -29,3 +29,9 @@ testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/code_flow_skill"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"templates" = "code_flow_skill/templates"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "templates", "README.md", "LICENSE", "NOTICE", "pyproject.toml"]

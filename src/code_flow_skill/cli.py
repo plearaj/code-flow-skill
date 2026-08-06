@@ -6,9 +6,22 @@ from pathlib import Path
 from importlib.resources import files
 
 
+def _template_root() -> Path:
+    """Return the directory holding the template trees.
+
+    Prefers the packaged location (``code_flow_skill/templates``, placed there
+    by hatchling force-include). Falls back to the repository's root
+    ``templates/`` directory so the installer also works when run directly
+    from a source checkout, where the packaged copy does not exist.
+    """
+    packaged = Path(str(files("code_flow_skill").joinpath("templates")))
+    if packaged.is_dir():
+        return packaged
+    return Path(__file__).resolve().parents[2] / "templates"
+
+
 def _read_template(*parts: str) -> str:
-    template = files("code_flow_skill").joinpath("templates", *parts)
-    return template.read_text(encoding="utf-8")
+    return _template_root().joinpath(*parts).read_text(encoding="utf-8")
 
 
 def _install_claude(target: Path) -> None:
