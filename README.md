@@ -130,12 +130,15 @@ uvx htst-code-flow-skill --tool all --target .
 
 If neither `npm` nor `uvx` is available, you only need to copy two or three small text files into your project. There is no code to build and no runtime dependency.
 
-**1. Get the templates.** Either clone the repo or download a zip from GitHub:
+**1. Get the templates.** Pick whichever is easiest:
 
-```bash
-git clone https://github.com/plearaj/code-flow-skill.git
-# or: download https://github.com/plearaj/code-flow-skill/archive/refs/heads/master.zip and unzip
-```
+- **Download a release (recommended).** Grab `code-flow-templates-*.zip` from the [latest release](https://github.com/plearaj/code-flow-skill/releases/latest) — it contains only the `templates/` directory, nothing else. Unzip it anywhere.
+- **Clone or download the repo:**
+
+  ```bash
+  git clone https://github.com/plearaj/code-flow-skill.git
+  # or: download https://github.com/plearaj/code-flow-skill/archive/refs/heads/master.zip and unzip
+  ```
 
 You only need the `templates/` directory. The rest of the repo (packaging, installer script, `src/`) can be ignored.
 
