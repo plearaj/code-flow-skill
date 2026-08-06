@@ -21,5 +21,11 @@ classifiers = [
 [project.scripts]
 code-flow-skill = "code_flow_skill.cli:main"
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/code_flow_skill"]
