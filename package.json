@@ -19,7 +19,7 @@
   },
   "scripts": {
     "check": "node bin/install.js --help",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.js\"",
     "postinstall": "node bin/postinstall.js"
   },
   "keywords": [
