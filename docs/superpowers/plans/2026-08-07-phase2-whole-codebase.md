@@ -218,30 +218,31 @@ Expected: all Python tests pass including the five new ones; Node unchanged at 7
 
 Read all three templates end-to-end. For the `id` rule specifically, confirm in each host: extension dropped from the last segment only; unqualified name; lowercase-and-normalize; the collision suffix with the new definition-keyword clarification.
 
-Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ in 33 lines at this point in the plan (Task 1). It checks that phase 2 did not *add* divergence:
+Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ by design. The current baseline is **29** (Task 2 revised it down from the original 33 by rewriting step 1's body identically in both hosts — see the Host parity rule). The script checks that phase 2 did not *add* divergence beyond that baseline:
 
 ```bash
 python - <<'PY'
 import tomllib, pathlib, difflib
+BASELINE = 29  # current expected divergence; see the Host parity rule above
 claude = pathlib.Path("templates/claude/code-flow.map.md").read_text(encoding="utf-8")
 gemini = tomllib.loads(pathlib.Path("templates/gemini/code-flow.map.toml").read_text(encoding="utf-8"))["prompt"]
 c = claude[claude.index("#### 1."):].splitlines()
 g = gemini[gemini.index("#### 1."):].splitlines()
 diff = [l for l in difflib.unified_diff(c, g, lineterm="", n=0)
         if l[:1] in "+-" and l[:3] not in ("+++", "---")]
-print(f"divergent lines: {len(diff)} (baseline 33)")
-print("OK" if len(diff) == 33 else "DIVERGENCE CHANGED")
+print(f"divergent lines: {len(diff)} (baseline {BASELINE})")
+print("OK" if len(diff) == BASELINE else "DIVERGENCE CHANGED")
 for l in diff:
     print(l)
 PY
 ```
 
-Expected: `divergent lines: 33` and `OK`.
+Expected: `divergent lines: 29` and `OK`.
 
-- **More than 33** means your edit landed differently in the two hosts. Find it in the printed lines and close it.
-- **Fewer than 33** means you "fixed" one of the three deliberate adaptations. Restore it — the Gemini prompt must not name Claude-only tools.
+- **More than the baseline** means your edit landed differently in the two hosts. Find it in the printed lines and close it.
+- **Fewer than the baseline** means you "fixed" one of the three deliberate adaptations. Restore it — the Gemini prompt must not name Claude-only tools.
 - Every printed line must belong to one of the four classes named in the Host parity rule. A divergent line that is none of them is a real defect regardless of the count.
-- **Note for tasks after Task 2:** Task 2's Step 3 rewrites step 1's body identically in both hosts, which subsumes 4 of these 33 lines (3 `-` / 1 `+`) and lowers the baseline to **29**. Task 2 records that revision in the Host parity rule above. When re-running this same script from Task 3 onward, substitute `29` for `33` in the two literals above (`(baseline 33)` and `len(diff) == 33`) and expect `divergent lines: 29` / `OK` instead.
+- If a future task changes `BASELINE`, update it in this one place — the two `print` lines and the `Expected:` line above all derive from it.
 
 - [ ] **Step 8: Commit**
 
