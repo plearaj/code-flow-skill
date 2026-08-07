@@ -236,3 +236,37 @@ def test_map_template_catalogues_tests_rather_than_skipping_them(
     assert '"test"' in region or "`test`" in region, (
         f"{host}/{name} pass 1 never assigns the test role"
     )
+
+
+def _iter_template_files(repo_root: Path) -> list[Path]:
+    """Every file the installer ships from templates/, recursively."""
+    return sorted(p for p in (repo_root / "templates").rglob("*") if p.is_file())
+
+
+def test_shipped_templates_have_no_crlf(repo_root: Path) -> None:
+    """Every file under templates/ must use bare LF line endings on disk.
+
+    `.gitattributes` normalizes the git *index* to LF (`* text=auto eol=lf`),
+    but neither `npm publish` nor `uv build` packs the index — both pack the
+    *working tree*, per the comment in `.gitattributes`. On Windows, a tool
+    that opens one of these files in text mode and writes it back (e.g.
+    `Path.write_text()` with its default `newline=None`) silently translates
+    `\n` to `\r\n`. That corrupts the working-tree copy without `git status`
+    ever flagging it, because git compares *normalized* content. A release
+    cut from a working tree in that state would ship CRLF templates to every
+    consumer — this happened during phase 2 development and was caught only
+    by manually inspecting bytes, not by any test.
+
+    Checked at the byte level, not via `Path.read_text()`: reading with
+    universal-newline translation silently normalizes CRLF back to `\n`, so
+    a text-mode read would pass even against a fully CRLF file on disk.
+    """
+    offenders = [
+        str(path.relative_to(repo_root))
+        for path in _iter_template_files(repo_root)
+        if b"\r\n" in path.read_bytes()
+    ]
+    assert not offenders, (
+        "templates/ files with CRLF line endings (must be bare LF): "
+        + ", ".join(offenders)
+    )

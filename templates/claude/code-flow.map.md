@@ -214,7 +214,6 @@ different questions and because the second one is far more expensive than the fi
 you only read. Report undocumented functions in the inventory's `purpose` field
 instead — inferred from the body when there is no docstring.
 
-
 ### Pass 1 — Breadth: catalogue what exists
 
 This pass traces nothing. It records what is there.
