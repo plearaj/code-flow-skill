@@ -2020,6 +2020,67 @@ git add examples/sample-report.json tests/test_report_schema.py README.md
 git commit -m "feat: ship the report fixture, make its schema executable, document the command"
 ```
 
+#### Amendments applied during execution
+
+Task 6 took two fix rounds. Where this section and the shipped files disagree, **the
+shipped files govern**.
+
+The implementer found and corrected two defects in this plan's own fixture before
+shipping it, both resolved in the templates' favour: `DRY-02` was missing a site for a
+chain function its own rationale claimed existed, which under-cited the very chain its
+severity depends on; and `YAGNI-01` carried `confidence: "unverified"` under
+`meta.readCode: true`. **Note also that this plan's dispatch language called the two
+`confidence` values `candidate` and `verified`. The templates use `unverified` and
+`verified`, and they are right.**
+
+1. **Most of the schema was still unenforced** — the one thing this task exists to
+   prevent. `title` was referenced by no test at all; `rationale` and `suggestion`
+   only inside the `unreached` branch; all three per-detector evidence fields not at
+   all, so deleting `"flows"` from `DRY-02` left the suite green even though the
+   template mandates it for `repeated-sequence`. Now: all ten required fields
+   asserted, plus a per-detector map that both requires each detector's evidence
+   fields and **forbids** the others', which is the template's "and nothing else".
+2. **The README claimed `--read-code` marks findings "`verified` or `unverified`"** —
+   false against the template, and contradicted by a test shipped in the same commit.
+3. **The ordering test checked two of three sort keys**, omitting `principle`, while
+   its failure message claimed to check the documented order.
+
+**The one substantive design change of the phase.** Fixing the fixture's
+`findingsDropped: 2` exposed a real hole. Step 4b read exhaustively — verify or drop —
+but step 4 closes with "the dropped count is *usually* zero", and the approved design
+says "typically zero". A hedge that can never fire is a lie about the rule, so the
+design intends a case step 4b did not cover: **a candidate whose cited file cannot be
+opened at all.** That branch now exists in all three hosts — the candidate stays
+`unverified` and falls through to 4c's staleness drop — which is what makes the hedge
+true and `findingsDropped` meaningfully nonzero under `--read-code`.
+
+Round 2 closed the half of that branch which did not actually connect. A **deleted**
+file trivially fails any hash comparison, so 4c fires. An **unreadable but unchanged**
+file's hash still matches, so 4a never flagged it, 4c never fired, and the candidate
+would have shipped as `unverified` under `--read-code` — making half of the
+just-corrected README sentence false again. Step 4a now states that a cited file whose
+content cannot be read at all counts as changed, whatever the reason. The nearby
+precedent pointed the wrong way: this same document treats an unreadable `<flow>.json`
+as "skipped and counted" rather than as changed, so the rule had to be explicit.
+
+Four Minors were folded in: the deletion check `"delete " not in ...` had a trailing
+space, so `"Delete."`, `"deleting it"` and anything phrased "Remove" all passed; the
+repo-relative path check admitted a Windows drive-letter path, which on this
+development platform is the likely shape of a real violation; the README undercounted
+the stop conditions as two when a missing `index.json` is a third; and id continuity
+was unchecked, so `DRY-01` beside `DRY-03` would have passed.
+
+Final: **93 quality-scoped template tests, 163 Python, 10 Node, parity
+`divergent lines: 0 (baseline 0)`.**
+
+**Two known gaps, deliberately not closed.** The fixture does not exercise
+`severity: "medium"`, `effort: "large"`, `confidence: "unverified"`, a non-empty
+`detectorsSkipped`, or the `production-unreached` never-`high` rule — contrary to
+Step 3's claim that one finding per detector exercises every enum value. Since this
+module is the schema's only executable form, those are the values a future edit can
+break unnoticed. And `### Example output` (a `code-flow.map` example) now sits directly
+after the quality section with no lead-in.
+
 ---
 
 ## What this phase does not verify
