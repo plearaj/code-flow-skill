@@ -37,5 +37,6 @@ Follow these steps exactly:
    duplicate-intent detector — a thin map carries no `snippet` and that detector
    cannot cite the evidence its findings require — and name both remedies: re-run
    with `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
+   The other three detectors are unaffected and still run.
    `coverage.flowsTraced` below `coverage.entryPointsFound` is **not** a stop
    condition; it is a partial trace pass, which is normal on a large repository.
