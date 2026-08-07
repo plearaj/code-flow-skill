@@ -693,13 +693,17 @@ PY
 uv run --group dev pytest tests/test_template_contracts.py -k inventory -v
 ```
 
-Expected: FAIL for the claude cases. Then restore:
+Expected: FAIL for the claude cases. Then restore.
+
+**Restore from a copy, not from git.** This step runs *before* the task's commit, so the file holds uncommitted work — `git checkout <file>` would discard the whole section you just wrote and silently revert to the previous commit. Snapshot first and restore from the snapshot:
 
 ```bash
-git checkout templates/claude/code-flow.map.md
+cp templates/claude/code-flow.map.md /tmp/cf-claude-snapshot.md   # BEFORE the mutation
+# ... run the mutation and the test ...
+cp /tmp/cf-claude-snapshot.md templates/claude/code-flow.map.md   # restore
 ```
 
-Confirm `git status` is clean before moving on. Record the red output in your report — a scoping test that cannot go red is decoration.
+Then confirm `git diff --stat templates/` shows the file back to exactly the state you intended, and re-run the parity script — a botched restore is the one way this step can quietly undo the task. Record the red output in your report; a scoping test that cannot go red is decoration.
 
 - [ ] **Step 7: Run the full suite and check the TOML**
 
@@ -873,7 +877,7 @@ PY
 uv run --group dev pytest tests/test_template_contracts.py -k already_registered -v
 ```
 
-Expected: FAIL for the claude case, with the message naming the missing `do not re-trace` clause. Then `git checkout templates/claude/code-flow.map.md` and confirm `git status` is clean. Record the red output in your report.
+Expected: FAIL for the claude case, with the message naming the missing `do not re-trace` clause. Then restore — **from a copy, not from git**, for the reason given in Task 3 Step 6: this runs before the task's commit, so `git checkout <file>` would discard the pass-2 section you just wrote rather than merely undoing the mutation. `cp` the file aside before the mutation and `cp` it back after, then re-run the parity script to confirm the restore was exact. Record the red output in your report.
 
 If it does NOT go red, the clause survives somewhere else in the pass 2 region — find it and say so rather than leaving a decorative test.
 
