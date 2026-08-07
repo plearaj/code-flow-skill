@@ -104,10 +104,10 @@ at that threshold; a shorter chain, or one appearing in only 1 flow, is not a
 finding. Cite the shared subpath and the `slug` of every flow it appears in.
 
 **c. complexity-hotspot (KISS).** For each node across the flow graphs, take its
-fan-out (its count of outbound edges) and its depth (its distance from that
-flow's `entry` node). Severity is `high` when fan-out is at least 8, or
-depth is at least 6, or the function's `loc` is at least 120; otherwise
-`medium`. Cite the metric that tripped and its value.
+fan-out (its count of outbound edges) and its depth (its distance from that flow's
+`entry` node). Severity is `high` when fan-out is at least 8, or depth is at least
+6, or the function's `loc` is at least 120; otherwise `medium`. Cite the metric
+that tripped and its value.
 
 **d. unreached (YAGNI).** Subtract. Every inventory `id` that appears as a node
 `id` in any flow is reached; what remains is not. The join is exact — the map
@@ -119,7 +119,8 @@ remains by `role`:
 - A `role` of `source` reached by no flow and by no test file is `unreached`: a
   dead-code candidate.
 - A `role` of `source` reached only from test files is `production-unreached`.
-  Phrase it "kept alive only by its own tests" and never rate it `high`.
+  Phrase it "kept alive only by its own tests"; never rate it `high` —
+  otherwise `medium`.
 
 Severity is `high` only when the entry is `unreached`, is not `exported`, and is
 not test-only. Anything whose `exported` is true is capped at `low`, because a

@@ -513,11 +513,20 @@ def test_quality_template_survives_one_bad_flow_file(
 # "#### 3. Run the Detectors"; Copilot: "3. **Run the detectors.**").
 _DETECTORS_START = re.compile(r"run the detectors", re.IGNORECASE)
 
-# Marks the start of the *next* section (Claude/Gemini: "#### 4. Verify";
-# Copilot: "4. **Verify"). Scoping matters here: "snippet", "severity" and
-# "sites" all appear again in the step 5/6 output instructions, so an
-# unscoped search would pass even with the detector rules deleted.
-_DETECTORS_END = re.compile(r"\n(?:#### 4\.|4\.\s*\*\*Verify)")
+# Marks the start of the *next* section (Claude/Gemini: "#### 4. ..."; Copilot:
+# "4. **..."). Scoping matters here: "snippet", "severity" and "sites" all
+# appear again in the step 5/6 output instructions, so an unscoped search
+# would pass even with the detector rules deleted.
+#
+# The Copilot alternative is deliberately title-agnostic (`4\.\s*\*\*`, not
+# `4\.\s*\*\*Verify`). A title-locked pattern only works until Task 4 titles
+# Copilot's step 4 something other than "Verify" — at which point this anchor
+# would stop matching, `_section_region` would fall back to end-of-text, and
+# the detectors region would silently swallow steps 4-6. Every assertion in
+# this file would keep passing against that much larger haystack, which is
+# exactly the vacuity region-scoping exists to prevent. Do not re-tighten
+# this to a specific title.
+_DETECTORS_END = re.compile(r"\n(?:#### 4\.|4\.\s*\*\*)")
 
 DETECTOR_NAMES = (
     "duplicate-intent",
@@ -539,9 +548,18 @@ FINDING_FIELD_NAMES = (
     "effort",
 )
 
+SITE_FIELD_NAMES = ("file", "line", "symbol", "snippet")
+
+
+def _flatten(text: str) -> str:
+    """Contract tests assert what a rule says, not how it wraps. Collapsing
+    whitespace lets a paragraph reflow — including a reflow a formatter does
+    on its own — without turning the suite red for no reason."""
+    return re.sub(r"\s+", " ", text)
+
 
 def _detectors_region(text: str) -> str:
-    return _section_region(text, _DETECTORS_START, _DETECTORS_END)
+    return _flatten(_section_region(text, _DETECTORS_START, _DETECTORS_END))
 
 
 def _detector_header_pattern(detector: str) -> re.Pattern[str]:
@@ -618,6 +636,21 @@ def test_quality_template_names_every_finding_field(
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_every_site_field(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`FINDING_FIELD_NAMES` only covers the ten top-level finding fields;
+    `sites` is itself an array of objects with fields of their own. Deleting
+    that inner object from the finding-shape example — the site's `file`,
+    `line`, `symbol` and `snippet` — would go unnoticed without this."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in SITE_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host} detector step never references the site field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
 def test_quality_template_names_the_per_detector_evidence_fields(
     repo_root: Path, host: str, name: str
 ) -> None:
@@ -641,6 +674,24 @@ def test_quality_template_separates_test_only_reachability(
     region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
     assert "production-unreached" in region
     assert "kept alive only by its own tests" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_defaults_production_unreached_to_medium(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Every other detector closes its severity rule with an explicit
+    "otherwise `medium`" default; `production-unreached` said only "never
+    `high`", leaving a non-exported entry as "medium or low" with no rule
+    choosing between them — impressionistic, which the severity model
+    forbids. Anchored on "never rate it `high`" immediately followed by the
+    `medium` default, not on a bare "otherwise `medium`" search: that phrase
+    already appears twice more in this region, once per other detector, so
+    an unscoped search would pass even with this specific default deleted."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"never rate it `high`.{0,20}otherwise `medium`", region), (
+        f"{host} never defaults a non-exported production-unreached finding to medium"
+    )
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
