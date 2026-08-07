@@ -178,9 +178,9 @@ On a `--detail thin` map, duplicate-intent is skipped unless you pass
 `--read-code`: a thin map carries no code snippets, so that detector has no
 evidence to cite.
 
-### Example output
+### Example map output
 
-`Code_Flows/user_login.md` will look roughly like:
+Back to `/code-flow.map`: `Code_Flows/user_login.md` will look roughly like:
 
 ````markdown
 # User Login — Flow
@@ -269,14 +269,17 @@ From the project root where you want the skill available:
 # Claude Code
 mkdir -p .claude/commands
 cp /path/to/code-flow-skill/templates/claude/code-flow.map.md .claude/commands/code-flow.map.md
+cp /path/to/code-flow-skill/templates/claude/code-flow.quality.md .claude/commands/code-flow.quality.md
 
 # Gemini CLI
 mkdir -p .gemini/commands
 cp /path/to/code-flow-skill/templates/gemini/code-flow.map.toml .gemini/commands/code-flow.map.toml
+cp /path/to/code-flow-skill/templates/gemini/code-flow.quality.toml .gemini/commands/code-flow.quality.toml
 
 # GitHub Copilot
 mkdir -p .github/prompts
 cp /path/to/code-flow-skill/templates/copilot/code-flow.map.prompt.md .github/prompts/code-flow.map.prompt.md
+cp /path/to/code-flow-skill/templates/copilot/code-flow.quality.prompt.md .github/prompts/code-flow.quality.prompt.md
 
 # Interactive HTML viewer scaffold (needed for all tools)
 mkdir -p .code-flow
@@ -287,7 +290,7 @@ On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkd
 
 If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer.
 
-**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list the new `/code-flow.map` command. For Copilot in VS Code, look for the prompt in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
+**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list **both** new commands — `/code-flow.map` and `/code-flow.quality`. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
 
 That's it — no install step runs any code on your machine. If you later want to update the skill, just re-copy the template files.
 
@@ -301,12 +304,15 @@ Defaults: `--tool all`, `--target .`.
 
 ## Files written
 
-| Tool | Path |
-|------|------|
-| Claude Code | `.claude/commands/code-flow.map.md` |
-| Gemini CLI | `.gemini/commands/code-flow.map.toml` |
-| GitHub Copilot | `.github/prompts/code-flow.map.prompt.md` |
-| _All tools_ | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
+| Tool | Command | Path |
+|------|---------|------|
+| Claude Code | `/code-flow.map` | `.claude/commands/code-flow.map.md` |
+| Claude Code | `/code-flow.quality` | `.claude/commands/code-flow.quality.md` |
+| Gemini CLI | `/code-flow.map` | `.gemini/commands/code-flow.map.toml` |
+| Gemini CLI | `/code-flow.quality` | `.gemini/commands/code-flow.quality.toml` |
+| GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
+| GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
+| _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 
 The `.code-flow/viewer.template.html` scaffold is tool-agnostic and is installed regardless of which `--tool` you select, since every command template references it.
 
