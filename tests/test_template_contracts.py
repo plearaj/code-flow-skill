@@ -184,6 +184,12 @@ INVENTORY_FIELD_NAMES = (
     "snippet",
 )
 
+# Pass 1's own heading, not the mode heading. The mode section opens with
+# Task 2's never-edit-source paragraph, which references `purpose` — so a
+# region starting at the mode heading satisfies the `purpose` assertion with
+# prose that has nothing to do with pass 1's rules.
+_PASS1_START = re.compile(r"^#{3,4} +Pass 1\b", re.MULTILINE)
+
 # The trace pass heading, used as the end boundary of the inventory region so
 # pass 1's assertions cannot be satisfied by text that belongs to pass 2.
 # Heading-anchored for the same reason as the mode heading: pass 1's own prose
@@ -193,17 +199,23 @@ _PASS2_START = re.compile(r"^#{3,4} +Pass 2\b", re.MULTILINE)
 
 
 def _inventory_region(text: str) -> str:
-    return _section_region(text, _MODE_SECTION_START, _PASS2_START)
+    return _section_region(text, _PASS1_START, _PASS2_START)
 
 
 @pytest.mark.parametrize("host,name", MAP_TEMPLATES)
 def test_map_template_names_inventory_fields(repo_root: Path, host: str, name: str) -> None:
     """Pass 1's instructions must name every field an inventory entry carries.
 
-    Scoped to the region between the whole-codebase heading and the Pass 2
-    heading: `file`, `line` and `name` all occur throughout the feature-mode
-    half of every template, so an unscoped search would pass even with the
-    inventory instructions deleted outright.
+    Scoped to the region between the Pass 1 heading and the Pass 2 heading —
+    not the wider whole-codebase-mode heading. `file`, `line` and `name` all
+    occur throughout the feature-mode half of every template, so an unscoped
+    search would pass even with the inventory instructions deleted outright.
+    Anchoring on Pass 1's own heading (rather than the mode heading) matters
+    specifically for `purpose`: the mode section opens with Task 2's
+    never-edit-source paragraph, which already references `` `purpose` `` in
+    prose that has nothing to do with pass 1's own rule for the field — a
+    region starting any earlier would let that unrelated reference satisfy
+    the assertion even if pass 1's own `purpose` bullet were deleted.
     """
     text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
     region = _inventory_region(text)

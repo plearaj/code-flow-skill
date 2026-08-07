@@ -99,9 +99,13 @@ This pass traces nothing. It records what is there.
 honoring `.gitignore`. Skip in addition: `node_modules`, `.venv`, `venv`, `dist`,
 `build`, `target`, `vendor`, `third_party`; lockfiles (`package-lock.json`,
 `yarn.lock`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`); minified or
-generated assets (`*.min.js`, `*.min.css`, `*.map`); and anything binary. Count
-every skip and attribute it to one reason: `vendored`, `generated`, `binary`, or
-`unparsed` for a file you opened but could not read structure from.
+generated assets (`*.min.js`, `*.min.css`, `*.map`); and anything binary. Count every skip and attribute it to exactly one reason: `vendored` for code you
+did not write (`node_modules`, `vendor`, `third_party`); `generated` for build
+output and machine-written files (`dist`, `build`, `target`, lockfiles, minified
+assets); `binary` for anything that is not text; `unparsed` for a file you opened
+but could not read structure from. A `.gitignore` match is not itself a reason —
+give the file the reason that fits what it is. If two fit, use the one listed
+first here, so two runs over the same repository produce the same counts.
 
 **b. Catalogue the functions.** Write `Code_Flows/inventory.json` with one entry
 per function or method you find:
