@@ -29,13 +29,17 @@ const EXPECTED_ALL = [
   ".github/prompts/code-flow.map.prompt.md",
 ];
 
-function installedPaths(root) {
+// Hand-rolled walk rather than readdirSync({ recursive: true }): that option
+// landed in Node 18.17 and its Dirent.parentPath in 20.12, both above this
+// package's declared engines floor of ">=18". Rather than narrow what we
+// support in order to write a test, walk with APIs that have always been there.
+function installedPaths(root, prefix = "") {
   return fs
-    .readdirSync(root, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) =>
-      path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
-    )
+    .readdirSync(path.join(root, prefix), { withFileTypes: true })
+    .flatMap((entry) => {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      return entry.isDirectory() ? installedPaths(root, rel) : [rel];
+    })
     .sort();
 }
 

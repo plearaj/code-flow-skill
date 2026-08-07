@@ -14,10 +14,11 @@ The command was renamed and the Copilot integration changed. After upgrading:
     `.github/copilot-instructions.md` by hand — otherwise it lingers and
     contradicts the new prompt.
   - **If you use Copilot anywhere else** (github.com, JetBrains, Visual Studio,
-    the CLI), **keep** that section. Prompt files are a VS Code feature; outside
-    VS Code the instructions file is what your Copilot actually reads, and
-    deleting it would leave you with no Code Flow skill at all. See the
-    **GitHub Copilot** notes under *Usage* below.
+    the CLI), **keep** that section. Prompt files are a documented VS Code
+    feature; whether any other surface reads them has not been verified here, so
+    assume the new prompt file does nothing for you. The instructions file is
+    read across surfaces, and deleting it could leave you with no Code Flow skill
+    at all. See the **GitHub Copilot** notes under *Usage* below.
 - `/code-flow.map` now also writes `Code_Flows/<feature_name>.json` and
   `Code_Flows/index.json`. Flows mapped before 1.0 have no sidecar until re-mapped.
 
