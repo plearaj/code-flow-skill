@@ -49,3 +49,21 @@ test("installs the gemini map command under its dotted name", () => {
   assert.ok(fs.existsSync(path.join(commands, "code-flow.map.toml")));
   assert.ok(!fs.existsSync(path.join(commands, "code-flow.toml")));
 });
+
+test("installs the copilot prompt file", () => {
+  const target = tempTarget();
+  runInstaller(target, "copilot");
+  const prompt = path.join(target, ".github", "prompts", "code-flow.map.prompt.md");
+  assert.ok(fs.existsSync(prompt));
+});
+
+test("copilot install leaves copilot-instructions.md untouched", () => {
+  const target = tempTarget();
+  const instructions = path.join(target, ".github", "copilot-instructions.md");
+  fs.mkdirSync(path.dirname(instructions), { recursive: true });
+  fs.writeFileSync(instructions, "# My own notes\n", "utf8");
+
+  runInstaller(target, "copilot");
+
+  assert.equal(fs.readFileSync(instructions, "utf8"), "# My own notes\n");
+});

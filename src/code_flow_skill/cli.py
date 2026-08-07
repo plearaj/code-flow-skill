@@ -51,16 +51,12 @@ def _install_viewer(target: Path) -> None:
 
 
 def _install_copilot(target: Path) -> None:
-    out = target / ".github" / "copilot-instructions.md"
+    out = target / ".github" / "prompts" / "code-flow.map.prompt.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    snippet = _read_template("copilot", "code-flow.instructions.md").strip()
-    existing = out.read_text(encoding="utf-8") if out.exists() else ""
-    if "## Code Flow — Documentation Generator" in existing:
-        print(f"Copilot Code Flow instructions already present: {out}")
-        return
-    merged = f"{existing.strip()}\n\n{snippet}\n" if existing.strip() else f"{snippet}\n"
-    out.write_text(merged, encoding="utf-8")
-    print(f"Appended Copilot Code Flow instructions: {out}")
+    out.write_text(
+        _read_template("copilot", "code-flow.map.prompt.md"), encoding="utf-8"
+    )
+    print(f"Installed Copilot prompt: {out}")
 
 
 def main() -> None:

@@ -43,28 +43,16 @@ const toolMap = {
     src: path.join(pkgRoot, "templates", "gemini", "code-flow.map.toml"),
     dst: path.join(target, ".gemini", "commands", "code-flow.map.toml"),
   },
+  copilot: {
+    src: path.join(pkgRoot, "templates", "copilot", "code-flow.map.prompt.md"),
+    dst: path.join(target, ".github", "prompts", "code-flow.map.prompt.md"),
+  },
 };
 
 for (const name of selected) {
   if (!["claude", "gemini", "copilot"].includes(name)) {
     console.error(`Unknown --tool value: ${name}`);
     process.exit(1);
-  }
-
-  if (name === "copilot") {
-    const snippetPath = path.join(pkgRoot, "templates", "copilot", "code-flow.instructions.md");
-    const snippet = fs.readFileSync(snippetPath, "utf8");
-    const outFile = path.join(target, ".github", "copilot-instructions.md");
-    fs.mkdirSync(path.dirname(outFile), { recursive: true });
-    const existing = fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf8") : "";
-    if (!existing.includes("## Code Flow — Documentation Generator")) {
-      const merged = existing.trim() ? `${existing.trim()}\n\n${snippet.trim()}\n` : `${snippet.trim()}\n`;
-      fs.writeFileSync(outFile, merged, "utf8");
-      console.log(`Appended Copilot Code Flow instructions: ${outFile}`);
-    } else {
-      console.log(`Copilot Code Flow instructions already present: ${outFile}`);
-    }
-    continue;
   }
 
   const { src, dst } = toolMap[name];
