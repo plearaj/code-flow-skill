@@ -840,6 +840,34 @@ def test_quality_template_never_stops_on_staleness(
     assert re.search(r"never a reason to stop|does not stop the command", region, re.IGNORECASE)
 
 
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_treats_unreadable_files_as_changed(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 4a's hash comparison only detects staleness for a file it can
+    still read. A deleted cited file trivially fails any hash comparison, but
+    one that merely can't be *read* — a permission error, a binary or
+    encoding failure — is unchanged on disk: its hash still matches, so
+    without this rule 4a would never flag it, 4c would never fire, and the
+    candidate would survive into the report `unverified` under `--read-code`
+    forever. That would make the "usually zero" dropped-count hedge in this
+    same step (and the identical claim in the README) false for that whole
+    sub-case, not just rare.
+
+    Anchored to the hash-comparison sentence itself via proximity between
+    "cannot be read" and "changed", not a bare keyword search: `hash` and
+    `changed`/`change` both recur several times in this region (the
+    comparison itself, the drop rule, the "what made the file stale" aside),
+    so an unscoped substring check for either word alone would stay green
+    even with this rule deleted outright.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"cannot be read.{0,60}changed", region, re.IGNORECASE | re.DOTALL), (
+        f"{host} never states that a cited file which cannot be read at all "
+        f"counts as changed for the staleness comparison"
+    )
+
+
 # --- Phase 3a: quality command, steps 5-6 (write the two reports) ----------
 
 # Marks the start of the output instructions (Claude/Gemini: "#### 5. Write

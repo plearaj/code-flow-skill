@@ -172,8 +172,9 @@ Two things happen here, and their order matters.
 
 **a. Check staleness.** For every file cited by any candidate finding, compare the
 file's current content against the `hash` recorded for it in `index.json`'s
-`files` array. Count how many mapped files no longer match; that count goes in the
-banner in step 6.
+`files` array — a file that cannot be read at all, whatever the reason, counts as
+changed for this comparison. Count how many mapped files no longer match; that
+count goes in the banner in step 6.
 
 Staleness is **never a reason to stop the command**. There is no threshold — any
 threshold would be a number this design cannot justify.

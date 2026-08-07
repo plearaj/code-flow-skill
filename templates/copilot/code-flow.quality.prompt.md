@@ -109,8 +109,10 @@ Follow these steps exactly:
    - **Check staleness.** For every file cited by a candidate finding, compare its
      current content against the `hash` recorded in `index.json`'s `files` array,
      and count how many mapped files no longer match — that count goes in the step 6
-     banner. Staleness is **never a reason to stop the command**; there is no
-     threshold, because any threshold would be a number this design cannot justify.
+     banner. A file that cannot be read at all, whatever the reason, counts as
+     changed for this comparison. Staleness is **never a reason to stop the
+     command**; there is no threshold, because any threshold would be a number this
+     design cannot justify.
    - **Verify, if `--read-code` was passed.** This verifies candidates and is **not
      a second scan of the repository** — do not re-scan, since scanning everything
      again would duplicate the cost of mapping and not fit on a large codebase.
