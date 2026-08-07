@@ -507,3 +507,159 @@ def test_quality_template_survives_one_bad_flow_file(
     flows are still analyzable."""
     region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
     assert re.search(r"skip that flow|skip it and", region, re.IGNORECASE)
+
+
+# Marks the start of the detector instructions in every host (Claude/Gemini:
+# "#### 3. Run the Detectors"; Copilot: "3. **Run the detectors.**").
+_DETECTORS_START = re.compile(r"run the detectors", re.IGNORECASE)
+
+# Marks the start of the *next* section (Claude/Gemini: "#### 4. Verify";
+# Copilot: "4. **Verify"). Scoping matters here: "snippet", "severity" and
+# "sites" all appear again in the step 5/6 output instructions, so an
+# unscoped search would pass even with the detector rules deleted.
+_DETECTORS_END = re.compile(r"\n(?:#### 4\.|4\.\s*\*\*Verify)")
+
+DETECTOR_NAMES = (
+    "duplicate-intent",
+    "repeated-sequence",
+    "complexity-hotspot",
+    "unreached",
+)
+
+FINDING_FIELD_NAMES = (
+    "id",
+    "principle",
+    "detector",
+    "severity",
+    "confidence",
+    "title",
+    "rationale",
+    "sites",
+    "suggestion",
+    "effort",
+)
+
+
+def _detectors_region(text: str) -> str:
+    return _section_region(text, _DETECTORS_START, _DETECTORS_END)
+
+
+def _detector_header_pattern(detector: str) -> re.Pattern[str]:
+    """Match ``detector`` where it *introduces its own rule paragraph* —
+    immediately followed by its principle in parentheses (Claude/Gemini:
+    "**a. duplicate-intent (DRY).**"; Copilot: "- **duplicate-intent
+    (DRY)**").
+
+    A bare substring search (`detector in region`, as the plan's own draft of
+    this test used) is vacuous for exactly one of the four names:
+    `duplicate-intent` is also the `detector` value in the finding-shape JSON
+    example that follows all four rules (`"detector": "duplicate-intent"`).
+    Deleting the entire duplicate-intent rule paragraph would still leave that
+    JSON example behind, and a bare substring check would still pass. The
+    other three names never recur in the JSON example, so only this one name
+    was actually vacuous — but the fix applies uniformly. Requiring the name
+    to be immediately followed by `(` (its principle) matches only the rule
+    header: the JSON example's next character after the value is a comma, and
+    the per-detector evidence-field bullets never put a `(` directly after the
+    bare detector name either.
+    """
+    return re.compile(re.escape(detector) + r"\s*\(", re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_all_four_detectors(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for detector in DETECTOR_NAMES:
+        assert _detector_header_pattern(detector).search(region), (
+            f"{host} detector step does not introduce {detector} with its principle"
+        )
+
+
+# Each threshold, tied to the concept it governs. A bare number search would
+# be vacuous — "8" and "6" and "2" all occur incidentally in a region this
+# size — so every pattern requires the number adjacent to what it measures.
+# The patterns are deliberately loose about the words *between* number and
+# concept, because Claude/Gemini say "fan-out is at least 8" where Copilot's
+# numbered-list register says "at fan-out 8", and both are correct.
+SEVERITY_THRESHOLDS = (
+    r"3 sites",
+    r"40 (?:duplicated )?lines",
+    r"3 consecutive calls",
+    r"2 (?:different )?flows",
+    r"fan-out.{0,20}\b8\b",
+    r"depth.{0,20}\b6\b",
+    r"`loc`.{0,20}\b120\b",
+)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_states_every_severity_threshold(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Severity is rule-based, not impressionistic. A template that dropped a
+    threshold would leave the assistant to invent one, and findings would drift
+    toward medium. Every number from the design must survive in every host."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for pattern in SEVERITY_THRESHOLDS:
+        assert re.search(pattern, region), f"{host} is missing threshold {pattern!r}"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_every_finding_field(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in FINDING_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host} detector step never references the finding field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_the_per_detector_evidence_fields(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three detectors are told to cite evidence the core schema has no home
+    for — flow slugs, the metric that tripped and its value, export status. If
+    the schema does not name those fields, each run invents its own key for
+    them and the report JSON stops being a stable shape."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in ("flows", "metric", "value", "exported"):
+        assert _field_reference(field).search(region), (
+            f"{host} never names the evidence field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_separates_test_only_reachability(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Excluding tests would make every test-only helper look dead. The design
+    splits the outcome in two rather than collapsing it."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "production-unreached" in region
+    assert "kept alive only by its own tests" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_caps_exported_and_never_instructs_deletion(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Parser-free tracing cannot see dynamic dispatch, so unreached is a
+    candidate and never a verdict."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "confirm before deleting" in region
+    assert re.search(r"`exported`.{0,120}\blow\b", region, re.IGNORECASE | re.DOTALL)
+    assert re.search(r"never instructs? deletion|do not tell the user to delete", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_clusters_rather_than_pairs(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three copies of one helper is one finding with three sites, not three
+    pairwise findings. Without this rule a 5-site cluster becomes 10 findings."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"never (one finding )?per pair|not pairwise", region, re.IGNORECASE)
