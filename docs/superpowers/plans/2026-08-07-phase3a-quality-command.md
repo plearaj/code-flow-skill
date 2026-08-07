@@ -1086,6 +1086,46 @@ git add templates/claude/code-flow.quality.md templates/gemini/code-flow.quality
 git commit -m "feat: the four detectors, with rule-based severity"
 ```
 
+#### Amendments applied during execution
+
+Task 3's review found four Important issues in the text above. All were fixed on
+the branch; where this section and the shipped files disagree, **the shipped files
+govern**. The changes, and why each was needed:
+
+1. **Contract tests asserted source line breaks, not contract.** Eleven of the
+   thirteen assertions matched literal spaces under a non-DOTALL regex, so each
+   required its phrase to sit on one source line — which forced four paragraphs to
+   be reflowed across three hosts purely to satisfy the suite. A markdown soft wrap
+   changes nothing about rendered meaning, so this pinned layout rather than
+   meaning. Fixed with a `_flatten` helper that collapses whitespace runs, applied
+   in `_detectors_region` only; the reflowed paragraphs were then restored to the
+   wrapping this plan specifies. `_load_region` is untouched — Task 2's assertions
+   already allow `\s+` and `re.DOTALL`.
+2. **Copilot's 40-line threshold was readable two ways.** Claude and Gemini say the
+   duplicated code "totals at least 40 lines"; Copilot said only "40 duplicated
+   lines", which reads as 40 per site rather than summed across the cluster — two
+   25-line duplicates would rate `high` on two hosts and `medium` on the third.
+   "totals" restored to Copilot.
+3. **`production-unreached` left a residual severity case to impression.** A
+   non-exported `production-unreached` entry was "medium or low" with nothing
+   choosing between them, which contradicts this plan's own constraint that severity
+   is rule-based and never impressionistic. "otherwise `medium`" added in all three
+   hosts, with a covering test anchored to "never rate it `high`".
+4. **`_DETECTORS_END`'s Copilot alternative was title-locked** (`4\.\s*\*\*Verify`).
+   Had Task 4 titled Copilot's step anything else, the anchor would have missed,
+   `_section_region` would have fallen back to end-of-text, and the detectors region
+   would have silently swallowed steps 4-6 — every assertion still passing, against
+   a much larger haystack. Now title-agnostic: `\n(?:#### 4\.|4\.\s*\*\*)`.
+
+Two Minors were folded into the same round: the `sites[]` inner object gained a
+covering assertion (`SITE_FIELD_NAMES`), since deleting it would have gone
+unnoticed; and Copilot's duplicate-intent input list was split into Claude's
+two-sentence form, which had attached "wherever the map carries one" to an
+Oxford-comma list and dropped "across the whole inventory".
+
+Final counts after the fix: **45 quality-scoped tests (15 assertions across 3
+hosts)**, not the 39 predicted above. Tasks 4-6 should add to 45.
+
 ---
 
 ### Task 4: `--read-code` verification, and what staleness does
@@ -1256,7 +1296,9 @@ Append to `templates/copilot/code-flow.quality.prompt.md`:
 
 Run: `uv run --group dev pytest tests/test_template_contracts.py -v -k quality`
 
-Expected: PASS, 54 tests (18 assertions across 3 hosts).
+Expected: PASS, 60 tests (20 assertions across 3 hosts) — 45 carried in from Task 3
+after its review amendments, plus this task's 5. The figure written when this plan
+was drafted was 54, before Task 3 gained two assertions in review.
 
 - [ ] **Step 6: Re-run the parity script**
 
@@ -1544,7 +1586,9 @@ Append to `templates/copilot/code-flow.quality.prompt.md`:
 
 Run: `uv run --group dev pytest tests/test_template_contracts.py -v -k quality`
 
-Expected: PASS, 78 tests (26 assertions across 3 hosts).
+Expected: PASS, 84 tests (28 assertions across 3 hosts) — 60 carried in from Task 4,
+plus this task's 8. The figure written when this plan was drafted was 78, before
+Task 3 gained two assertions in review.
 
 - [ ] **Step 6: Re-run the parity script**
 
