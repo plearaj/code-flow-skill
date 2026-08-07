@@ -221,21 +221,34 @@ Read all three templates end-to-end. For the `id` rule specifically, confirm in 
 Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ by design. The current baseline is **29** (Task 2 revised it down from the original 33 by rewriting step 1's body identically in both hosts — see the Host parity rule). The script checks that phase 2 did not *add* divergence beyond that baseline:
 
 ```bash
-python - <<'PY'
+PYTHONIOENCODING=utf-8 python - <<'PY'
 import tomllib, pathlib, difflib
 BASELINE = 29  # current expected divergence; see the Host parity rule above
 claude = pathlib.Path("templates/claude/code-flow.map.md").read_text(encoding="utf-8")
 gemini = tomllib.loads(pathlib.Path("templates/gemini/code-flow.map.toml").read_text(encoding="utf-8"))["prompt"]
 c = claude[claude.index("#### 1."):].splitlines()
 g = gemini[gemini.index("#### 1."):].splitlines()
-diff = [l for l in difflib.unified_diff(c, g, lineterm="", n=0)
-        if l[:1] in "+-" and l[:3] not in ("+++", "---")]
+# autojunk=False is REQUIRED, not a preference. difflib's autojunk heuristic
+# activates once a sequence reaches 200 elements and treats any line occurring
+# in more than 1% of it as junk — which, in a document this size, means blank
+# lines. It then stops matching on them and manufactures phantom divergences.
+# Task 3 pushed this region past 200 lines and the count jumped 29 -> 33 with
+# no edit responsible. `difflib.unified_diff` gives no way to disable it, so
+# this uses SequenceMatcher directly. Do not "simplify" this back.
+sm = difflib.SequenceMatcher(None, c, g, autojunk=False)
+diff = []
+for tag, i1, i2, j1, j2 in sm.get_opcodes():
+    if tag == "equal":
+        continue
+    diff += ["-" + l for l in c[i1:i2]] + ["+" + l for l in g[j1:j2]]
 print(f"divergent lines: {len(diff)} (baseline {BASELINE})")
 print("OK" if len(diff) == BASELINE else "DIVERGENCE CHANGED")
 for l in diff:
     print(l)
 PY
 ```
+
+`PYTHONIOENCODING=utf-8` matters on Windows: the divergent lines contain `∈`, `≤` and em-dashes, and the default cp1252 console encoding raises `UnicodeEncodeError` partway through printing them — which looks like a script bug rather than a parity result.
 
 Expected: `divergent lines: 29` and `OK`.
 
