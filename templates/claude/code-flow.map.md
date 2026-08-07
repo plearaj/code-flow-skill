@@ -133,8 +133,43 @@ Rules — follow these exactly, or the page will refuse to render:
 </html>
 ````
 
-#### 6. Finalize
+#### 6. Write the Machine-Readable Artifacts
+
+These files are the contract consumed by `code-flow.quality`. They are not
+optional, and they are not derived by parsing the generated HTML.
+
+**6a. The flow sidecar.** Write `Code_Flows/<functionality_name>.json` containing
+exactly the JSON object you built in step 5a — the same `meta`, `nodes`, and
+`edges`. This is the same data embedded in the HTML page, written as a plain file
+so downstream tools never have to parse markup.
+
+**6b. The index.** Create or update `Code_Flows/index.json`. If it does not exist,
+create it with this shape. If it does exist, read it, add or replace the entry for
+this flow in `flows` (matching on `slug`), and write it back — preserving every
+other entry and any existing `coverage` values you did not compute.
+
+```json
+{
+  "meta": { "root": "<absolute project root, forward slashes>",
+            "generated": "<today, YYYY-MM-DD>", "mode": "feature", "schema": 1 },
+  "coverage": { "flowsTraced": 1 },
+  "flows": [
+    { "slug": "user_login", "title": "User Login", "file": "user_login.json",
+      "entry": "login_view", "nodes": 9 }
+  ]
+}
+```
+
+- `slug` is the snake_case functionality name; `file` is the sidecar's filename.
+- `entry` is the `id` of the node whose `kind` is `entry`.
+- `nodes` is the count of entries in the flow's `nodes` array.
+- `coverage.flowsTraced` is the length of `flows` after your update.
+- Set `meta.mode` to `feature`. Whole-codebase mapping sets it differently and is
+  not part of this command yet.
+
+#### 7. Finalize
 
 - Create the `Code_Flows/` directory if it doesn't exist
-- Write both `Code_Flows/<functionality_name>.md` and `Code_Flows/<functionality_name>.html`
-- Report **both** output file paths to the user
+- Write `Code_Flows/<functionality_name>.md`, `.html`, and `.json`, plus `index.json`
+- Report the markdown and HTML paths to the user, and mention that the JSON
+  artifacts were updated
