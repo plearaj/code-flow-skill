@@ -722,14 +722,28 @@ def test_quality_template_clusters_rather_than_pairs(
 # Verify Against Source"; Copilot: "4. **Verify against source.**").
 _VERIFY_START = re.compile(r"verify against source", re.IGNORECASE)
 
-# Marks the start of the *next* section (Claude/Gemini: "#### 5. Write";
-# Copilot: "5. **Write"). Needed because "verified" and "stale" both recur in
-# the step 6 banner text.
-_VERIFY_END = re.compile(r"\n(?:#### 5\.|5\.\s*\*\*Write)")
+# Marks the start of the *next* section (Claude/Gemini: "#### 5. ..."; Copilot:
+# "5. **..."). Needed because "verified" and "stale" both recur in the step 6
+# banner text.
+#
+# The Copilot alternative is deliberately title-agnostic (`5\.\s*\*\*`, not
+# `5\.\s*\*\*Write`), for the same reason `_DETECTORS_END` above is: a
+# title-locked pattern only works until Task 5's review retitles Copilot's
+# step 5 (Task 3's own step was amended twice in review). At that point this
+# anchor would stop matching, `_section_region` would fall back to
+# end-of-text, and the verify region would silently swallow steps 5-6 —
+# exactly the vacuity region-scoping exists to prevent. Do not re-tighten
+# this to a specific title.
+_VERIFY_END = re.compile(r"\n(?:#### 5\.|5\.\s*\*\*)")
 
 
 def _verify_region(text: str) -> str:
-    return _section_region(text, _VERIFY_START, _VERIFY_END)
+    """Flattened for the same reason `_detectors_region` is: these assertions
+    check what a rule says, not how it wraps, and several of this region's
+    phrases ("not a second scan", "forward-slash") are short enough to land
+    on a line break in the shipped templates. `not a second scan` already
+    does — see `test_quality_template_verifies_only_cited_files`'s history."""
+    return _flatten(_section_region(text, _VERIFY_START, _VERIFY_END))
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
@@ -780,6 +794,24 @@ def test_quality_template_drops_only_unverified_stale_findings(
     assert re.search(r"unverified", region)
     assert re.search(r"hash", region, re.IGNORECASE)
     assert re.search(r"verify first|before dropping|then drop", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_drops_the_whole_finding_on_one_stale_site(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A cluster finding can cite several `sites` across several files. The
+    drop rule above never said whether one stale site drops just that site or
+    the whole finding — for a DRY cluster with 3 sites, that ambiguity is the
+    difference between a finding silently losing evidence and a finding being
+    dropped outright. The design intent is the latter: a finding is only as
+    trustworthy as its weakest citation, so one stale site drops all of it.
+    Keyed on the literal phrase `weakest citation`, since it is the only place
+    in this region that states which of the two readings applies."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"weakest citation", region, re.IGNORECASE), (
+        f"{host} does not say a stale site drops the whole finding, not just that site"
+    )
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)

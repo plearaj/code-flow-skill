@@ -199,8 +199,10 @@ Without `--read-code`, every finding keeps `confidence: "unverified"`.
 
 **c. Drop what is left stale and unverified.** Verify first, then drop. Any
 finding still marked `unverified` whose `sites` cite a file whose `hash` no longer
-matches is dropped, and counted for the banner. Its `file:line` evidence is known
-to be wrong, and `file:line` evidence is the whole currency of this report.
+matches is dropped, and counted for the banner — the whole finding, not just that
+site. A finding is only as trustworthy as its weakest citation, so one stale site
+among several drops all of it. Its `file:line` evidence is known to be wrong, and
+`file:line` evidence is the whole currency of this report.
 
 A `verified` finding is never dropped for staleness. `--read-code` read current
 source, so such a finding was confirmed against the very change that made the file

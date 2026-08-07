@@ -122,9 +122,11 @@ Follow these steps exactly:
      `unverified`.
    - **Drop what is left stale and unverified.** Verify first, then drop: any
      finding still `unverified` whose `sites` cite a file whose `hash` no longer
-     matches is dropped and counted for the banner, because its `file:line`
-     evidence is known wrong and `file:line` evidence is this report's whole
-     currency. A `verified` finding is **never** dropped for staleness — it was
+     matches is dropped and counted for the banner — the whole finding, not just
+     that site, since a finding is only as trustworthy as its weakest citation and
+     one stale site among several drops all of it. Its `file:line` evidence is
+     known wrong and `file:line` evidence is this report's whole currency. A
+     `verified` finding is **never** dropped for staleness — it was
      confirmed against the very change that made the file stale, so dropping it
      would discard the best evidence in the report. Under `--read-code` the dropped
      count is usually zero.
