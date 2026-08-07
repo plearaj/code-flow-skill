@@ -42,7 +42,7 @@ Find all code related to the target flow:
 - Search for functions, classes, keywords, and entry points related to the flow
 - Read discovered files to trace the call chain
 
-Trace the full execution path — follow function calls from entry point through to the final output.
+Trace the full execution path — follow function calls from entry point through to the final output. Include every function that participates in the flow.
 
 #### 3. Document Undocumented Functions
 

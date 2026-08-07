@@ -8,7 +8,7 @@ Analyze the codebase and document the execution flow of the requested functional
 Follow these steps exactly:
 
 1. **Read the request for option flags first.** `--whole-code-base` maps the whole repository instead of one feature — if it is there, ignore steps 2-7 and follow "Whole-codebase mode" at the end of this prompt. `--detail thin|standard|verbose` sets how much evidence each catalogued function carries, default `standard`; it only matters in whole-codebase mode, so accept it silently otherwise, and if its value is not one of those three, say what you read, use `standard`, and carry on. Flags are options, not part of the feature name — strip them out. Then **identify the target flow** from what is left and derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further. Steps 2-7 are feature mode, the default.
-2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain.
+2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain. Trace the full execution path from entry point through to the final output, and include every function that participates in the flow.
 3. **Document undocumented functions** — add docstrings to any function in the flow that lacks one.
 4. **Generate `Code_Flows/<functionality_name>.md`** containing:
    - Flow description

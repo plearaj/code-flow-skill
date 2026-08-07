@@ -31,19 +31,20 @@ Three host templates must stay semantically equivalent:
 | Gemini | `templates/gemini/code-flow.map.toml` | The same prose inside a TOML `prompt = '''…'''` string |
 | Copilot | `templates/copilot/code-flow.map.prompt.md` | Markdown with `mode: agent` frontmatter, a numbered list plus trailing sections |
 
-- **Claude's and Gemini's bodies carry the same content from `#### 1.` onward, but are NOT byte-identical**, and must not be made so. Measured at the phase-2 branch point (`e0276c3`), 33 lines diverged, in exactly three deliberate classes. **Task 2 revised this baseline to 29**: its Step 3 replaces step 1's body identically in both hosts, subsuming the 3 `-`/1 `+` step-1 lines that previously diverged in that class. The current baseline — the one Tasks 3-5 check against — is **29 lines**, still in exactly the same three deliberate classes:
+- **Claude's and Gemini's bodies carry the same content from `#### 1.` onward, but are NOT byte-identical**, and must not be made so. Measured at the phase-2 branch point (`e0276c3`), 33 lines diverged, in exactly three deliberate classes. **Task 2 revised this baseline to 29**: its Step 3 replaces step 1's body identically in both hosts, subsuming the 3 `-`/1 `+` step-1 lines that previously diverged in that class. **The close-out review revised it again to 27**, by fixing the one item in the fourth class below that was a genuine content gap rather than a wording variant. The current baseline is **27 lines**, still in exactly the same three deliberate classes:
   1. **Claude-only tool names removed for Gemini** — Claude says "Use `Glob` to find relevant files", "Use `Grep` to find functions", "Add the docstring using the Edit tool"; Gemini says "Search for relevant files by name pattern" and so on. **Reconciling these would name tools the Gemini host does not have.**
   2. **Fence width** — Claude wraps example blocks in four-backtick fences because its own file is markdown containing nested fences; inside Gemini's TOML `'''` string that wrapper is unnecessary, so Gemini uses plain three-backtick fences.
   3. **ASCII substitution** — Claude writes `∈` and `≤`; Gemini writes "is one of" and "up to".
 
-  Plus a fourth, smaller class Task 2 surfaced — **pre-existing wording drift**, 6 of the 29 lines, none of it introduced by phase 2 and none of it in scope for any phase-2 task:
-  - `Trace the full execution path…` — Claude ends with "Include every function that participates in the flow."; **Gemini omits that sentence.** This is a genuine content gap, not a wording variant: a completeness rule present in one host and absent from the other. Ledgered for the final whole-branch review to triage.
+  Plus a fourth, smaller class Task 2 surfaced — **pre-existing wording drift**, now 4 of the 27 lines, none of it introduced by phase 2 and none of it in scope for any phase-2 task:
   - "Analyze the function's code to understand…" (Claude) vs "Analyze the function to understand…" (Gemini).
   - Step 5b's self-validation note is parenthesized in Claude, unparenthesized in Gemini.
 
-  **Do not "fix" any of these** — including the fourth class. They are recorded here so Tasks 3-5 recognize them as known and pre-existing rather than re-investigating them each time. An earlier revision of this plan asserted byte-identity; that was wrong about the repository, and Task 1 caught it.
+  A third item in this class was **resolved at close-out rather than carried forward**: `Trace the full execution path…` ended in Claude with "Include every function that participates in the flow." and Gemini omitted that sentence. That was a genuine content gap, not a wording variant — a completeness rule present in one host and absent from another, and phase 3's detectors read the flows both hosts produce. The sentence was added to Gemini, and to Copilot in its own register (its step 2 previously carried no completeness rule at all), dropping the baseline from 29 to 27.
 
-- **The real rule, binding on every task:** every block phase 2 *adds* must be byte-identical between Claude and Gemini — the new text names no host-specific tool and needs no nested fence, so there is no reason for it to differ — and no task after Task 2 may change the pre-existing 29-line divergence. Both are checked by the parity script in Task 1 Step 7, which every later task re-runs against the current baseline (29, as revised by Task 2).
+  **Do not "fix" the rest** — including the two remaining items in the fourth class. They are recorded here so later tasks recognize them as known and pre-existing rather than re-investigating them each time. An earlier revision of this plan asserted byte-identity; that was wrong about the repository, and Task 1 caught it.
+
+- **The real rule, binding on every task:** every block phase 2 *adds* must be byte-identical between Claude and Gemini — the new text names no host-specific tool and needs no nested fence, so there is no reason for it to differ — and no task after Task 2 may change the pre-existing divergence. Both are checked by the parity script in Task 1 Step 7, which every later task re-runs against the current baseline (27, as revised by Task 2 and then by the close-out review).
 - **Copilot says the same thing in its own voice** — its numbered-list register, not Claude's heading register. Same rules, same field names, same derivations.
 - **Phase 1 lost four review rounds to this.** Every miss was a rule present in two hosts and absent from the third, and every miss was *outside* the section under review. So: at the end of each task, read all three templates **end-to-end** and **derive** — do not assert — that each rule the task added is present in each host. Record the derivation in the task report.
 - This plan gives each new rule **once**, as canonical text. Apply that one block to all three hosts. Do not expect a separate per-host block; asking for one is how phase 1's Copilot template got abridged five times.
@@ -218,12 +219,12 @@ Expected: all Python tests pass including the five new ones; Node unchanged at 7
 
 Read all three templates end-to-end. For the `id` rule specifically, confirm in each host: extension dropped from the last segment only; unqualified name; lowercase-and-normalize; the collision suffix with the new definition-keyword clarification.
 
-Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ by design. The current baseline is **29** (Task 2 revised it down from the original 33 by rewriting step 1's body identically in both hosts — see the Host parity rule). The script checks that phase 2 did not *add* divergence beyond that baseline:
+Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ by design. The current baseline is **27** (Task 2 revised the original 33 down to 29 by rewriting step 1's body identically in both hosts; the close-out review took it to 27 by closing the trace-completeness gap — see the Host parity rule). The script checks that phase 2 did not *add* divergence beyond that baseline:
 
 ```bash
 PYTHONIOENCODING=utf-8 python - <<'PY'
 import tomllib, pathlib, difflib
-BASELINE = 29  # current expected divergence; see the Host parity rule above
+BASELINE = 27  # current expected divergence; see the Host parity rule above
 claude = pathlib.Path("templates/claude/code-flow.map.md").read_text(encoding="utf-8")
 gemini = tomllib.loads(pathlib.Path("templates/gemini/code-flow.map.toml").read_text(encoding="utf-8"))["prompt"]
 c = claude[claude.index("#### 1."):].splitlines()
