@@ -26,7 +26,21 @@ def derive_id(file: str, name: str) -> str:
     stem = last.rpartition(".")[0] or last
     combined = f"{head}/{stem}_{name}" if head else f"{stem}_{name}"
     slug = re.sub(r"[^a-z0-9_]+", "_", combined.lower())
+    slug = re.sub(r"_+", "_", slug)
     return slug.strip("_")
+
+
+def _unqualified_name_from_label(label: str) -> str:
+    """Return the bare function name a flow node's `label` implies.
+
+    `label` is the display form: `login_view()` for a free function, or a
+    qualified form like `session_store.put()` / `EmailGateway.send()` for a
+    method. The `id` rule calls for the **unqualified** name — `put`, never
+    `session_store.put` — so this strips the trailing parens and then
+    everything up to and including the last `.`.
+    """
+    name = label.removesuffix("()")
+    return name.rpartition(".")[-1]
 
 
 def test_derive_id_matches_the_documented_example() -> None:
@@ -41,16 +55,30 @@ def test_derive_id_keeps_a_dotless_filename_whole() -> None:
     assert derive_id("bin/entrypoint", "main") == "bin_entrypoint_main"
 
 
+def test_derive_id_handles_a_file_with_no_directory_component() -> None:
+    assert derive_id("views.py", "x") == "views_x"
+
+
+def test_derive_id_collapses_underscore_runs_from_dunder_names() -> None:
+    assert derive_id("src/models/user.py", "__init__") == "src_models_user_init"
+
+
+def test_unqualified_name_from_label_strips_the_qualifier() -> None:
+    assert _unqualified_name_from_label("EmailGateway.send()") == "send"
+
+
 def test_sample_flow_node_ids_follow_the_rule(repo_root: Path) -> None:
     """The shipped example must obey the rule the templates state.
 
-    `label` is the display form (`login_view()`); the function name is that with
-    the trailing parens stripped.
+    `label` is the display form (`login_view()`, or the qualified
+    `session_store.put()`); the function name is that with the qualifier and
+    trailing parens stripped, since `id` is derived from the **unqualified**
+    name.
     """
     flow = json.loads((repo_root / "examples" / "sample-flow.json").read_text(encoding="utf-8"))
     wrong = []
     for node in flow["nodes"]:
-        name = node["label"].removesuffix("()")
+        name = _unqualified_name_from_label(node["label"])
         expected = derive_id(node["file"], name)
         if node["id"] != expected:
             wrong.append(f"{node['id']} should be {expected}")

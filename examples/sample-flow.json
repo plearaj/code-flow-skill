@@ -16,9 +16,9 @@
     { "id": "src_auth_repo_query_user_db", "label": "query_user_db()", "file": "src/auth/repo.py", "line": 30, "kind": "io", "description": "SELECT on the users table by normalized username. Returns row or None." },
     { "id": "src_auth_crypto_verify_password", "label": "verify_password()", "file": "src/auth/crypto.py", "line": 9, "kind": "step", "description": "Constant-time argon2id verification of the submitted password against the stored hash.", "snippet": "def verify_password(pw, stored):\n    try:\n        return hasher.verify(stored, pw)\n    except VerifyMismatchError:\n        return False" },
     { "id": "src_auth_session_create_session", "label": "create_session()", "file": "src/auth/session.py", "line": 14, "kind": "step", "description": "Mints a signed session token, sets the cookie, and persists the session row." },
-    { "id": "src_auth_session_session_store_put", "label": "session_store.put()", "file": "src/auth/session.py", "line": 58, "kind": "io", "description": "Writes the session record to Redis with a 30-day TTL." },
+    { "id": "src_auth_session_put", "label": "session_store.put()", "file": "src/auth/session.py", "line": 58, "kind": "io", "description": "Writes the session record to Redis with a 30-day TTL." },
     { "id": "src_notify_mailer_send_welcome_email", "label": "send_welcome_email()", "file": "src/notify/mailer.py", "line": 11, "kind": "step", "description": "Queued after login succeeds; renders the template and hands off to the gateway. Runs off the request path." },
-    { "id": "src_notify_gateway_emailgateway_send", "label": "EmailGateway.send()", "file": "src/notify/gateway.py", "line": 5, "kind": "external", "description": "Third-party SMTP/API provider client (Postmark). Network call with retry." },
+    { "id": "src_notify_gateway_send", "label": "EmailGateway.send()", "file": "src/notify/gateway.py", "line": 5, "kind": "external", "description": "Third-party SMTP/API provider client (Postmark). Network call with retry." },
     { "id": "src_web_views_render_error", "label": "render_error()", "file": "src/web/views.py", "line": 71, "kind": "step", "description": "Re-renders the login form with a flash message; the user can retry, looping back to the entry point." }
   ],
   "edges": [
@@ -31,9 +31,9 @@
     { "from": "src_auth_service_authenticate_user", "to": "src_auth_crypto_verify_password", "kind": "call" },
     { "from": "src_auth_service_authenticate_user", "to": "src_web_views_render_error", "kind": "conditional", "label": "bad creds" },
     { "from": "src_auth_crypto_verify_password", "to": "src_auth_session_create_session", "kind": "call" },
-    { "from": "src_auth_session_create_session", "to": "src_auth_session_session_store_put", "kind": "call" },
+    { "from": "src_auth_session_create_session", "to": "src_auth_session_put", "kind": "call" },
     { "from": "src_auth_session_create_session", "to": "src_notify_mailer_send_welcome_email", "kind": "async" },
-    { "from": "src_notify_mailer_send_welcome_email", "to": "src_notify_gateway_emailgateway_send", "kind": "call" },
+    { "from": "src_notify_mailer_send_welcome_email", "to": "src_notify_gateway_send", "kind": "call" },
     { "from": "src_web_views_render_error", "to": "src_web_views_login_view", "kind": "call", "back": true }
   ]
 }
