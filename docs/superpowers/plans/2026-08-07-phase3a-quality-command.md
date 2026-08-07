@@ -1645,6 +1645,55 @@ git add templates/claude/code-flow.quality.md templates/gemini/code-flow.quality
 git commit -m "feat: write quality-report.json and render the markdown from it"
 ```
 
+#### Amendments applied during execution
+
+Task 5's review found the prose complete and parity-correct in all three hosts, but
+two of the honesty rules the spec cares most about were guarded by assertions that
+did not actually guard them. Where this section and the shipped files disagree,
+**the shipped files govern**.
+
+1. **The empty-findings guard was satisfied by a different sentence.** The test
+   searched the whole output region for "clean bill of health", and that phrase
+   occurs *twice* per host — once in the partial-coverage sentence, once in the
+   no-findings caveat. Deleting the caveat left the test green on the earlier
+   occurrence. Now a proximity window: `no findings.{0,300}clean bill of health`.
+   The re-review measured the offsets and confirmed the first `no findings` sits
+   after the first "clean bill of health" in every host, so a forward-only match
+   cannot reach backward to it.
+2. **`test_quality_template_leads_with_coverage` tested nothing about leading.**
+   Replacing "Lead with coverage" and "first thing under the title" with "Include a
+   banner stating:" left the entire suite green, because `_BANNER_ANCHOR` anchors on
+   the sentence's middle rather than its opening mandate. "Coverage leads the report"
+   is a Global Constraint and was unenforced. Now pinned by the literal phrase, which
+   occurs exactly once per host.
+3. **The id/ordering cross-reference had an impossible reading.** This section said
+   the severity-major array order "is what the ids assigned in step 3 must already
+   reflect", but Task 3 defines `id` as a counter that restarts per principle — the
+   two cannot correspond globally, and a reader resolving it either way breaks one
+   step or the other. Closed with "within each principle" in all three hosts. This is
+   a contradiction between two steps of this plan, not between the plan and the
+   review, so it was fixed rather than parked.
+
+Three Minors were folded in: `principle` gained a sort direction ("alphabetically"),
+without which the tie-break the ordering test names was not actually determined; the
+"catalogued, never all" Global Constraint gained its first covering assertion; and
+the JSON example was compacted to the multi-key style this repo's own map template
+already uses at `templates/claude/code-flow.map.md:302`.
+
+**On the line budget.** The plan's "~250 lines" was an estimate, and it was wrong.
+The reviewer went through this step's prose clause by clause and found no rule
+restated and no explanation standing in for a rule — the only real cut was the JSON
+example, worth about 10 lines. Final: Claude 271, Gemini 267, Copilot 177, against a
+373-line map template for the more complex command. Treat the estimate as retired.
+
+This task shipped **90** quality-scoped tests, not the 87 predicted above.
+
+**A note for Task 6 and beyond.** Every task in this phase has shipped at least one
+assertion that would have passed with its rule deleted, and three of them shipped
+assertions that were already dead or already vacuous on the day they were written.
+The pattern is always the same: a bare substring search over a region that contains
+both the rule and an example naming the same fields. Anchor to the rule.
+
 ---
 
 ### Task 6: Make the finding schema executable, and document the command
