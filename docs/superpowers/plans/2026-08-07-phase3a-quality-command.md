@@ -21,6 +21,13 @@
 - Windows is the development platform. `npm test` is `node --test "test/**/*.test.js"` — the bare `node --test test/` form fails with MODULE_NOT_FOUND on this machine's Node v24.11.1. Python tests: `uv run --group dev pytest -v`.
 - No runtime dependencies in either package. `pytest` stays a dev dependency; Node uses its built-in runner.
 - Do not use `git add -A`; stage explicit paths.
+- **Contract tests must fail when the rule they name is deleted.** These assert over
+  prose, which is where vacuous assertions hide: a bare substring search across a
+  40-line region passes on almost any content, because the neighbouring rules supply
+  the same words. Anchor each assertion to the rule it guards with a proximity regex,
+  and allow `\s+` wherever the prose may wrap. Where a test in this plan is written
+  loosely, the strengthened form governs — the test code here is a means, not the
+  requirement.
 
 ### Host parity rule (binding on every task)
 
@@ -543,8 +550,19 @@ def test_quality_template_stops_when_inventory_is_absent(
     stops rather than emitting a report whose meaning depends on how the user
     happened to build their map. The remedy must be named, not implied."""
     region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
-    assert "--whole-code-base" in region, f"{host} does not name the remedy"
-    assert re.search(r"\bstop\b", region, re.IGNORECASE), f"{host} does not say to stop"
+    assert re.search(
+        r"`(?:Code_Flows/)?inventory\.json`\s+is absent.{0,60}?\bstop\b",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not say to stop when the inventory is absent"
+    assert re.search(
+        r"`(?:Code_Flows/)?inventory\.json`\s+is absent.{0,160}?`/code-flow\.map\s+--whole-code-base`",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not name the whole-code-base remedy for an absent inventory"
+    assert re.search(
+        r"duplicate-intent\s+and\s+unreached", region, re.IGNORECASE
+    ), f"{host} does not say which detectors the missing catalog takes with it"
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
@@ -553,7 +571,11 @@ def test_quality_template_refuses_to_overwrite_unparsable_artifacts(
 ) -> None:
     """Mirrors the rule the map command already follows for index.json."""
     region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
-    assert re.search(r"does not parse|cannot parse|fails to parse", region, re.IGNORECASE)
+    assert re.search(
+        r"does not\s+parse as JSON.{0,260}?do not overwrite.{0,80}?never\s+writes",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not couple the parse failure to the do-not-overwrite rule"
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
