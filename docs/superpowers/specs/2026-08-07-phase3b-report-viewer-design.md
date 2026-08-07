@@ -1,7 +1,7 @@
 # Design: Phase 3b — the report viewer
 
 **Date:** 2026-08-07
-**Status:** Draft, pending approval
+**Status:** Approved
 **Target version:** 1.3.0
 **Extends:** [`2026-08-07-phase3-quality-reporting-design.md`](2026-08-07-phase3-quality-reporting-design.md)
 and, through it, [`2026-08-06-dry-kiss-yagni-reporting-design.md`](2026-08-06-dry-kiss-yagni-reporting-design.md)
@@ -105,10 +105,23 @@ test-only code that itself has no tests, and it would drift from real DOM semant
 silently. That is the shape of problem this project keeps finding, not a fix for it.
 
 **Accepted cost, stated plainly:** nothing will assert that the error card is
-*visible*. If someone deletes `errBox.hidden = false`, the suite stays green. The
-mitigation is that `fail()` is asserted to be *called* with the right title and
-lines, and its body is short enough to review. If that trade is wrong, say so — the
-alternative is `jsdom` and I would rather be overruled than have guessed.
+*visible*. If someone deletes `errBox.hidden = false`, the suite stays green. In-repo
+mitigation is that `fail()` is asserted to be *called* with the right title and lines,
+and its body is short enough to review.
+
+**Ratified.** The decision was put to the approver and stands. The stated mitigation
+for the rendering gap is that both scaffolds are opened against real codebases before
+a release goes out. That is a genuine control and the reason the trade is acceptable —
+but it is a **human-in-the-loop, pre-release** control, not an automated one, and this
+document should not later be read as claiming the rendering is tested. Two consequences
+follow, and they are requirements, not observations:
+
+- A release of 1.3.0 is gated on someone having opened both `quality-report.html` and
+  a flow `.html` in a browser. That step belongs in the release checklist, not in
+  anyone's memory.
+- Any future change to either scaffold's rendering — layout, theming, the error card —
+  re-incurs the same gap. The green suite will not tell you. Treat a rendering change
+  as requiring the manual pass again.
 
 ## Decision 2: `quality-report.html` is written unconditionally
 
@@ -212,7 +225,11 @@ a human can open directly.
   in its own error message. Snippets in findings are source code and will contain it.
   The report viewer must carry the same escaping rule and say so in step 5.
 
-## Open question for the approver
+## Approval
 
-Decision 1 is the one I would most like a real opinion on. Everything else is either
-forced by an existing rule or reversible cheaply.
+Decision 1 was the one open question and it was ratified as drafted: no browser
+dependency, sentinel-extracted pure validators, with pre-release manual testing on
+real codebases covering the rendering gap. See the ratification note under Decision 1
+for the two requirements that follow from it.
+
+Every other decision here is either forced by an existing rule or reversible cheaply.
