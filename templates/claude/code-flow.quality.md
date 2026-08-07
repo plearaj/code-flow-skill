@@ -194,6 +194,9 @@ reason the map is persisted in the first place.
    **correct its sites' `line` numbers to where the code is now** — `file` stays
    forward-slash and repo-relative, exactly as the map recorded it.
 4. For each candidate that does not survive, drop it.
+5. A candidate whose cited file cannot be opened at all — deleted, or unreadable
+   — is neither confirmed nor dropped here: it keeps `confidence: "unverified"`
+   and falls through to the staleness rule below.
 
 Without `--read-code`, every finding keeps `confidence: "unverified"`.
 

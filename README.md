@@ -151,10 +151,13 @@ Severity is rule-based — thresholds, not impressions — so findings do not al
 drift toward "medium".
 
 `--read-code` opens the files the candidate findings cite and confirms each
-against current source, marking findings `verified` or `unverified`. It verifies
-candidates rather than re-scanning the repository, so it costs far less than
-mapping. It requires the source tree to be present and current, not just the
-artifacts.
+against current source, marking the survivors `verified` and dropping the rest;
+without the flag every finding stays `unverified`. A candidate whose cited file
+cannot be reopened at all — deleted, or unreadable — is neither: it stays
+`unverified` and is then dropped as stale, which is why the dropped count is
+usually, not always, zero under `--read-code`. It verifies candidates rather than
+re-scanning the repository, so it costs far less than mapping. It requires the
+source tree to be present and current, not just the artifacts.
 
 The report **never edits your code** and never instructs deletion. Unreached
 findings are candidates: tracing here is search and reading, so it cannot see
@@ -165,10 +168,11 @@ Coverage leads every report. If the trace pass mapped 14 of 17 entry points, the
 banner says so, and a clean section means clean *within what was mapped* — not a
 clean bill of health.
 
-Two things stop the command rather than degrading it: no `inventory.json` (run
-`/code-flow.map --whole-code-base` first), and an `index.json` or `inventory.json`
-that does not parse. A single unreadable `<flow>.json` does not stop it — that
-flow is skipped and counted in the banner.
+Three things stop the command rather than degrading it: no `index.json` (run
+`/code-flow.map` first), no `inventory.json` (run `/code-flow.map
+--whole-code-base` first), and an `index.json` or `inventory.json` that does not
+parse. A single unreadable `<flow>.json` does not stop it — that flow is skipped
+and counted in the banner.
 
 On a `--detail thin` map, duplicate-intent is skipped unless you pass
 `--read-code`: a thin map carries no code snippets, so that detector has no

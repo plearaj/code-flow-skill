@@ -118,8 +118,10 @@ Follow these steps exactly:
      against real current source, set surviving candidates' `confidence` to
      `verified` and **correct their sites' `line` numbers to where the code is
      now** — `file` stays forward-slash and repo-relative, exactly as the map
-     recorded it — and drop the rest. Without the flag every finding stays
-     `unverified`.
+     recorded it — and drop the rest. A candidate whose cited file cannot be
+     opened at all — deleted, or unreadable — is neither confirmed nor dropped
+     here: it keeps `confidence: "unverified"` and falls through to the
+     staleness rule below. Without the flag every finding stays `unverified`.
    - **Drop what is left stale and unverified.** Verify first, then drop: any
      finding still `unverified` whose `sites` cite a file whose `hash` no longer
      matches is dropped and counted for the banner — the whole finding, not just
