@@ -31,7 +31,14 @@ Three host templates must stay semantically equivalent:
 | Gemini | `templates/gemini/code-flow.map.toml` | The same prose inside a TOML `prompt = '''…'''` string |
 | Copilot | `templates/copilot/code-flow.map.prompt.md` | Markdown with `mode: agent` frontmatter, a numbered list plus trailing sections |
 
-- **Claude's and Gemini's bodies are byte-identical from `#### 1.` onward.** Only the material above that differs (Gemini's `description =` key, its `prompt = '''` opener, and its `### User Input` framing). Verify byte-identity after every edit.
+- **Claude's and Gemini's bodies carry the same content from `#### 1.` onward, but are NOT byte-identical**, and must not be made so. Measured at the phase-2 branch point (`e0276c3`), 33 lines diverge, in exactly three deliberate classes:
+  1. **Claude-only tool names removed for Gemini** — Claude says "Use `Glob` to find relevant files", "Use `Grep` to find functions", "Add the docstring using the Edit tool"; Gemini says "Search for relevant files by name pattern" and so on. **Reconciling these would name tools the Gemini host does not have.**
+  2. **Fence width** — Claude wraps example blocks in four-backtick fences because its own file is markdown containing nested fences; inside Gemini's TOML `'''` string that wrapper is unnecessary, so Gemini uses plain three-backtick fences.
+  3. **ASCII substitution** — Claude writes `∈` and `≤`; Gemini writes "is one of" and "up to".
+
+  **Do not "fix" any of these.** An earlier revision of this plan asserted byte-identity; that was wrong about the repository, and Task 1 caught it.
+
+- **The real rule, binding on every task:** every block phase 2 *adds* must be byte-identical between Claude and Gemini — the new text names no host-specific tool and needs no nested fence, so there is no reason for it to differ — and phase 2 must not change the pre-existing 33-line divergence. Both are checked by the parity script in Task 1 Step 7, which every later task re-runs.
 - **Copilot says the same thing in its own voice** — its numbered-list register, not Claude's heading register. Same rules, same field names, same derivations.
 - **Phase 1 lost four review rounds to this.** Every miss was a rule present in two hosts and absent from the third, and every miss was *outside* the section under review. So: at the end of each task, read all three templates **end-to-end** and **derive** — do not assert — that each rule the task added is present in each host. Record the derivation in the task report.
 - This plan gives each new rule **once**, as canonical text. Apply that one block to all three hosts. Do not expect a separate per-host block; asking for one is how phase 1's Copilot template got abridged five times.
@@ -204,20 +211,31 @@ Expected: all Python tests pass including the five new ones; Node unchanged at 7
 
 - [ ] **Step 7: Derive host parity**
 
-Read all three templates end-to-end. For the `id` rule specifically, confirm in each host: extension dropped from the last segment only; unqualified name; lowercase-and-normalize; the collision suffix with the new definition-keyword clarification. Confirm Claude and Gemini are byte-identical from `#### 1.` onward:
+Read all three templates end-to-end. For the `id` rule specifically, confirm in each host: extension dropped from the last segment only; unqualified name; lowercase-and-normalize; the collision suffix with the new definition-keyword clarification.
+
+Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ in 33 lines. It checks that phase 2 did not *add* divergence:
 
 ```bash
 python - <<'PY'
-import tomllib, pathlib
+import tomllib, pathlib, difflib
 claude = pathlib.Path("templates/claude/code-flow.map.md").read_text(encoding="utf-8")
 gemini = tomllib.loads(pathlib.Path("templates/gemini/code-flow.map.toml").read_text(encoding="utf-8"))["prompt"]
-c = claude[claude.index("#### 1."):]
-g = gemini[gemini.index("#### 1."):]
-print("IDENTICAL" if c == g else "DIVERGED")
+c = claude[claude.index("#### 1."):].splitlines()
+g = gemini[gemini.index("#### 1."):].splitlines()
+diff = [l for l in difflib.unified_diff(c, g, lineterm="", n=0)
+        if l[:1] in "+-" and l[:3] not in ("+++", "---")]
+print(f"divergent lines: {len(diff)} (baseline 33)")
+print("OK" if len(diff) == 33 else "DIVERGENCE CHANGED")
+for l in diff:
+    print(l)
 PY
 ```
 
-Expected: `IDENTICAL`. If it prints `DIVERGED`, find and close the difference before committing — this check is the guard, not a formality.
+Expected: `divergent lines: 33` and `OK`.
+
+- **More than 33** means your edit landed differently in the two hosts. Find it in the printed lines and close it.
+- **Fewer than 33** means you "fixed" one of the three deliberate adaptations. Restore it — the Gemini prompt must not name Claude-only tools.
+- Every printed line must belong to one of the three classes named in the Host parity rule. A divergent line that is none of them is a real defect regardless of the count.
 
 - [ ] **Step 8: Commit**
 
@@ -411,7 +429,9 @@ Expected: both suites pass pristine; the TOML prints `['description', 'prompt']`
 
 - [ ] **Step 8: Derive host parity**
 
-Read all three templates end-to-end. Confirm in each: both flags named, the default `standard` stated, the invalid-value behavior stated, the "strip flags before deriving the filename" rule, the mode dispatch, and the never-edit-source rule. Run the byte-identity check from Task 1 Step 7 and confirm `IDENTICAL`.
+Read all three templates end-to-end. Confirm in each: both flags named, the default `standard` stated, the invalid-value behavior stated, the "strip flags before deriving the filename" rule, the mode dispatch, and the never-edit-source rule.
+
+Run the parity script from Task 1 Step 7. Expected: `divergent lines: 33` and `OK`. **Note that this task rewrites step 1's body in both hosts** — the block given in Step 3 replaces Claude's wording *and* Gemini's, so the three step-1 lines that diverge in the baseline are replaced by identical text in both. That lowers the count. If the script prints fewer than 33, recount by hand: the acceptable new baseline is 33 minus exactly the step-1 lines your replacement subsumed, and every remaining divergent line must still belong to one of the three deliberate classes. Record the new baseline in your report and in the Host parity rule at the top of this plan, so Tasks 3-5 check against the right number.
 
 - [ ] **Step 9: Commit**
 
@@ -669,7 +689,9 @@ Expected: both suites pass pristine; the TOML parses.
 
 - [ ] **Step 8: Derive host parity**
 
-Read all three templates end-to-end. Confirm in each: the exclude list, the four skip reasons, all ten inventory fields with their rules, the id-join rationale, the test-role rule, the `exported` default-to-true rule, all three `--detail` rows, the snippet escaping rule, `meta.detail`, the breadth coverage fields, the `files[]` shape, the hash fallback, and the resume rule. Run the byte-identity check and confirm `IDENTICAL`.
+Read all three templates end-to-end. Confirm in each: the exclude list, the four skip reasons, all ten inventory fields with their rules, the id-join rationale, the test-role rule, the `exported` default-to-true rule, all three `--detail` rows, the snippet escaping rule, `meta.detail`, the breadth coverage fields, the `files[]` shape, the hash fallback, and the resume rule.
+
+Run the parity script from Task 1 Step 7 and confirm the count matches the baseline Task 2 recorded in the Host parity rule, with `OK` or a hand-verified equivalent. Pass 1's block is added verbatim to both hosts, so it must contribute **zero** new divergent lines. Note the fence-width adaptation: the plan quotes this block inside a four-backtick fence, but that wrapper is the plan's quoting device — what you write into each template starts at `### Pass 1`, with plain three-backtick fences around the two JSON examples in both hosts.
 
 - [ ] **Step 9: Commit**
 
@@ -843,7 +865,9 @@ Expected: both suites pass pristine; the TOML parses.
 
 - [ ] **Step 8: Derive host parity**
 
-Read all three templates end-to-end. Confirm in each: the entry-point kinds, `entryPointsFound` recorded before tracing, the step reuse with step 3 skipped, the skip-already-mapped rule, partial-run honesty, `flowsTraced` as what was done, and the "catalogued" wording. Run the byte-identity check and confirm `IDENTICAL`.
+Read all three templates end-to-end. Confirm in each: the entry-point kinds, `entryPointsFound` recorded before tracing, the step reuse with step 3 skipped, the skip-already-mapped rule, partial-run honesty, `flowsTraced` as what was done, and the "catalogued" wording.
+
+Run the parity script from Task 1 Step 7 and confirm the count still matches the baseline recorded in the Host parity rule. Pass 2's block is added verbatim to both hosts and must contribute **zero** new divergent lines. Same fence-width note as Task 3: the four-backtick wrapper in this plan is quoting, not content.
 
 - [ ] **Step 9: Commit**
 
