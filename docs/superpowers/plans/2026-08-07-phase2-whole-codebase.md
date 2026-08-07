@@ -36,7 +36,12 @@ Three host templates must stay semantically equivalent:
   2. **Fence width** — Claude wraps example blocks in four-backtick fences because its own file is markdown containing nested fences; inside Gemini's TOML `'''` string that wrapper is unnecessary, so Gemini uses plain three-backtick fences.
   3. **ASCII substitution** — Claude writes `∈` and `≤`; Gemini writes "is one of" and "up to".
 
-  **Do not "fix" any of these.** An earlier revision of this plan asserted byte-identity; that was wrong about the repository, and Task 1 caught it.
+  Plus a fourth, smaller class Task 2 surfaced — **pre-existing wording drift**, 6 of the 29 lines, none of it introduced by phase 2 and none of it in scope for any phase-2 task:
+  - `Trace the full execution path…` — Claude ends with "Include every function that participates in the flow."; **Gemini omits that sentence.** This is a genuine content gap, not a wording variant: a completeness rule present in one host and absent from the other. Ledgered for the final whole-branch review to triage.
+  - "Analyze the function's code to understand…" (Claude) vs "Analyze the function to understand…" (Gemini).
+  - Step 5b's self-validation note is parenthesized in Claude, unparenthesized in Gemini.
+
+  **Do not "fix" any of these** — including the fourth class. They are recorded here so Tasks 3-5 recognize them as known and pre-existing rather than re-investigating them each time. An earlier revision of this plan asserted byte-identity; that was wrong about the repository, and Task 1 caught it.
 
 - **The real rule, binding on every task:** every block phase 2 *adds* must be byte-identical between Claude and Gemini — the new text names no host-specific tool and needs no nested fence, so there is no reason for it to differ — and no task after Task 2 may change the pre-existing 29-line divergence. Both are checked by the parity script in Task 1 Step 7, which every later task re-runs against the current baseline (29, as revised by Task 2).
 - **Copilot says the same thing in its own voice** — its numbered-list register, not Claude's heading register. Same rules, same field names, same derivations.
@@ -235,7 +240,7 @@ Expected: `divergent lines: 33` and `OK`.
 
 - **More than 33** means your edit landed differently in the two hosts. Find it in the printed lines and close it.
 - **Fewer than 33** means you "fixed" one of the three deliberate adaptations. Restore it — the Gemini prompt must not name Claude-only tools.
-- Every printed line must belong to one of the three classes named in the Host parity rule. A divergent line that is none of them is a real defect regardless of the count.
+- Every printed line must belong to one of the four classes named in the Host parity rule. A divergent line that is none of them is a real defect regardless of the count.
 - **Note for tasks after Task 2:** Task 2's Step 3 rewrites step 1's body identically in both hosts, which subsumes 4 of these 33 lines (3 `-` / 1 `+`) and lowers the baseline to **29**. Task 2 records that revision in the Host parity rule above. When re-running this same script from Task 3 onward, substitute `29` for `33` in the two literals above (`(baseline 33)` and `len(diff) == 33`) and expect `divergent lines: 29` / `OK` instead.
 
 - [ ] **Step 8: Commit**
