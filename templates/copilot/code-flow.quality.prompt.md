@@ -134,28 +134,19 @@ Follow these steps exactly:
    is the data, and step 6's markdown is one rendering of it; writing the markdown
    first would make them two independent transcriptions free to disagree. Order
    `findings` by `severity` descending (`high`, `medium`, `low`), then site count
-   descending, then `principle` — the order the step 3 ids must already reflect.
+   descending, then `principle` alphabetically — the order the step 3 ids must
+   already reflect within each principle.
 
    ```json
    {
      "schema": 1,
-     "meta": {
-       "root": "C:/Users/example/project",
-       "generated": "2026-08-07",
-       "readCode": false,
-       "mapGenerated": "2026-08-06",
-       "mapMode": "whole-code-base",
-       "mapDetail": "standard"
-     },
-     "coverage": {
-       "flowsTraced": 14,
-       "entryPointsFound": 17,
-       "functionsCatalogued": 1180,
-       "flowsUnreadable": 0,
-       "filesChanged": 6,
-       "findingsDropped": 2,
-       "detectorsSkipped": ["duplicate-intent"]
-     },
+     "meta": { "root": "C:/Users/example/project", "generated": "2026-08-07",
+               "readCode": false, "mapGenerated": "2026-08-06",
+               "mapMode": "whole-code-base", "mapDetail": "standard" },
+     "coverage": { "flowsTraced": 14, "entryPointsFound": 17,
+                   "functionsCatalogued": 1180, "flowsUnreadable": 0,
+                   "filesChanged": 6, "findingsDropped": 2,
+                   "detectorsSkipped": ["duplicate-intent"] },
      "findings": []
    }
    ```

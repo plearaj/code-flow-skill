@@ -895,23 +895,41 @@ def test_quality_template_leads_with_coverage(
     repo_root: Path, host: str, name: str
 ) -> None:
     """Honesty rule 2: a clean section under partial coverage means clean
-    within what was mapped, and the document must say so in words.
+    within what was mapped, and the document must say so in words. Coverage
+    also has to *lead* — "Coverage leads the report" is a global constraint —
+    so this test also pins the leading position, not just the honesty phrase.
 
-    Strengthened from the plan's bare `re.search(r"flowsTraced", region)` /
-    `re.search(r"entryPointsFound", region)`: both tokens also appear,
-    delimiter-free relevance aside, inside step 5's JSON schema example
-    earlier in this same region, so a bare substring search stays green even
-    if the honesty-rule sentence that actually names them in the banner were
-    deleted. `_field_reference` is not a fix for that on its own — the JSON
-    keys are quote-delimited too — but the literal phrase `clean within what
-    was mapped` is unique to this one sentence in the whole region, so it is
-    what actually gates the assertion; the two field-reference checks confirm
-    the fields are named at all rather than left to be invented.
+    Two things worth being explicit about, from review:
+
+    1. The literal phrase `clean within what was mapped` is unique to the
+       partial-coverage sentence in this region, so it alone gates the first
+       assertion below — deleting that sentence fails this test regardless
+       of what else survives.
+    2. The `flowsTraced` / `entryPointsFound` checks use `_field_reference`,
+       but that is *not* a strengthening over a bare `re.search`: both
+       tokens are quote-delimited in step 5's JSON schema example
+       (`"flowsTraced": 14`, `"entryPointsFound": 17`), so `_field_reference`
+       matches that example exactly as a bare substring search would have.
+       An earlier version of this docstring claimed swapping to
+       `_field_reference` fixed a vacuousness gap here; it did not — review
+       caught that the claim was false. These two checks remain confirmatory
+       only (the fields are named somewhere), not load-bearing.
+
+    What *was* an unguarded gap: nothing pinned "coverage leads". Replacing
+    "Lead with coverage" / "the first thing under the title" with, say,
+    "Include a banner stating:" left every other assertion in this suite
+    green, because `_BANNER_ANCHOR` (used by the banner-contents test below)
+    anchors on the sentence's *middle* ("entry points were traced"), not its
+    opening mandate. The third assertion below closes that gap by requiring
+    the literal leading-position phrase.
     """
     region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
     assert "clean within what was mapped" in region
     assert _field_reference("flowsTraced").search(region)
     assert _field_reference("entryPointsFound").search(region)
+    assert re.search(r"first thing under the title", region, re.IGNORECASE), (
+        f"{host} never states that the banner is the first thing under the title"
+    )
 
 
 # The banner-describing sentence opens identically in every host: "how many
@@ -959,10 +977,40 @@ def test_quality_template_reports_when_there_are_no_findings(
     repo_root: Path, host: str, name: str
 ) -> None:
     """An empty report is a real report, not a skipped one — and never a clean
-    bill of health."""
+    bill of health.
+
+    Strengthened from the plan's independent `"no findings" in region` /
+    `"clean bill of health" in region` checks: `clean bill of health` occurs
+    *twice* in every host — once in the partial-coverage honesty sentence,
+    once in this no-findings caveat ("...rather than implying a clean bill
+    of health") — and the partial-coverage sentence precedes the no-findings
+    paragraph in every host's document order. Two independent substring
+    checks therefore stay green even if the no-findings caveat itself is
+    deleted outright: `no findings` still matches ("Say there were no
+    findings, ..."), and `clean bill of health` still matches the earlier,
+    unrelated occurrence. A forward proximity window from `no findings` can
+    only reach the caveat's own occurrence (the later one), not the earlier
+    sentence that precedes `no findings` in the text — so deleting just the
+    caveat now fails this test.
+    """
     region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
-    assert re.search(r"no findings", region, re.IGNORECASE)
-    assert re.search(r"clean bill of health", region, re.IGNORECASE)
+    assert re.search(r"no findings.{0,300}clean bill of health", region, re.IGNORECASE), (
+        f"{host} no-findings paragraph does not restate 'clean bill of health' near 'no findings'"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_says_catalogued_never_all(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Discovery was Glob/Grep/Read, not an AST walk, so the map is
+    best-effort and the report must never claim completeness. This is a
+    global constraint on the report this step writes, so it belongs here
+    rather than waiting for Task 6's fixture to imply it indirectly."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r'"catalogued".{0,120}never.{0,10}"all"', region, re.IGNORECASE | re.DOTALL), (
+        f"{host} never says 'catalogued', never 'all'"
+    )
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
