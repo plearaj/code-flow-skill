@@ -37,7 +37,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only.)
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -126,6 +126,53 @@ Control how much evidence the catalog carries with `--detail`:
 
 Discovery is search and reading, not a compiler's view of your code. The artifacts
 say "catalogued", never "all", and they mean it.
+
+### Quality reporting
+
+Once a whole-codebase map exists, analyze it:
+
+```text
+/code-flow.quality
+/code-flow.quality --read-code
+```
+
+This reads `Code_Flows/index.json`, `inventory.json` and every `<flow>.json`, then
+writes `Code_Flows/quality-report.json` and `Code_Flows/quality-report.md`. Four
+detectors run:
+
+| Detector | Principle | Reports |
+|---|---|---|
+| duplicate-intent | DRY | The same work implemented in several places |
+| repeated-sequence | DRY | Call chains repeated across flows |
+| complexity-hotspot | KISS | High fan-out, deep nesting, very long functions |
+| unreached | YAGNI | Catalogued functions no mapped flow reaches |
+
+Severity is rule-based — thresholds, not impressions — so findings do not all
+drift toward "medium".
+
+`--read-code` opens the files the candidate findings cite and confirms each
+against current source, marking findings `verified` or `unverified`. It verifies
+candidates rather than re-scanning the repository, so it costs far less than
+mapping. It requires the source tree to be present and current, not just the
+artifacts.
+
+The report **never edits your code** and never instructs deletion. Unreached
+findings are candidates: tracing here is search and reading, so it cannot see
+reflection, dependency injection, framework hooks or entry points declared in
+configuration. Anything exported is capped at low severity.
+
+Coverage leads every report. If the trace pass mapped 14 of 17 entry points, the
+banner says so, and a clean section means clean *within what was mapped* — not a
+clean bill of health.
+
+Two things stop the command rather than degrading it: no `inventory.json` (run
+`/code-flow.map --whole-code-base` first), and an `index.json` or `inventory.json`
+that does not parse. A single unreadable `<flow>.json` does not stop it — that
+flow is skipped and counted in the banner.
+
+On a `--detail thin` map, duplicate-intent is skipped unless you pass
+`--read-code`: a thin map carries no code snippets, so that detector has no
+evidence to cite.
 
 ### Example output
 

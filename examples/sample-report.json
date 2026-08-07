@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "meta": {
+    "root": "C:/Users/example/project",
+    "generated": "2026-08-07",
+    "readCode": true,
+    "mapGenerated": "2026-08-06",
+    "mapMode": "whole-code-base",
+    "mapDetail": "standard"
+  },
+  "coverage": {
+    "flowsTraced": 14,
+    "entryPointsFound": 17,
+    "functionsCatalogued": 1180,
+    "flowsUnreadable": 0,
+    "filesChanged": 6,
+    "findingsDropped": 2,
+    "detectorsSkipped": []
+  },
+  "findings": [
+    {
+      "id": "DRY-01",
+      "principle": "DRY",
+      "detector": "duplicate-intent",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "Email validation implemented in 3 places",
+      "rationale": "Three functions independently validate email format with equivalent logic.",
+      "sites": [
+        { "file": "src/auth/validators.py", "line": 12, "symbol": "validate_email",
+          "snippet": "def validate_email(value):\n    return bool(EMAIL_RE.match(value))" },
+        { "file": "src/api/schemas.py", "line": 48, "symbol": "check_email",
+          "snippet": "def check_email(raw):\n    return EMAIL_PATTERN.fullmatch(raw) is not None" },
+        { "file": "src/admin/forms.py", "line": 91, "symbol": "is_valid_email",
+          "snippet": "def is_valid_email(s):\n    return re.match(r'[^@]+@[^@]+', s) is not None" }
+      ],
+      "suggestion": "Consolidate into one helper and have the other two call it.",
+      "effort": "small"
+    },
+    {
+      "id": "DRY-02",
+      "principle": "DRY",
+      "detector": "repeated-sequence",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "Session setup repeated across two flows",
+      "rationale": "load_user, refresh_token and audit_login run in sequence in both user_login and password_reset.",
+      "sites": [
+        { "file": "src/auth/session.py", "line": 22, "symbol": "load_user",
+          "snippet": "def load_user(request):\n    ..." },
+        { "file": "src/auth/session.py", "line": 40, "symbol": "refresh_token",
+          "snippet": "def refresh_token(user):\n    ..." },
+        { "file": "src/auth/session.py", "line": 58, "symbol": "audit_login",
+          "snippet": "def audit_login(user):\n    ..." }
+      ],
+      "flows": ["user_login", "password_reset"],
+      "suggestion": "Extract the three-call sequence into one begin_session helper.",
+      "effort": "medium"
+    },
+    {
+      "id": "KISS-01",
+      "principle": "KISS",
+      "detector": "complexity-hotspot",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "handle_request has a fan-out of 11",
+      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8.",
+      "sites": [
+        { "file": "src/web/views.py", "line": 63, "symbol": "handle_request",
+          "snippet": "def handle_request(req):\n    ..." }
+      ],
+      "metric": "fan-out",
+      "value": 11,
+      "suggestion": "Group the validation, persistence and notification calls into three helpers.",
+      "effort": "medium"
+    },
+    {
+      "id": "YAGNI-01",
+      "principle": "YAGNI",
+      "detector": "unreached",
+      "severity": "low",
+      "confidence": "verified",
+      "title": "legacy_export is not reached by any mapped flow",
+      "rationale": "Not reached by any of the 14 mapped flows — confirm before deleting. Tracing cannot see reflection, dependency injection or configuration-declared entry points.",
+      "sites": [
+        { "file": "src/reports/legacy.py", "line": 7, "symbol": "legacy_export",
+          "snippet": "def legacy_export(rows):\n    ..." }
+      ],
+      "exported": true,
+      "suggestion": "Check for dynamic callers and configuration references, then decide.",
+      "effort": "small"
+    }
+  ]
+}
