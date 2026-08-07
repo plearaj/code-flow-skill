@@ -394,3 +394,82 @@ def test_map_template_skips_already_registered_flows(
         f"{host}/{name} pass 2 is missing the resume rule: its instructions for "
         f"an already-registered flow must say 'do not re-trace'"
     )
+
+
+# --- Phase 3a: quality command ---------------------------------------------
+
+QUALITY_TEMPLATES = (
+    ("claude", "code-flow.quality.md"),
+    ("gemini", "code-flow.quality.toml"),
+    ("copilot", "code-flow.quality.prompt.md"),
+)
+
+# Marks the start of the "load the map" instructions in every host
+# (Claude/Gemini: "#### 2. Load the Map"; Copilot: "2. **Load the map.**").
+_LOAD_START = re.compile(r"load the map", re.IGNORECASE)
+
+# Marks the start of the *next* section after it, in every host
+# (Claude/Gemini: "#### 3. Run the Detectors"; Copilot: "3. **Run the
+# detectors.**"). Used as the end boundary so the scoped region cannot run
+# past step 2 into the detector text, where "inventory.json" and "skipped"
+# both legitimately appear again.
+_LOAD_END = re.compile(r"\n(?:#### 3\.|3\.\s*\*\*Run the detectors)")
+
+
+def _load_region(text: str) -> str:
+    return _section_region(text, _LOAD_START, _LOAD_END)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_reads_all_three_artifact_kinds(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Every detector's input comes from one of these three, so the load step
+    must name all three. A template that forgot `<slug>.json` would produce a
+    report with two detectors silently missing."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for artifact in ("index.json", "inventory.json", "<slug>.json"):
+        assert artifact in region, f"{host} load step does not name {artifact}"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_stops_when_inventory_is_absent(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A missing inventory takes two of four detectors with it, so the command
+    stops rather than emitting a report whose meaning depends on how the user
+    happened to build their map. The remedy must be named, not implied."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "--whole-code-base" in region, f"{host} does not name the remedy"
+    assert re.search(r"\bstop\b", region, re.IGNORECASE), f"{host} does not say to stop"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_refuses_to_overwrite_unparsable_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Mirrors the rule the map command already follows for index.json."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"does not parse|cannot parse|fails to parse", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_skips_duplicate_intent_on_thin_maps(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A thin map carries no snippets, so duplicate-intent has no evidence to
+    cite. Both remedies must be named — the flag and the re-map."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "duplicate-intent" in region
+    assert "--read-code" in region
+    assert re.search(r"--detail\s+standard", region)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_survives_one_bad_flow_file(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """One unreadable flow is a coverage fact, not a stop condition — the other
+    flows are still analyzable."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"skip that flow|skip it and", region, re.IGNORECASE)
