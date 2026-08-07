@@ -282,3 +282,57 @@ def test_shipped_templates_have_no_crlf(repo_root: Path) -> None:
         "templates/ files with CRLF line endings (must be bare LF): "
         + ", ".join(offenders)
     )
+
+
+COVERAGE_FIELD_NAMES = (
+    "filesScanned",
+    "filesSkipped",
+    "skipReason",
+    "functionsCatalogued",
+    "entryPointsFound",
+    "flowsTraced",
+)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_names_every_coverage_field(repo_root: Path, host: str, name: str) -> None:
+    """Whole-codebase mode must account for all six coverage fields.
+
+    Phase 3 decides how much of the map it can trust from these numbers, and
+    `flowsTraced` below `entryPointsFound` is how a partial run stays visible
+    rather than passing for a complete one.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _MODE_SECTION_START, re.compile(r"\Z"))
+    for field in COVERAGE_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host}/{name} whole-codebase mode never mentions '{field}'"
+        )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_skips_already_registered_flows(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Re-running must skip flows already in index.json.
+
+    Without this, a repository too large for one session can never finish: each
+    run redoes the flows the previous run completed.
+
+    Keyed on the literal clause "do not re-trace" rather than on the words
+    "already" and "skip", both of which occur elsewhere in the same region
+    ("every entry point not already mapped", "skip step 3") and would leave
+    this assertion green with the resume rule deleted. The cost of keying on a
+    phrase is that rewording the rule breaks the test; the failure message
+    below says exactly which phrase is expected, and all three hosts are
+    required to carry it verbatim.
+    """
+    region = _section_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8"),
+        _PASS2_START,
+        re.compile(r"\Z"),
+    )
+    assert "do not re-trace" in region.lower(), (
+        f"{host}/{name} pass 2 is missing the resume rule: its instructions for "
+        f"an already-registered flow must say 'do not re-trace'"
+    )

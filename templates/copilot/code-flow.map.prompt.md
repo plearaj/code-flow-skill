@@ -195,3 +195,38 @@ Never invent a hash value**; `size` alone still catches most edits.
 unchanged, keep that file's existing `functions` entries and move on rather than
 re-reading it. A repository too large to catalogue in one session is finished by
 running the command again.
+
+### Pass 2 — trace: map the flows
+
+**a. Find the entry points.** An entry point is where execution enters the system
+from outside it: HTTP routes and their handlers, CLI commands and subcommands,
+`main()`, event and queue handlers, scheduled jobs, and the exported public API.
+Use the inventory you just built — `exported` is a strong hint — plus the framework
+conventions the repository actually uses (route decorators, a router table, an
+`argv` parser, a job registry).
+
+Record how many you found as `coverage.entryPointsFound` **before you trace any of
+them**. Recording it first is what makes an unfinished run visible: `flowsTraced`
+below `entryPointsFound` means the map is partial.
+
+**b. Trace each one.** For every entry point not already mapped, run steps 2, 4, 5
+and 6 exactly as written, treating that entry point as the requested flow — but
+**skip step 3**: this mode does not edit source. Each flow produces its own
+`Code_Flows/<slug>.md`, `.html` and `.json`, and its own entry in `index.json`'s
+`flows` array. Derive the slug from the entry point's own name.
+
+**c. Skip what is already mapped.** Before tracing, check `index.json`'s `flows`
+for that slug. If it is already there, skip it and move on — do not re-trace and do
+not overwrite its files. This is what lets a repository be mapped across several
+sessions: run the command again and it picks up where it stopped.
+
+**d. Stop honestly.** A partial pass 2 is not an error. If you run out of room,
+stop cleanly after finishing the flow you are on, leave `index.json` consistent, and
+tell the user how many of the entry points you traced and that re-running continues
+from there. Set `coverage.flowsTraced` to the length of `flows` — what you actually
+did, never what you intended.
+
+**e. Report.** Tell the user: the counts from `coverage`, where the artifacts are,
+and — if `flowsTraced` is below `entryPointsFound` — that the map is partial and how
+to finish it. Say **catalogued**, never "all": this discovery is search and reading,
+not a compiler's view of the code, so it is best-effort by construction.
