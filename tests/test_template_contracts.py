@@ -838,3 +838,138 @@ def test_quality_template_never_stops_on_staleness(
     the design cannot justify."""
     region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
     assert re.search(r"never a reason to stop|does not stop the command", region, re.IGNORECASE)
+
+
+# --- Phase 3a: quality command, steps 5-6 (write the two reports) ----------
+
+# Marks the start of the output instructions (Claude/Gemini: "#### 5. Write
+# the Report Data"; Copilot: "5. **Write the report data.**"). Runs to the
+# end of the template, so no end anchor is needed — but one is supplied
+# anyway so a future step 7 cannot silently widen the region.
+_OUTPUT_START = re.compile(r"write the report data", re.IGNORECASE)
+_OUTPUT_END = re.compile(r"\n(?:#### 7\.|7\.\s*\*\*)")
+
+REPORT_FIELD_NAMES = ("schema", "meta", "coverage", "findings")
+
+
+def _output_region(text: str) -> str:
+    """Flattened for the same reason `_detectors_region` and `_verify_region`
+    are: these assertions check what a rule says, not how it wraps, and the
+    proximity windows below are measured against the flattened text."""
+    return _flatten(_section_region(text, _OUTPUT_START, _OUTPUT_END))
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_writes_both_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "quality-report.json" in region
+    assert "quality-report.md" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_writes_json_before_markdown(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The JSON is the data and the markdown is one rendering of it. Writing
+    the markdown first would make them two independent transcriptions that can
+    disagree — and phase 3b adds a third rendering off the same JSON."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert region.index("quality-report.json") < region.index("quality-report.md")
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_every_report_field(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in REPORT_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host} output step never references the report field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_leads_with_coverage(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Honesty rule 2: a clean section under partial coverage means clean
+    within what was mapped, and the document must say so in words.
+
+    Strengthened from the plan's bare `re.search(r"flowsTraced", region)` /
+    `re.search(r"entryPointsFound", region)`: both tokens also appear,
+    delimiter-free relevance aside, inside step 5's JSON schema example
+    earlier in this same region, so a bare substring search stays green even
+    if the honesty-rule sentence that actually names them in the banner were
+    deleted. `_field_reference` is not a fix for that on its own — the JSON
+    keys are quote-delimited too — but the literal phrase `clean within what
+    was mapped` is unique to this one sentence in the whole region, so it is
+    what actually gates the assertion; the two field-reference checks confirm
+    the fields are named at all rather than left to be invented.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "clean within what was mapped" in region
+    assert _field_reference("flowsTraced").search(region)
+    assert _field_reference("entryPointsFound").search(region)
+
+
+# The banner-describing sentence opens identically in every host: "how many
+# of `entryPointsFound` entry points were traced (`flowsTraced`)". Used below
+# as a proximity anchor instead of the bare field names, because
+# `filesChanged`, `findingsDropped`, `detectorsSkipped` and `flowsUnreadable`
+# all also appear as JSON keys in step 5's schema example, earlier in this
+# same region — a bare `_field_reference` search for them would stay green
+# even if the banner sentence itself (the rule this test guards) were deleted
+# outright, since the JSON keys are a separate concern from whether the
+# markdown banner narrates them. The banner narrates them in English, not by
+# field name, so the assertions below match that English phrasing, anchored
+# to the sentence that must contain all four.
+_BANNER_ANCHOR = r"entry points were traced \(`flowsTraced`\)"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_banners_skips_and_drops(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Everything the gating rule and the drop-rule suppressed has to surface,
+    or the report reads as complete when it is not."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for phrase in (
+        "flows were unreadable",
+        "files have changed",
+        "findings were dropped",
+        "detectors were skipped",
+    ):
+        assert re.search(_BANNER_ANCHOR + r".{0,300}" + phrase, region, re.IGNORECASE), (
+            f"{host} banner sentence omits {phrase!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_orders_findings_deterministically(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"severity.{0,80}site count.{0,80}principle", region, re.IGNORECASE | re.DOTALL)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_reports_when_there_are_no_findings(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """An empty report is a real report, not a skipped one — and never a clean
+    bill of health."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"no findings", region, re.IGNORECASE)
+    assert re.search(r"clean bill of health", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_never_writes_source(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Checked over the whole template, not a region: this rule belongs
+    everywhere and its absence anywhere is the defect."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert re.search(r"never edits source code", text, re.IGNORECASE)

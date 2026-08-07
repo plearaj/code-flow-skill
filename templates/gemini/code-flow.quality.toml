@@ -204,4 +204,74 @@ source, so such a finding was confirmed against the very change that made the fi
 stale — dropping it would discard the best evidence in the report. This is what
 the flag buys: it turns staleness from a reason to discard findings into a reason
 to re-check them, and under `--read-code` the dropped count is usually zero.
+
+#### 5. Write the Report Data
+
+Write `Code_Flows/quality-report.json` first. It is the data; step 6's markdown is
+one rendering of it, and writing the markdown first would make them two
+independent transcriptions free to disagree.
+
+Order the `findings` array by `severity` descending (`high`, `medium`, `low`),
+then by site count descending, then by `principle`. That order is what the ids
+assigned in step 3 must already reflect.
+
+```json
+{
+  "schema": 1,
+  "meta": {
+    "root": "C:/Users/example/project",
+    "generated": "2026-08-07",
+    "readCode": false,
+    "mapGenerated": "2026-08-06",
+    "mapMode": "whole-code-base",
+    "mapDetail": "standard"
+  },
+  "coverage": {
+    "flowsTraced": 14,
+    "entryPointsFound": 17,
+    "functionsCatalogued": 1180,
+    "flowsUnreadable": 0,
+    "filesChanged": 6,
+    "findingsDropped": 2,
+    "detectorsSkipped": ["duplicate-intent"]
+  },
+  "findings": []
+}
+```
+
+`meta.root` is the one absolute path in the file; every path inside `findings`
+is repo-relative with forward slashes. `mapGenerated`, `mapMode` and `mapDetail`
+are copied from the map's own `index.json` `meta`, so the report records which map
+it read. `detectorsSkipped` lists detector names step 2 gated off, and is an empty
+array when all four ran.
+
+#### 6. Write the Report
+
+Render `Code_Flows/quality-report.md` from the JSON you just wrote. Nothing in it
+may contradict that file.
+
+**Lead with coverage — this is a requirement, not a formatting preference.** The
+first thing under the title is a banner stating: how many of `entryPointsFound`
+entry points were traced (`flowsTraced`), how many functions were catalogued, how
+many flows were unreadable, how many mapped files have changed since mapping, how
+many findings were dropped as stale, and which detectors were skipped and why.
+
+If `flowsTraced` is below `entryPointsFound`, say in words that the map is partial
+and that every section below is **clean within what was mapped** — never a clean
+bill of health for the repository.
+
+Then a summary count by principle and severity. Then the findings grouped by
+principle, each rendering its `id`, `title`, `severity`, `confidence`, `rationale`,
+a sites table of `file:line` and `symbol`, its `suggestion`, and its `effort`.
+
+**If there are no findings, still write the report.** Say there were no findings,
+and repeat the coverage banner immediately after — an empty report under partial
+coverage means the mapped portion was clean, and the document must say that rather
+than implying a clean bill of health.
+
+Say **"catalogued"**, never "all". The map came from search and reading, not an
+AST walk, so it is best-effort and the report must never claim completeness.
+
+Finally, report both file paths to the user, along with the coverage numbers and
+the count of findings by severity.
 '''
