@@ -714,3 +714,95 @@ def test_quality_template_clusters_rather_than_pairs(
     pairwise findings. Without this rule a 5-site cluster becomes 10 findings."""
     region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
     assert re.search(r"never (one finding )?per pair|not pairwise", region, re.IGNORECASE)
+
+
+# --- Phase 3a: quality command, step 4 (verify against source) -------------
+
+# Marks the start of the verification instructions (Claude/Gemini: "#### 4.
+# Verify Against Source"; Copilot: "4. **Verify against source.**").
+_VERIFY_START = re.compile(r"verify against source", re.IGNORECASE)
+
+# Marks the start of the *next* section (Claude/Gemini: "#### 5. Write";
+# Copilot: "5. **Write"). Needed because "verified" and "stale" both recur in
+# the step 6 banner text.
+_VERIFY_END = re.compile(r"\n(?:#### 5\.|5\.\s*\*\*Write)")
+
+
+def _verify_region(text: str) -> str:
+    return _section_region(text, _VERIFY_START, _VERIFY_END)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_verifies_only_cited_files(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """--read-code verifies candidates; it does not re-scan the repository.
+    Re-scanning would duplicate the cost of mapping and not fit on a large
+    codebase, which is the whole reason the map is persisted."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"only the files", region, re.IGNORECASE)
+    assert re.search(r"not a second scan|do not re-?scan", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_marks_confidence_both_ways(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A schema field with only one of its two values ever named is not a
+    schema.
+
+    Strengthened from the plan's `"verified" in region`: the substring
+    `verified` is contained inside `unverified` (u-n-**verified**), so a bare
+    substring check would already be satisfied by the *default* value alone —
+    it would still pass even if the template never named what a *confirmed*
+    finding is set to. `\\bverified\\b` requires a standalone occurrence,
+    which `unverified` never produces (there is no word boundary between the
+    `n` and the `v`), so this only matches where the template actually names
+    the confirmed value.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"\bverified\b", region), (
+        f"{host} verify step never names the standalone 'verified' confidence "
+        f"value (only 'unverified', which contains it as a substring)"
+    )
+    assert "unverified" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_drops_only_unverified_stale_findings(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The order is verify-then-drop. --read-code reads current source, so a
+    finding it confirms was checked against the very change that made the file
+    stale; dropping it afterwards would discard the best evidence in the
+    report."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"unverified", region)
+    assert re.search(r"hash", region, re.IGNORECASE)
+    assert re.search(r"verify first|before dropping|then drop", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_corrects_line_numbers_on_verified_findings(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A finding kept through a file change must cite where the code is now,
+    not where the map recorded it.
+
+    Also checks the forward-slash / repo-relative path rule is restated here:
+    this is the one step that rewrites a site's `line` after the map first
+    wrote it, so it is the one place a corrected `file` could silently drift
+    from the global path convention if the rule went unstated."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"correct.{0,40}line", region, re.IGNORECASE | re.DOTALL)
+    assert re.search(r"forward.slash", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_never_stops_on_staleness(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """There is no staleness threshold, because any threshold would be a number
+    the design cannot justify."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"never a reason to stop|does not stop the command", region, re.IGNORECASE)

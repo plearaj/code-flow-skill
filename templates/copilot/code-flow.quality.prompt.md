@@ -105,3 +105,26 @@ Follow these steps exactly:
    `slug`s the chain appears in); `complexity-hotspot` adds `metric` (`fan-out`,
    `depth` or `loc`) and `value`; `unreached` adds `exported`, copied from the
    inventory entry.
+4. **Verify against source.** Two things, and their order matters.
+   - **Check staleness.** For every file cited by a candidate finding, compare its
+     current content against the `hash` recorded in `index.json`'s `files` array,
+     and count how many mapped files no longer match — that count goes in the step 6
+     banner. Staleness is **never a reason to stop the command**; there is no
+     threshold, because any threshold would be a number this design cannot justify.
+   - **Verify, if `--read-code` was passed.** This verifies candidates and is **not
+     a second scan of the repository** — do not re-scan, since scanning everything
+     again would duplicate the cost of mapping and not fit on a large codebase.
+     Open **only the files the candidate findings cite**, confirm or drop each
+     against real current source, set surviving candidates' `confidence` to
+     `verified` and **correct their sites' `line` numbers to where the code is
+     now** — `file` stays forward-slash and repo-relative, exactly as the map
+     recorded it — and drop the rest. Without the flag every finding stays
+     `unverified`.
+   - **Drop what is left stale and unverified.** Verify first, then drop: any
+     finding still `unverified` whose `sites` cite a file whose `hash` no longer
+     matches is dropped and counted for the banner, because its `file:line`
+     evidence is known wrong and `file:line` evidence is this report's whole
+     currency. A `verified` finding is **never** dropped for staleness — it was
+     confirmed against the very change that made the file stale, so dropping it
+     would discard the best evidence in the report. Under `--read-code` the dropped
+     count is usually zero.

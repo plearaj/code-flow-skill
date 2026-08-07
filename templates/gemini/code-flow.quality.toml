@@ -165,4 +165,41 @@ these, and nothing else:
 - `repeated-sequence` adds `flows` — the array of flow `slug`s the chain appears in.
 - `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value`.
 - `unreached` adds `exported`, copied from the inventory entry.
+
+#### 4. Verify Against Source
+
+Two things happen here, and their order matters.
+
+**a. Check staleness.** For every file cited by any candidate finding, compare the
+file's current content against the `hash` recorded for it in `index.json`'s
+`files` array. Count how many mapped files no longer match; that count goes in the
+banner in step 6.
+
+Staleness is **never a reason to stop the command**. There is no threshold — any
+threshold would be a number this design cannot justify.
+
+**b. Verify, if `--read-code` was passed.** This verifies candidates; it is **not
+a second scan of the repository**. Do not re-scan: scanning everything again would
+duplicate the cost of mapping and would not fit on a large codebase, which is the
+reason the map is persisted in the first place.
+
+1. Open **only the files the candidate findings cite**. Nothing else.
+2. Confirm or drop each candidate against real current source.
+3. For each candidate that survives, set its `confidence` to `verified` and
+   **correct its sites' `line` numbers to where the code is now** — `file` stays
+   forward-slash and repo-relative, exactly as the map recorded it.
+4. For each candidate that does not survive, drop it.
+
+Without `--read-code`, every finding keeps `confidence: "unverified"`.
+
+**c. Drop what is left stale and unverified.** Verify first, then drop. Any
+finding still marked `unverified` whose `sites` cite a file whose `hash` no longer
+matches is dropped, and counted for the banner. Its `file:line` evidence is known
+to be wrong, and `file:line` evidence is the whole currency of this report.
+
+A `verified` finding is never dropped for staleness. `--read-code` read current
+source, so such a finding was confirmed against the very change that made the file
+stale — dropping it would discard the best evidence in the report. This is what
+the flag buys: it turns staleness from a reason to discard findings into a reason
+to re-check them, and under `--read-code` the dropped count is usually zero.
 '''
