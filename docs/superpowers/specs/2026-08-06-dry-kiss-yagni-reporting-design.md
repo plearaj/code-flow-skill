@@ -159,7 +159,7 @@ cheaply, and reported honestly, even when the inventory is large.
   ],
   "flows": [
     { "slug": "user_login", "title": "User Login", "file": "user_login.json",
-      "entry": "login_view", "nodes": 9 }
+      "entry": "src_web_views_login_view", "nodes": 9 }
   ]
 }
 ```
