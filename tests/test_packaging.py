@@ -34,9 +34,9 @@ def test_source_mirror_is_gone(repo_root: Path) -> None:
     assert not (repo_root / "src" / "code_flow_skill" / "templates").exists()
 
 
-def test_package_versions_match_and_are_1_0_0(repo_root: Path) -> None:
+def test_package_versions_match_and_are_1_1_0(repo_root: Path) -> None:
     npm_version = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))["version"]
     pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
     assert match is not None, "no version found in pyproject.toml"
-    assert npm_version == match.group(1) == "1.0.0"
+    assert npm_version == match.group(1) == "1.1.0"
