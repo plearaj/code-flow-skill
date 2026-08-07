@@ -1,6 +1,20 @@
 # Code Flow Skill
 
-A portable **Code Flow** skill for AI coding assistants — Claude Code, Gemini CLI, and GitHub Copilot. Installs a `/code-flow` command (or equivalent instruction) that asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
+## Upgrading from 0.x to 1.0
+
+The command was renamed and the Copilot integration changed. After upgrading:
+
+- `/code-flow` is now `/code-flow.map`. Delete the stale command file:
+  `.claude/commands/code-flow.md` or `.gemini/commands/code-flow.toml`.
+- Copilot now installs an invocable prompt at
+  `.github/prompts/code-flow.map.prompt.md`. The installer no longer edits
+  `.github/copilot-instructions.md`, so **remove the old
+  `## Code Flow — Documentation Generator` section from that file by hand** —
+  otherwise it lingers and contradicts the new prompt.
+- `/code-flow.map` now also writes `Code_Flows/<name>.json` and
+  `Code_Flows/index.json`. Flows mapped before 1.0 have no sidecar until re-mapped.
+
+A portable **Code Flow** skill for AI coding assistants — Claude Code, Gemini CLI, and GitHub Copilot. Installs a `/code-flow.map` command (or equivalent instruction) that asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
 
 ## What the skill does
 
@@ -15,7 +29,8 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Report** the paths to both generated files.
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow.
+7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
 
@@ -40,24 +55,26 @@ After installing (see below), invoke from inside your project:
 **Claude Code**
 
 ```text
-/code-flow user login
+/code-flow.map user login
 ```
 
 **Gemini CLI**
 
 ```text
-/code-flow password reset
+/code-flow.map password reset
 ```
 
 **GitHub Copilot**
 
-The installer appends a "Code Flow" section to `.github/copilot-instructions.md`. In a Copilot chat, ask:
+The installer installs an invocable prompt file at `.github/prompts/code-flow.map.prompt.md`. Open Copilot Chat and select it from the Prompts picker, or try:
 
 ```text
-Document the login flow using Code Flow.
+/code-flow.map user login
 ```
 
-In all three, the assistant writes its output to `Code_Flows/<feature_name>.md` **and** `Code_Flows/<feature_name>.html` at the project root.
+The dotted filename follows the GitHub Spec Kit prompt-file convention; this project has not yet independently confirmed that Copilot Chat invokes it as a `/`-command, so use the Prompts picker if the slash form doesn't appear.
+
+In all three, the assistant writes its output to `Code_Flows/<feature_name>.md`, `Code_Flows/<feature_name>.html`, and `Code_Flows/<feature_name>.json` at the project root, and creates or updates the shared `Code_Flows/index.json` registry.
 
 ### Example output
 
@@ -93,7 +110,7 @@ flowchart TD
 | ...
 ````
 
-A sibling `Code_Flows/user_login.html` is written at the same time — the interactive version of the same flow, ready to open in any browser.
+A sibling `Code_Flows/user_login.html` is written at the same time — the interactive version of the same flow, ready to open in any browser. A `Code_Flows/user_login.json` sidecar (the same flow data as plain JSON) is written alongside it, and `Code_Flows/index.json` is created or updated to register the flow.
 
 ## Install
 
@@ -149,26 +166,26 @@ From the project root where you want the skill available:
 ```bash
 # Claude Code
 mkdir -p .claude/commands
-cp /path/to/code-flow-skill/templates/claude/code-flow.md .claude/commands/code-flow.md
+cp /path/to/code-flow-skill/templates/claude/code-flow.map.md .claude/commands/code-flow.map.md
 
 # Gemini CLI
 mkdir -p .gemini/commands
-cp /path/to/code-flow-skill/templates/gemini/code-flow.toml .gemini/commands/code-flow.toml
+cp /path/to/code-flow-skill/templates/gemini/code-flow.map.toml .gemini/commands/code-flow.map.toml
 
-# GitHub Copilot — append to (or create) the instructions file
-mkdir -p .github
-cat /path/to/code-flow-skill/templates/copilot/code-flow.instructions.md >> .github/copilot-instructions.md
+# GitHub Copilot
+mkdir -p .github/prompts
+cp /path/to/code-flow-skill/templates/copilot/code-flow.map.prompt.md .github/prompts/code-flow.map.prompt.md
 
 # Interactive HTML viewer scaffold (needed for all tools)
 mkdir -p .code-flow
 cp /path/to/code-flow-skill/templates/shared/viewer.template.html .code-flow/viewer.template.html
 ```
 
-On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` / `Add-Content` for `cp` / `cat >>`.
+On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` for `cp`.
 
 If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer.
 
-**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list the new `/code-flow` command. For Copilot, the instructions will be picked up automatically on the next chat turn.
+**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list the new `/code-flow.map` command. For Copilot, look for the prompt in the Prompts picker (or try `/code-flow.map` in chat).
 
 That's it — no install step runs any code on your machine. If you later want to update the skill, just re-copy the template files.
 
@@ -184,14 +201,12 @@ Defaults: `--tool all`, `--target .`.
 
 | Tool | Path |
 |------|------|
-| Claude Code | `.claude/commands/code-flow.md` |
-| Gemini CLI | `.gemini/commands/code-flow.toml` |
-| GitHub Copilot | `.github/copilot-instructions.md` (appended) |
+| Claude Code | `.claude/commands/code-flow.map.md` |
+| Gemini CLI | `.gemini/commands/code-flow.map.toml` |
+| GitHub Copilot | `.github/prompts/code-flow.map.prompt.md` |
 | _All tools_ | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 
 The `.code-flow/viewer.template.html` scaffold is tool-agnostic and is installed regardless of which `--tool` you select, since every command template references it.
-
-The Copilot installer is idempotent — it only appends if the `## Code Flow — Documentation Generator` section is not already present.
 
 ## Packages
 
