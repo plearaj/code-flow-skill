@@ -60,3 +60,29 @@ def test_install_is_repeatable(tmp_path: Path, run_python_installer) -> None:
         if p.is_file()
     }
     assert first == second
+
+
+def test_installed_files_are_byte_identical_to_their_templates(
+    tmp_path: Path, repo_root: Path, run_python_installer
+) -> None:
+    """The installer must be a plain copy: no text-mode read/write round-trip
+    may alter line endings or any other byte of the source template (this is
+    what silently broke on Windows, where Path.write_text() translates "\\n"
+    to "\\r\\n")."""
+    run_python_installer(tmp_path)
+
+    installed_to_source = {
+        tmp_path / ".claude" / "commands" / "code-flow.map.md":
+            repo_root / "templates" / "claude" / "code-flow.map.md",
+        tmp_path / ".gemini" / "commands" / "code-flow.map.toml":
+            repo_root / "templates" / "gemini" / "code-flow.map.toml",
+        tmp_path / ".github" / "prompts" / "code-flow.map.prompt.md":
+            repo_root / "templates" / "copilot" / "code-flow.map.prompt.md",
+        tmp_path / ".code-flow" / "viewer.template.html":
+            repo_root / "templates" / "shared" / "viewer.template.html",
+    }
+
+    for installed, source in installed_to_source.items():
+        assert installed.read_bytes() == source.read_bytes(), (
+            f"{installed} is not byte-identical to its source template {source}"
+        )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 from importlib.resources import files
@@ -20,21 +21,21 @@ def _template_root() -> Path:
     return Path(__file__).resolve().parents[2] / "templates"
 
 
-def _read_template(*parts: str) -> str:
-    return _template_root().joinpath(*parts).read_text(encoding="utf-8")
+def _template_path(*parts: str) -> Path:
+    return _template_root().joinpath(*parts)
 
 
 def _install_claude(target: Path) -> None:
     out = target / ".claude" / "commands" / "code-flow.map.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_read_template("claude", "code-flow.map.md"), encoding="utf-8")
+    shutil.copyfile(_template_path("claude", "code-flow.map.md"), out)
     print(f"Installed Claude template: {out}")
 
 
 def _install_gemini(target: Path) -> None:
     out = target / ".gemini" / "commands" / "code-flow.map.toml"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_read_template("gemini", "code-flow.map.toml"), encoding="utf-8")
+    shutil.copyfile(_template_path("gemini", "code-flow.map.toml"), out)
     print(f"Installed Gemini template: {out}")
 
 
@@ -46,16 +47,14 @@ def _install_viewer(target: Path) -> None:
     """
     out = target / ".code-flow" / "viewer.template.html"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_read_template("shared", "viewer.template.html"), encoding="utf-8")
+    shutil.copyfile(_template_path("shared", "viewer.template.html"), out)
     print(f"Installed interactive viewer template: {out}")
 
 
 def _install_copilot(target: Path) -> None:
     out = target / ".github" / "prompts" / "code-flow.map.prompt.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(
-        _read_template("copilot", "code-flow.map.prompt.md"), encoding="utf-8"
-    )
+    shutil.copyfile(_template_path("copilot", "code-flow.map.prompt.md"), out)
     print(f"Installed Copilot prompt: {out}")
 
 
