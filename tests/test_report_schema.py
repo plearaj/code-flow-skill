@@ -52,8 +52,17 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     "duplicate-intent": frozenset(),
     "repeated-sequence": frozenset({"flows"}),
     "complexity-hotspot": frozenset({"metric", "value"}),
-    "unreached": frozenset({"exported"}),
+    # `reachedBy` is what gives `production-unreached` a home in the JSON. Both
+    # outcomes emit `detector: "unreached"` with different severity rules, and
+    # before this field the distinction survived only in `title`/`rationale`
+    # prose — unassertable here, and unrenderable by the phase 3b viewer that
+    # will consume this same JSON.
+    "unreached": frozenset({"exported", "reachedBy"}),
 }
+
+# Step 3: `reachedBy` has exactly two values. `"tests"` is the
+# `production-unreached` case.
+REACHED_BY = {"none", "tests"}
 ALL_EVIDENCE_FIELDS = frozenset.union(*EVIDENCE_FIELDS_BY_DETECTOR.values())
 
 # Whole-word only, per review: "deleting", "removal" or "delete_export()" are
@@ -70,14 +79,61 @@ _DRIVE_LETTER_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 _ID = re.compile(r"^(DRY|KISS|YAGNI)-\d{2}$")
 
 
-@pytest.fixture
-def report(repo_root: Path) -> dict:
-    return json.loads((repo_root / "examples" / "sample-report.json").read_text(encoding="utf-8"))
+# Every example report this repository ships. The fixture below is
+# parametrized over all of them, so each test in this module runs once per
+# file.
+#
+# Two fixtures, not one, and they are deliberately complementary. With only
+# `sample-report.json` (`readCode: true`, every finding `verified`,
+# `detectorsSkipped: []`, `mapDetail: "standard"`),
+# `test_confidence_is_never_verified_without_read_code` was guarded by
+# `if not report["meta"]["readCode"]` and its **entire body never executed** —
+# the second dead assertion found in this phase. `sample-report-unverified.json`
+# is the mirror state: a thin map read without `--read-code`, which is exactly
+# the state step 2 describes when it skips duplicate-intent, so its
+# `detectorsSkipped` and `mapDetail` are consistent with each other and with
+# that rule. It also closes the enum-coverage gap the first fixture left:
+# `confidence: "unverified"`, `severity: "medium"`, `effort: "large"`,
+# a non-empty `detectorsSkipped`, and both `reachedBy` values.
+REPORT_FIXTURES = ("sample-report.json", "sample-report-unverified.json")
+
+
+@pytest.fixture(params=REPORT_FIXTURES)
+def report(request: pytest.FixtureRequest, repo_root: Path) -> dict:
+    return json.loads(
+        (repo_root / "examples" / request.param).read_text(encoding="utf-8")
+    )
 
 
 def test_report_has_the_four_top_level_keys(report: dict) -> None:
     assert set(report) == {"schema", "meta", "coverage", "findings"}
     assert report["schema"] == 1
+
+
+def test_meta_carries_exactly_the_fields_step_5_names(report: dict) -> None:
+    """`coverage`'s key set was asserted exactly; `meta`'s was not asserted at
+    all, so deleting `mapGenerated`, `mapMode` and `mapDetail` from a fixture
+    left the whole suite green — and those three are precisely the fields step 5
+    says exist "so the report records which map it read"."""
+    assert set(report["meta"]) == {
+        "root",
+        "generated",
+        "readCode",
+        "mapGenerated",
+        "mapMode",
+        "mapDetail",
+    }
+
+
+def test_meta_root_is_the_one_absolute_path(report: dict) -> None:
+    """The Global Constraint reads "`meta.root` is the one absolute path". Only
+    half of it was covered: `_DRIVE_LETTER_PATH` guarded `sites[].file` against
+    being absolute, but nothing required `root` itself to *be* absolute. A
+    fixture with `"root": "."` satisfied every other test in this module."""
+    root = report["meta"]["root"]
+    assert _DRIVE_LETTER_PATH.match(root) or root.startswith("/"), (
+        f"meta.root {root!r} is not an absolute path"
+    )
 
 
 def test_coverage_carries_every_banner_number(report: dict) -> None:
@@ -149,7 +205,17 @@ def test_every_finding_carries_at_least_one_site(report: dict) -> None:
     `meta.root` itself as its file, which is exactly the shape a real
     violation would take on this project's own (Windows) development
     platform.
+
+    `snippet` is required *conditionally*, and the condition is a rule rather
+    than a convenience. A `thin` map carries no snippets at all, so a report
+    written from one without `--read-code` has none to cite; step 4b's rule
+    (added in this wave) says a candidate emitted without a snippet takes its
+    sites' snippets from the source read there, so `--read-code` restores them
+    and a `standard`/`verbose` map had them from the map. Both branches below
+    execute: `sample-report.json` takes the first, `sample-report-unverified.json`
+    the second.
     """
+    snippets_available = report["meta"]["mapDetail"] != "thin" or report["meta"]["readCode"]
     for finding in report["findings"]:
         assert finding["sites"], f"{finding['id']} has no sites"
         for site in finding["sites"]:
@@ -161,7 +227,13 @@ def test_every_finding_carries_at_least_one_site(report: dict) -> None:
             )
             assert isinstance(site["line"], int) and site["line"] > 0
             assert site["symbol"]
-            assert site["snippet"], f"{finding['id']} site missing a snippet"
+            if snippets_available:
+                assert site["snippet"], f"{finding['id']} site missing a snippet"
+            else:
+                assert "snippet" not in site, (
+                    f"{finding['id']} site carries a snippet, but this report was "
+                    f"written from a thin map without --read-code, which has none"
+                )
 
 
 def test_findings_are_ordered_by_severity_then_site_count_then_principle(report: dict) -> None:
@@ -184,6 +256,31 @@ def test_exported_unreached_findings_are_capped_at_low(report: dict) -> None:
     for finding in report["findings"]:
         if finding["detector"] == "unreached" and finding.get("exported"):
             assert finding["severity"] == "low"
+
+
+def test_reached_by_tests_findings_are_never_high(report: dict) -> None:
+    """Step 3d: a `source` function reached only from test files is
+    `production-unreached` — "kept alive only by its own tests" — and is never
+    rated `high`, because something does reach it. `reachedBy: "tests"` is what
+    carries that outcome in the JSON: both outcomes emit
+    `detector: "unreached"`, so without this field the distinction lived only in
+    prose and this rule could not be asserted at all.
+
+    The value enum is checked here too. `reachedBy` has exactly two values, and
+    a third would mean each run inventing its own spelling of the same state.
+    """
+    for finding in report["findings"]:
+        if finding["detector"] != "unreached":
+            continue
+        assert finding["reachedBy"] in REACHED_BY, (
+            f"{finding['id']} has reachedBy {finding['reachedBy']!r}, "
+            f"expected one of {sorted(REACHED_BY)}"
+        )
+        if finding["reachedBy"] == "tests":
+            assert finding["severity"] != "high", (
+                f"{finding['id']} is reached by tests but rated high; "
+                f"production-unreached is never high"
+            )
 
 
 def test_unreached_findings_never_instruct_deletion(report: dict) -> None:

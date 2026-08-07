@@ -87,6 +87,7 @@
           "snippet": "def legacy_export(rows):\n    ..." }
       ],
       "exported": true,
+      "reachedBy": "none",
       "suggestion": "Check for dynamic callers and configuration references, then decide.",
       "effort": "small"
     }

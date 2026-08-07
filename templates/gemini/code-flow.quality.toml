@@ -111,11 +111,11 @@ remains by `role`:
 
 - A `role` of `test` is never a finding. A test helper reached only by tests is
   doing its job.
-- A `role` of `source` reached by no flow and by no test file is `unreached`: a
-  dead-code candidate.
-- A `role` of `source` reached only from test files is `production-unreached`.
-  Phrase it "kept alive only by its own tests"; never rate it `high` —
-  otherwise `medium`.
+- A `role` of `source` reached by no flow and by no test file is `unreached`, and
+  carries `reachedBy: "none"`: a dead-code candidate.
+- A `role` of `source` reached only from test files is `production-unreached`, and
+  carries `reachedBy: "tests"`. Phrase it "kept alive only by its own tests";
+  never rate it `high` — otherwise `medium`.
 
 Severity is `high` only when the entry is `unreached`, is not `exported`, and is
 not test-only. Anything whose `exported` is true is capped at `low`, because a
@@ -155,26 +155,43 @@ helper is one finding with three sites, not three findings.
 `principle` is `DRY`, `KISS` or `YAGNI`. `severity` is `high`, `medium` or `low`.
 `confidence` is `unverified` unless step 4 verified the finding. `effort` is
 `small`, `medium` or `large`. `id` is the principle, a hyphen, and a two-digit
-counter that restarts per principle in emission order: `DRY-01`, `DRY-02`,
-`KISS-01`, `YAGNI-01`. Ids must be stable within the run, because the markdown and
-the JSON cross-reference each other by them.
+counter that restarts per principle: `DRY-01`, `DRY-02`, `KISS-01`, `YAGNI-01`.
+**The counter is assigned in step 5, after step 4's drops** — not here — so do not
+number findings as you emit them, and read the `DRY-01` above as the shape rather
+than as a number already spent. Once assigned, ids are stable within the run,
+because the markdown and the JSON cross-reference each other by them.
 
 Three detectors carry evidence the fields above have no home for. Add exactly
 these, and nothing else:
 
 - `repeated-sequence` adds `flows` — the array of flow `slug`s the chain appears in.
 - `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value`.
-- `unreached` adds `exported`, copied from the inventory entry.
+- `unreached` adds `exported`, copied from the inventory entry, and `reachedBy`,
+  whose only two values are `"none"` (reached by nothing) and `"tests"` (reached
+  only by test-role callers, which is what `production-unreached` means).
 
 #### 4. Verify Against Source
 
-Two things happen here, and their order matters.
+Three things happen here, and their order matters.
 
-**a. Check staleness.** For every file cited by any candidate finding, compare the
-file's current content against the `hash` recorded for it in `index.json`'s
-`files` array — a file that cannot be read at all, whatever the reason, counts as
-changed for this comparison. Count how many mapped files no longer match; that
-count goes in the banner in step 6.
+**a. Check staleness.** Two scopes, and they are not the same set. Never report
+one as the other.
+
+`filesChanged` is a **whole-census** number: compare every entry in `index.json`'s
+`files` array against that file's current content, and count how many no longer
+match. Hashes only, no analysis, so it stays cheap even on a large map — and it is
+this number the banner in step 6 reports, because a reader told "6 files have
+changed" takes that as a fact about the map, not about whichever handful of files
+some finding happened to cite.
+
+The **cited-file subset** — every file cited by any candidate finding — is what
+the drop rule below drops on: a finding is dropped only when one of its own sites
+cites a changed file, and the census count never drops anything by itself.
+
+A file that cannot be read at all, whatever the reason, counts as changed in both
+scopes. A cited file with no entry in `index.json`'s `files` array has no recorded
+hash to compare against, so it counts as changed in neither: it is outside the
+census, and it does not make its finding stale.
 
 Staleness is **never a reason to stop the command**. There is no threshold — any
 threshold would be a number this design cannot justify.
@@ -189,8 +206,11 @@ reason the map is persisted in the first place.
 3. For each candidate that survives, set its `confidence` to `verified` and
    **correct its sites' `line` numbers to where the code is now** — `file` stays
    forward-slash and repo-relative, exactly as the map recorded it.
-4. For each candidate that does not survive, drop it.
-5. A candidate whose cited file cannot be opened at all — deleted, or unreadable
+4. A candidate emitted with no `snippet` on its sites — which is what a thin map
+   produces — takes its sites' snippets from the source read here. This widens
+   nothing: these are the files this step already opened.
+5. For each candidate that does not survive, drop it.
+6. A candidate whose cited file cannot be opened at all — deleted, or unreadable
    — is neither confirmed nor dropped here: it keeps `confidence: "unverified"`
    and falls through to the staleness rule below.
 
@@ -216,8 +236,10 @@ one rendering of it, and writing the markdown first would make them two
 independent transcriptions free to disagree.
 
 Order the `findings` array by `severity` descending (`high`, `medium`, `low`),
-then by site count descending, then by `principle` alphabetically. That order is
-what the ids assigned in step 3 must already reflect within each principle.
+then by site count descending, then by `principle` alphabetically. **Assign the
+`id` counters here**, walking that order, after step 4's drops — a finding step 4
+dropped never consumed a number, so each principle's counter reads `01`, `02`,
+`03` with no gaps.
 
 ```json
 {
@@ -249,6 +271,13 @@ first thing under the title is a banner stating: how many of `entryPointsFound`
 entry points were traced (`flowsTraced`), how many functions were catalogued, how
 many flows were unreadable, how many mapped files have changed since mapping, how
 many findings were dropped as stale, and which detectors were skipped and why.
+
+The changed-file count is step 4's whole file census, not its cited-file subset; say
+"of the N files the map recorded" so no reader takes it for the smaller number.
+`detectorsSkipped` carries names only — the reason is not in the JSON — so restate
+it from the step 2 rule that gated the detector off: for duplicate-intent on a
+thin map, that a thin map carries no `snippet`. A detector named without its
+reason does not satisfy this banner.
 
 If `flowsTraced` is below `entryPointsFound`, say in words that the map is partial
 and that every section below is **clean within what was mapped** — never a clean

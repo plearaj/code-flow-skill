@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "meta": {
+    "root": "C:/Users/example/project",
+    "generated": "2026-08-07",
+    "readCode": false,
+    "mapGenerated": "2026-08-05",
+    "mapMode": "whole-code-base",
+    "mapDetail": "thin"
+  },
+  "coverage": {
+    "flowsTraced": 9,
+    "entryPointsFound": 12,
+    "functionsCatalogued": 640,
+    "flowsUnreadable": 1,
+    "filesChanged": 3,
+    "findingsDropped": 1,
+    "detectorsSkipped": ["duplicate-intent"]
+  },
+  "findings": [
+    {
+      "id": "DRY-01",
+      "principle": "DRY",
+      "detector": "repeated-sequence",
+      "severity": "high",
+      "confidence": "unverified",
+      "title": "Access checks repeated across three flows",
+      "rationale": "load_account, assert_permission and record_access run in sequence in user_login, password_reset and account_close.",
+      "sites": [
+        { "file": "src/accounts/access.py", "line": 15, "symbol": "load_account" },
+        { "file": "src/accounts/access.py", "line": 34, "symbol": "assert_permission" },
+        { "file": "src/accounts/audit.py", "line": 11, "symbol": "record_access" }
+      ],
+      "flows": ["user_login", "password_reset", "account_close"],
+      "suggestion": "Extract the three-call sequence into one authorize helper.",
+      "effort": "medium"
+    },
+    {
+      "id": "YAGNI-01",
+      "principle": "YAGNI",
+      "detector": "unreached",
+      "severity": "high",
+      "confidence": "unverified",
+      "title": "retry_webhook is not reached by any mapped flow",
+      "rationale": "Not reached by any of the 9 mapped flows — confirm before deleting. Tracing cannot see reflection, dependency injection or configuration-declared entry points.",
+      "sites": [
+        { "file": "src/webhooks/retry.py", "line": 28, "symbol": "retry_webhook" }
+      ],
+      "exported": false,
+      "reachedBy": "none",
+      "suggestion": "Check for dynamic callers and configuration references, then decide.",
+      "effort": "small"
+    },
+    {
+      "id": "KISS-01",
+      "principle": "KISS",
+      "detector": "complexity-hotspot",
+      "severity": "medium",
+      "confidence": "unverified",
+      "title": "dispatch_event has a fan-out of 6",
+      "rationale": "dispatch_event calls 6 functions directly, below the fan-out threshold of 8.",
+      "sites": [
+        { "file": "src/events/dispatch.py", "line": 52, "symbol": "dispatch_event" }
+      ],
+      "metric": "fan-out",
+      "value": 6,
+      "suggestion": "Group the routing and logging calls into two helpers.",
+      "effort": "medium"
+    },
+    {
+      "id": "YAGNI-02",
+      "principle": "YAGNI",
+      "detector": "unreached",
+      "severity": "medium",
+      "confidence": "unverified",
+      "title": "build_fixture_payload is kept alive only by its own tests",
+      "rationale": "Kept alive only by its own tests: not reached by any of the 9 mapped flows, only from test files — confirm before deleting. Tracing cannot see reflection, dependency injection or configuration-declared entry points.",
+      "sites": [
+        { "file": "src/events/payloads.py", "line": 74, "symbol": "build_fixture_payload" }
+      ],
+      "exported": false,
+      "reachedBy": "tests",
+      "suggestion": "Confirm whether production still needs it, or keep it as test-only support.",
+      "effort": "large"
+    }
+  ]
+}

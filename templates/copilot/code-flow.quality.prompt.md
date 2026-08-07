@@ -57,8 +57,9 @@ Follow these steps exactly:
    - **unreached (YAGNI)** — subtract: every inventory `id` appearing as a node
      `id` in any flow is reached, and the join is exact because the map derives
      both by the same rule, so do not match on names. A `role` of `test` is never
-     a finding. A `role` of `source` reached by no flow and no test is `unreached`.
-     A `role` of `source` reached only from test files is `production-unreached` —
+     a finding. A `role` of `source` reached by no flow and no test is `unreached`,
+     and carries `reachedBy: "none"`. A `role` of `source` reached only from test
+     files is `production-unreached`, and carries `reachedBy: "tests"` —
      phrase it "kept alive only by its own tests"; never rate it `high`, otherwise
      `medium`. `high` only when `unreached`, not `exported`, and not test-only;
      anything whose `exported` is true is capped at `low`, because a public API
@@ -97,22 +98,36 @@ Follow these steps exactly:
    `principle` is `DRY`, `KISS` or `YAGNI`; `severity` is `high`, `medium` or
    `low`; `confidence` is `unverified` unless step 4 verified it; `effort` is
    `small`, `medium` or `large`. `id` is the principle, a hyphen, and a two-digit
-   counter restarting per principle in emission order. Ids must be stable within
+   counter restarting per principle: `DRY-01`, `DRY-02`, `KISS-01`, `YAGNI-01`.
+   **The counter is assigned in step 5, after step 4's drops** — not here — so do
+   not number findings as you emit them, and read the `DRY-01` above as the shape
+   rather than as a number already spent. Once assigned, ids are stable within
    the run — the markdown and the JSON cross-reference each other by them.
 
    Three detectors carry evidence those fields have no home for. Add exactly
    these, and nothing else: `repeated-sequence` adds `flows` (the array of flow
    `slug`s the chain appears in); `complexity-hotspot` adds `metric` (`fan-out`,
    `depth` or `loc`) and `value`; `unreached` adds `exported`, copied from the
-   inventory entry.
-4. **Verify against source.** Two things, and their order matters.
-   - **Check staleness.** For every file cited by a candidate finding, compare its
-     current content against the `hash` recorded in `index.json`'s `files` array,
-     and count how many mapped files no longer match — that count goes in the step 6
-     banner. A file that cannot be read at all, whatever the reason, counts as
-     changed for this comparison. Staleness is **never a reason to stop the
-     command**; there is no threshold, because any threshold would be a number this
-     design cannot justify.
+   inventory entry, and `reachedBy`, whose only two values are `"none"` (reached
+   by nothing) and `"tests"` (reached only by test-role callers, which is what
+   `production-unreached` means).
+4. **Verify against source.** Three things, and their order matters.
+   - **Check staleness.** Two scopes, and they are not the same set; never report
+     one as the other. `filesChanged` is a **whole-census** number: compare every
+     entry in `index.json`'s `files` array against that file's current content, and
+     count how many no longer match. Hashes only, no analysis, so it stays cheap
+     even on a large map — and it is this number the step 6 banner reports, because
+     a reader told "6 files have changed" takes that as a fact about the map, not
+     about whichever handful of files some finding happened to cite. The
+     **cited-file subset** — every file cited by any candidate finding — is what
+     the drop rule below drops on: a finding is dropped only when one of its own
+     sites cites a changed file, and the census count never drops anything by
+     itself. A file that cannot be read at all, whatever the reason, counts as
+     changed in both scopes. A cited file with no entry in `index.json`'s `files`
+     array has no recorded hash to compare against, so it counts as changed in
+     neither: it is outside the census, and it does not make its finding stale.
+     Staleness is **never a reason to stop the command**; there is no threshold,
+     because any threshold would be a number this design cannot justify.
    - **Verify, if `--read-code` was passed.** This verifies candidates and is **not
      a second scan of the repository** — do not re-scan, since scanning everything
      again would duplicate the cost of mapping and not fit on a large codebase.
@@ -120,10 +135,13 @@ Follow these steps exactly:
      against real current source, set surviving candidates' `confidence` to
      `verified` and **correct their sites' `line` numbers to where the code is
      now** — `file` stays forward-slash and repo-relative, exactly as the map
-     recorded it — and drop the rest. A candidate whose cited file cannot be
-     opened at all — deleted, or unreadable — is neither confirmed nor dropped
-     here: it keeps `confidence: "unverified"` and falls through to the
-     staleness rule below. Without the flag every finding stays `unverified`.
+     recorded it — and drop the rest. A candidate emitted with no `snippet` on its
+     sites — which is what a thin map produces — takes its sites' snippets from
+     the source read here; this widens nothing, since these are the files this
+     step already opened. A candidate whose cited file cannot be opened at all —
+     deleted, or unreadable — is neither confirmed nor dropped here: it keeps
+     `confidence: "unverified"` and falls through to the staleness rule below.
+     Without the flag every finding stays `unverified`.
    - **Drop what is left stale and unverified.** Verify first, then drop: any
      finding still `unverified` whose `sites` cite a file whose `hash` no longer
      matches is dropped and counted for the banner — the whole finding, not just
@@ -138,8 +156,10 @@ Follow these steps exactly:
    is the data, and step 6's markdown is one rendering of it; writing the markdown
    first would make them two independent transcriptions free to disagree. Order
    `findings` by `severity` descending (`high`, `medium`, `low`), then site count
-   descending, then `principle` alphabetically — the order the step 3 ids must
-   already reflect within each principle.
+   descending, then `principle` alphabetically. **Assign the `id` counters here**,
+   walking that order, after step 4's drops — a finding step 4 dropped never
+   consumed a number, so each principle's counter reads `01`, `02`, `03` with no
+   gaps.
 
    ```json
    {
@@ -167,7 +187,13 @@ Follow these steps exactly:
    of `entryPointsFound` entry points were traced (`flowsTraced`), how many
    functions were catalogued, how many flows were unreadable, how many mapped files
    have changed since mapping, how many findings were dropped as stale, and which
-   detectors were skipped and why. If `flowsTraced` is below `entryPointsFound`,
+   detectors were skipped and why. The changed-file count is step 4's whole file
+   census, not its cited-file subset; say "of the N files the map recorded" so no
+   reader takes it for the smaller number. `detectorsSkipped` carries names only —
+   the reason is not in the JSON — so restate it from the step 2 rule that gated
+   the detector off: for duplicate-intent on a thin map, that a thin map carries no
+   `snippet`. A detector named without its reason does not satisfy this banner.
+   If `flowsTraced` is below `entryPointsFound`,
    say in words that the map is partial and that everything below is **clean within
    what was mapped** — never a clean bill of health for the repository. Then a
    summary count by principle and severity, then findings grouped by principle,
