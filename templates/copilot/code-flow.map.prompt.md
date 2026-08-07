@@ -16,7 +16,7 @@ When asked to document a code flow (e.g., "document the user login flow"), follo
    - Bullet list of all function names in the flow
    - Function reference table with columns: Function, Description, File (`file:line` format)
 5. **Generate `Code_Flows/<functionality_name>.html`** — an interactive, self-contained page of the same flow (see below).
-6. **Write the machine-readable artifacts.** Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`; the file also carries `meta` (`root`, `generated`, `mode: "feature"`, `schema: 1`) and `coverage.flowsTraced`.
+6. **Write the machine-readable artifacts.** Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`; the file also carries `meta` (`root`, `generated`, `mode: "feature"`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update.
 7. **Report both output paths** to the user, and mention that the JSON artifacts were updated.
 
 ### Interactive HTML view
