@@ -169,3 +169,70 @@ def test_map_template_documents_the_mode_flags(repo_root: Path, host: str, name:
 def test_map_template_has_a_whole_codebase_section(repo_root: Path, host: str, name: str) -> None:
     text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
     assert _MODE_SECTION_START.search(text), f"{host}/{name} has no whole-codebase mode section"
+
+
+INVENTORY_FIELD_NAMES = (
+    "id",
+    "name",
+    "file",
+    "line",
+    "loc",
+    "signature",
+    "purpose",
+    "role",
+    "exported",
+    "snippet",
+)
+
+# The trace pass heading, used as the end boundary of the inventory region so
+# pass 1's assertions cannot be satisfied by text that belongs to pass 2.
+# Heading-anchored for the same reason as the mode heading: pass 1's own prose
+# says "belong to pass 2", and a loose pattern would end the inventory region
+# at that sentence instead of at the section it names.
+_PASS2_START = re.compile(r"^#{3,4} +Pass 2\b", re.MULTILINE)
+
+
+def _inventory_region(text: str) -> str:
+    return _section_region(text, _MODE_SECTION_START, _PASS2_START)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_names_inventory_fields(repo_root: Path, host: str, name: str) -> None:
+    """Pass 1's instructions must name every field an inventory entry carries.
+
+    Scoped to the region between the whole-codebase heading and the Pass 2
+    heading: `file`, `line` and `name` all occur throughout the feature-mode
+    half of every template, so an unscoped search would pass even with the
+    inventory instructions deleted outright.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _inventory_region(text)
+    for field in INVENTORY_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host}/{name} pass 1 instructions are missing the '{field}' field name"
+        )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_requires_inventory_file(repo_root: Path, host: str, name: str) -> None:
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "inventory.json" in _inventory_region(text)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_catalogues_tests_rather_than_skipping_them(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Test files must be catalogued with role "test", never excluded.
+
+    Excluding them makes every test-only helper look unreachable, which
+    produces a large class of false dead-code findings in phase 3. This is the
+    single rule whose omission would quietly poison the next phase, so it gets
+    its own assertion rather than riding on the `role` field-name check.
+    """
+    region = _inventory_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    )
+    assert '"test"' in region or "`test`" in region, (
+        f"{host}/{name} pass 1 never assigns the test role"
+    )

@@ -90,3 +90,104 @@ All four outputs go in `Code_Flows/` at the project root — create that directo
 Reached only when the user passed `--whole-code-base`. Two passes: catalogue what exists, then trace how it runs. They are separate because they answer different questions and because the second is far more expensive than the first.
 
 **This mode never edits source files.** Step 3 adds docstrings in feature mode; at repository scale that would be a sweeping unrequested rewrite, so here you only read. Record what a function does in the inventory's `purpose` field instead — inferred from the body when there is no docstring.
+
+### Pass 1 — breadth: catalogue what exists
+
+This pass traces nothing. It records what is there.
+
+**a. Choose the files to scan.** Walk the repository from the project root,
+honoring `.gitignore`. Skip in addition: `node_modules`, `.venv`, `venv`, `dist`,
+`build`, `target`, `vendor`, `third_party`; lockfiles (`package-lock.json`,
+`yarn.lock`, `uv.lock`, `poetry.lock`, `Cargo.lock`, `go.sum`); minified or
+generated assets (`*.min.js`, `*.min.css`, `*.map`); and anything binary. Count
+every skip and attribute it to one reason: `vendored`, `generated`, `binary`, or
+`unparsed` for a file you opened but could not read structure from.
+
+**b. Catalogue the functions.** Write `Code_Flows/inventory.json` with one entry
+per function or method you find:
+
+```json
+{
+  "schema": 1,
+  "functions": [
+    {
+      "id": "src_auth_validators_validate_email",
+      "name": "validate_email",
+      "file": "src/auth/validators.py",
+      "line": 12,
+      "loc": 14,
+      "signature": "validate_email(value: str) -> bool",
+      "purpose": "Return True if value looks like an email address.",
+      "role": "source",
+      "exported": false,
+      "snippet": "def validate_email(value):\n    ..."
+    }
+  ]
+}
+```
+
+- `id` — derived exactly as in step 5, from the same `file` and unqualified
+  `name`. This is the whole point of the pass: a flow node and the inventory entry
+  for the same function carry the same `id`, and that join is what lets a later
+  command compute which catalogued functions no flow ever reaches.
+- `line` — the line of the function's own definition keyword, never a decorator or
+  comment above it. `loc` — its length in lines, definition line through last line
+  inclusive.
+- `signature` — the declaration as written, on one line, without the body.
+- `purpose` — one sentence. Use the docstring if there is one; otherwise infer it
+  from the body. Do not edit the source file to add one.
+- `role` — `"test"` if the file is a test (a `test_*`/`*_test`/`*.test.*`/`*.spec.*`
+  name, or a `tests/`, `test/`, `spec/`, `__tests__/` directory), `"source"`
+  otherwise. **Catalogue tests, never skip them.** Excluding them would make every
+  helper that only tests use look unreachable.
+- `exported` — whether the function is public API. A per-language heuristic, not a
+  proof: the `export` keyword in JS/TS, a name without a leading underscore (and
+  `__all__` membership where a module defines it) in Python, an initial capital in
+  Go. **When the language or the convention is unclear, use `true`** — wrongly
+  calling something private produces a false dead-code claim later, which is the
+  more expensive mistake.
+- `snippet` — governed by `--detail`:
+
+| `--detail` | `snippet` |
+|---|---|
+| `thin` | omit it entirely |
+| `standard` (default) | include, capped at ~20 lines; omit for functions of 3 lines or fewer, since a trivial accessor tells a duplicate-detector nothing |
+| `verbose` | include the full body, uncapped |
+
+  Inside every `snippet`, replace each `</` with `<\/`, exactly as in step 5.
+
+**c. Record the file census.** In `Code_Flows/index.json`, set `meta.mode` to
+`"whole-code-base"` and `meta.detail` to the level you used, then record one entry
+per scanned file and the breadth half of `coverage`:
+
+```json
+{
+  "meta": { "root": "<absolute project root, forward slashes>",
+            "generated": "<today, YYYY-MM-DD>", "mode": "whole-code-base",
+            "detail": "standard", "schema": 1 },
+  "coverage": { "filesScanned": 214, "filesSkipped": 12,
+                "skipReason": { "vendored": 9, "unparsed": 3 },
+                "functionsCatalogued": 1180 },
+  "files": [
+    { "path": "src/auth/validators.py", "size": 4210, "hash": "sha256:9f2a1c" }
+  ],
+  "flows": []
+}
+```
+
+The `flows` array and the rest of `coverage` belong to pass 2 — preserve whatever
+is already there, and preserve every `coverage` value you did not compute. The
+same rule as feature mode applies: if `index.json` exists but does not parse,
+**stop**, report it, and do not overwrite it.
+
+`hash` lets a later command warn that the map is stale without re-reading source.
+Compute it with whatever the environment provides — `sha256sum <file>`,
+`Get-FileHash -Algorithm SHA256 <file>`, or `certutil -hashfile <file> SHA256` —
+and record `sha256:` followed by the first 6 hex characters. **If you cannot run
+commands here, set `"hash": null` for every file and say so in your final report.
+Never invent a hash value**; `size` alone still catches most edits.
+
+**d. Resuming.** If `files` already lists a path whose `size` and `hash` are
+unchanged, keep that file's existing `functions` entries and move on rather than
+re-reading it. A repository too large to catalogue in one session is finished by
+running the command again.
