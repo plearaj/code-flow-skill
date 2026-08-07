@@ -39,7 +39,10 @@ the first is useful without the second.
 - `Code_Flows/quality-report.html`, added to the quality command in all three
   hosts
 - Installer changes to copy the new scaffold into `.code-flow/`
-- Viewer-validation tests, which do not exist today for either scaffold
+- Viewer-validation tests, which do not exist today for either scaffold —
+  **one harness covering both**, including a retrofit to the existing
+  `viewer.template.html`, which has shipped since 1.0.0 with only a token-count
+  contract test
 
 Both phases are additive within 1.x. Neither carries a breaking change.
 
@@ -244,8 +247,24 @@ in prompt prose is a schema nothing checks.
 **Viewer validation (3b).** Substitute malformed JSON, and a finding citing a
 missing flow, and assert the error card path triggers rather than a blank page.
 This machinery does not exist today — `viewer.template.html` has only a
-token-count contract test — so 3b builds it, and should retrofit it to the flow
-viewer while it is there.
+token-count contract test — so 3b builds it.
+
+**The retrofit to the flow viewer is in scope, not optional.** This was written as
+a recommendation and is now a requirement. The reason is the one Phase 3a kept
+demonstrating: an untested artifact is not "probably fine", it is unknown, and the
+gap does not announce itself. `viewer.template.html` has shipped since 1.0.0 with
+nothing checking that it renders — a malformed substitution would produce a blank
+page in a user's browser and every test in this repository would still pass. That
+is the same shape as the host-parity constraint that went unenforced until Phase
+3a's final review committed `tests/test_host_parity.py`, and the same shape as the
+finding schema that lived only in prompt prose until Phase 3a made it executable.
+
+So 3b builds one validation harness and points it at **both** scaffolds. Whatever
+the harness can assert about `report.template.html` — that a malformed data
+substitution reaches the error path, that a dangling reference does not blank the
+page, that the token count is what the installer expects — it asserts about
+`viewer.template.html` too. Where the two viewers genuinely differ, the harness
+takes a per-scaffold fixture; it does not take two harnesses.
 
 ### Host parity for the new templates
 
