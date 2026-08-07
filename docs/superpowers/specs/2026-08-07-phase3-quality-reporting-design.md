@@ -108,6 +108,39 @@ both remedies — re-run with `--read-code`, or re-map at `--detail standard`.
 This is the reading the parent intended when it said to pair `thin` with
 `--read-code`; it just never said what happens to someone who does not.
 
+#### Correction, found in Phase 3a's final review: `--read-code` must fetch the snippets
+
+Naming `--read-code` as the remedy above is only sound if the flag actually
+supplies the evidence duplicate-intent needs, and as first written it did not.
+Trace the composition: with the flag set on a thin map, duplicate-intent is *not*
+skipped, so it runs — clustering on nothing but names, signatures and purposes,
+which is precisely the confident-wrong finding this section rejects. Worse, the
+finding schema requires a snippet per site, so the detector cannot emit a
+well-formed finding at all.
+
+The parent's `--read-code` procedure is where the gap originates. Its four steps —
+read the map, open only the cited files, confirm or drop, report — contain no step
+that *fetches* anything (`2026-08-06-dry-kiss-yagni-reporting-design.md`, the
+`--read-code` procedure block), and its own summary of the `thin` + `--read-code`
+combination as "evidence fetched on demand" is unbacked by that procedure.
+
+**This addendum supersedes the parent on that one point**, contrary to the
+"parent governs" rule stated at the top: the verification step also **fills in the
+snippets a thin map could not carry**, taking them from the source it has already
+opened. This widens nothing — those are the same cited files step 2 of the
+procedure allows — and it is what makes "evidence fetched on demand" true.
+
+#### Correction: `filesChanged` is a whole-census count
+
+The staleness banner's changed-file count is computed over **every entry in the
+map's `files[]` census**, not over the subset of files that findings happen to
+cite. Hashing the census is cheap — hashes only, no analysis — and the parent
+describes the number that way ("6 files changed since mapping"). The cited-file
+subset remains what the drop rule below acts on; the two scopes are different and
+the command states both. Phase 3a first shipped the narrow computation under the
+census wording, which under-reported staleness on a command whose headline claim
+is honest coverage.
+
 ## Staleness: report, banner, and drop the affected findings
 
 The parent requires that staleness be surfaced and says the report states how
