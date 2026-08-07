@@ -576,6 +576,25 @@ def test_quality_template_survives_one_bad_flow_file(
     flows are still analyzable."""
     region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
     assert re.search(r"skip that flow|skip it and", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_stops_when_the_index_is_absent(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """No index means there is no map at all, so the remedy is the plain map
+    command — not the whole-code-base one, which is the inventory's remedy."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"`(?:Code_Flows/)?index\.json`\s+is absent.{0,60}?\bstop\b",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not say to stop when the index is absent"
+    assert re.search(
+        r"`(?:Code_Flows/)?index\.json`\s+is absent.{0,120}?`/code-flow\.map`",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not name /code-flow.map as the remedy for an absent index"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
