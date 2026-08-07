@@ -9,13 +9,31 @@ Analyze the codebase and generate flow documentation for the requested functiona
 
 The user specified: $ARGUMENTS
 
-If the input is empty, analyze the project structure and suggest 3-5 key flows, then ask the user to pick one.
-
 ### Instructions
 
 #### 1. Identify the Target Flow
 
-Use the user's input to determine which functionality to document. Derive the output filename in snake_case (e.g., "user login" → `user_login.md`).
+The user's input (`$ARGUMENTS`) says what to document. Read it first for two option
+flags. They are options, not part of the feature name — strip them out before you
+derive any filename from what is left.
+
+- `--whole-code-base` — map the whole repository instead of one feature. If it is
+  present, skip the rest of this section and everything through step 7, and follow
+  **Whole-Codebase Mode** at the end of this document instead.
+- `--detail thin|standard|verbose` — how much evidence each catalogued function
+  carries. Default `standard`. It only changes anything in whole-codebase mode; if
+  it appears without `--whole-code-base`, accept it silently rather than erroring.
+  If it appears with a value that is not one of those three, tell the user what you
+  read, use `standard`, and carry on.
+
+Everything from here through step 7 is **feature mode**, the default.
+
+The remaining input describes the functionality to document. If it is empty,
+analyze the project structure and suggest 3-5 key flows, then ask the user to pick
+one.
+
+Use the functionality name to derive the output filename. Convert to snake_case
+(e.g., "user login" → `user_login.md`, "password reset" → `password_reset.md`).
 
 #### 2. Discover Relevant Files and Functions
 
@@ -174,4 +192,15 @@ every flow mapped before this one.
 - Write `Code_Flows/<functionality_name>.md`, `.html`, and `.json`, plus `index.json`
 - Report the markdown and HTML paths to the user, and mention that the JSON
   artifacts were updated
+
+## Whole-Codebase Mode
+
+Reached only when the user passed `--whole-code-base`. Two passes: catalogue what
+exists, then trace how it runs. The passes are separate because they answer
+different questions and because the second one is far more expensive than the first.
+
+**This mode never edits source files.** Feature mode adds docstrings as it goes
+(step 3); at repository scale that would be a sweeping unrequested rewrite, so here
+you only read. Report undocumented functions in the inventory's `purpose` field
+instead — inferred from the body when there is no docstring.
 '''

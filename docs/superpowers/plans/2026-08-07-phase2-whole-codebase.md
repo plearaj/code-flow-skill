@@ -31,14 +31,14 @@ Three host templates must stay semantically equivalent:
 | Gemini | `templates/gemini/code-flow.map.toml` | The same prose inside a TOML `prompt = '''…'''` string |
 | Copilot | `templates/copilot/code-flow.map.prompt.md` | Markdown with `mode: agent` frontmatter, a numbered list plus trailing sections |
 
-- **Claude's and Gemini's bodies carry the same content from `#### 1.` onward, but are NOT byte-identical**, and must not be made so. Measured at the phase-2 branch point (`e0276c3`), 33 lines diverge, in exactly three deliberate classes:
+- **Claude's and Gemini's bodies carry the same content from `#### 1.` onward, but are NOT byte-identical**, and must not be made so. Measured at the phase-2 branch point (`e0276c3`), 33 lines diverged, in exactly three deliberate classes. **Task 2 revised this baseline to 29**: its Step 3 replaces step 1's body identically in both hosts, subsuming the 3 `-`/1 `+` step-1 lines that previously diverged in that class. The current baseline — the one Tasks 3-5 check against — is **29 lines**, still in exactly the same three deliberate classes:
   1. **Claude-only tool names removed for Gemini** — Claude says "Use `Glob` to find relevant files", "Use `Grep` to find functions", "Add the docstring using the Edit tool"; Gemini says "Search for relevant files by name pattern" and so on. **Reconciling these would name tools the Gemini host does not have.**
   2. **Fence width** — Claude wraps example blocks in four-backtick fences because its own file is markdown containing nested fences; inside Gemini's TOML `'''` string that wrapper is unnecessary, so Gemini uses plain three-backtick fences.
   3. **ASCII substitution** — Claude writes `∈` and `≤`; Gemini writes "is one of" and "up to".
 
   **Do not "fix" any of these.** An earlier revision of this plan asserted byte-identity; that was wrong about the repository, and Task 1 caught it.
 
-- **The real rule, binding on every task:** every block phase 2 *adds* must be byte-identical between Claude and Gemini — the new text names no host-specific tool and needs no nested fence, so there is no reason for it to differ — and phase 2 must not change the pre-existing 33-line divergence. Both are checked by the parity script in Task 1 Step 7, which every later task re-runs.
+- **The real rule, binding on every task:** every block phase 2 *adds* must be byte-identical between Claude and Gemini — the new text names no host-specific tool and needs no nested fence, so there is no reason for it to differ — and no task after Task 2 may change the pre-existing 29-line divergence. Both are checked by the parity script in Task 1 Step 7, which every later task re-runs against the current baseline (29, as revised by Task 2).
 - **Copilot says the same thing in its own voice** — its numbered-list register, not Claude's heading register. Same rules, same field names, same derivations.
 - **Phase 1 lost four review rounds to this.** Every miss was a rule present in two hosts and absent from the third, and every miss was *outside* the section under review. So: at the end of each task, read all three templates **end-to-end** and **derive** — do not assert — that each rule the task added is present in each host. Record the derivation in the task report.
 - This plan gives each new rule **once**, as canonical text. Apply that one block to all three hosts. Do not expect a separate per-host block; asking for one is how phase 1's Copilot template got abridged five times.
@@ -213,7 +213,7 @@ Expected: all Python tests pass including the five new ones; Node unchanged at 7
 
 Read all three templates end-to-end. For the `id` rule specifically, confirm in each host: extension dropped from the last segment only; unqualified name; lowercase-and-normalize; the collision suffix with the new definition-keyword clarification.
 
-Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ in 33 lines. It checks that phase 2 did not *add* divergence:
+Then run the Claude/Gemini parity script. It does **not** check byte-identity — see the Host parity rule above; the two bodies legitimately differ in 33 lines at this point in the plan (Task 1). It checks that phase 2 did not *add* divergence:
 
 ```bash
 python - <<'PY'
@@ -236,6 +236,7 @@ Expected: `divergent lines: 33` and `OK`.
 - **More than 33** means your edit landed differently in the two hosts. Find it in the printed lines and close it.
 - **Fewer than 33** means you "fixed" one of the three deliberate adaptations. Restore it — the Gemini prompt must not name Claude-only tools.
 - Every printed line must belong to one of the three classes named in the Host parity rule. A divergent line that is none of them is a real defect regardless of the count.
+- **Note for tasks after Task 2:** Task 2's Step 3 rewrites step 1's body identically in both hosts, which subsumes 4 of these 33 lines (3 `-` / 1 `+`) and lowers the baseline to **29**. Task 2 records that revision in the Host parity rule above. When re-running this same script from Task 3 onward, substitute `29` for `33` in the two literals above (`(baseline 33)` and `len(diff) == 33`) and expect `divergent lines: 29` / `OK` instead.
 
 - [ ] **Step 8: Commit**
 

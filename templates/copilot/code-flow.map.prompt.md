@@ -7,7 +7,7 @@ Analyze the codebase and document the execution flow of the requested functional
 
 Follow these steps exactly:
 
-1. **Identify the target flow** from the user's request. Derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further.
+1. **Read the request for option flags first.** `--whole-code-base` maps the whole repository instead of one feature — if it is there, ignore steps 2-7 and follow "Whole-codebase mode" at the end of this prompt. `--detail thin|standard|verbose` sets how much evidence each catalogued function carries, default `standard`; it only matters in whole-codebase mode, so accept it silently otherwise, and if its value is not one of those three, say what you read, use `standard`, and carry on. Flags are options, not part of the feature name — strip them out. Then **identify the target flow** from what is left and derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further. Steps 2-7 are feature mode, the default.
 2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain.
 3. **Document undocumented functions** — add docstrings to any function in the flow that lacks one.
 4. **Generate `Code_Flows/<functionality_name>.md`** containing:
@@ -84,3 +84,9 @@ All four outputs go in `Code_Flows/` at the project root — create that directo
 - `Code_Flows/<functionality_name>.html` — the interactive page (step 5)
 - `Code_Flows/<functionality_name>.json` — the flow sidecar (step 6)
 - `Code_Flows/index.json` — the shared flow registry, created or updated in place, never rewritten from scratch (step 6)
+
+## Whole-codebase mode
+
+Reached only when the user passed `--whole-code-base`. Two passes: catalogue what exists, then trace how it runs. They are separate because they answer different questions and because the second is far more expensive than the first.
+
+**This mode never edits source files.** Step 3 adds docstrings in feature mode; at repository scale that would be a sweeping unrequested rewrite, so here you only read. Record what a function does in the inventory's `purpose` field instead — inferred from the body when there is no docstring.
