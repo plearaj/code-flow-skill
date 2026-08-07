@@ -3,6 +3,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+# The exact set ``--tool all`` must produce — nothing missing, nothing extra.
+# Both installers (this one and bin/install.js) are asserted against the same
+# literal list, which is what keeps them in lockstep.
+EXPECTED_ALL = [
+    ".claude/commands/code-flow.map.md",
+    ".code-flow/viewer.template.html",
+    ".gemini/commands/code-flow.map.toml",
+    ".github/prompts/code-flow.map.prompt.md",
+]
+
+
+def _installed_paths(root: Path) -> list[str]:
+    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+
+
+def test_tool_all_installs_exactly_the_expected_file_set(
+    tmp_path: Path, run_python_installer
+) -> None:
+    run_python_installer(tmp_path, tool="all")
+    assert _installed_paths(tmp_path) == EXPECTED_ALL
+
 
 def test_installs_viewer_scaffold(tmp_path: Path, run_python_installer) -> None:
     run_python_installer(tmp_path)

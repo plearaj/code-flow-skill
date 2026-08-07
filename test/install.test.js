@@ -19,6 +19,32 @@ export function tempTarget() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "code-flow-test-"));
 }
 
+// The exact set `--tool all` must produce — nothing missing, nothing extra.
+// Both installers (this one and src/code_flow_skill/cli.py) are asserted
+// against the same literal list, which is what keeps them in lockstep.
+const EXPECTED_ALL = [
+  ".claude/commands/code-flow.map.md",
+  ".code-flow/viewer.template.html",
+  ".gemini/commands/code-flow.map.toml",
+  ".github/prompts/code-flow.map.prompt.md",
+];
+
+function installedPaths(root) {
+  return fs
+    .readdirSync(root, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) =>
+      path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join("/"),
+    )
+    .sort();
+}
+
+test("--tool all installs exactly the expected file set", () => {
+  const target = tempTarget();
+  runInstaller(target, "all");
+  assert.deepEqual(installedPaths(target), EXPECTED_ALL);
+});
+
 test("installs the viewer scaffold", () => {
   const target = tempTarget();
   runInstaller(target);

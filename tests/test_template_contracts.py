@@ -37,7 +37,17 @@ def test_viewer_scaffold_has_exactly_one_token(repo_root: Path) -> None:
     assert text.count("__FLOW_DATA__") == 1
 
 
-INDEX_FIELD_NAMES = ("slug", "entry", "nodes", "coverage", "flowsTraced")
+INDEX_FIELD_NAMES = (
+    "slug",
+    "title",
+    "file",
+    "entry",
+    "nodes",
+    "coverage",
+    "flowsTraced",
+    "schema",
+    "mode",
+)
 
 # Marks the start of the Step 6 "write the machine-readable artifacts"
 # instructions in every host (Claude/Gemini: "#### 6. Write the
@@ -51,6 +61,26 @@ _INDEX_SECTION_START = re.compile(r"machine-readable artifacts", re.IGNORECASE)
 # the end boundary so the scoped region can't run past Step 6 into
 # unrelated text.
 _INDEX_SECTION_END = re.compile(r"\n(?:#### 7\.|7\.\s*\*\*Report)")
+
+
+def _field_reference(field: str) -> re.Pattern[str]:
+    """Match a *reference to the field named ``field``*, not the bare word.
+
+    A plain substring search is vacuous for several of these names, because
+    the same letters occur in ordinary prose inside the same region: `file`
+    appears in "written as a plain file", "These files are the contract" and
+    "rewriting the file would silently discard...", and `entry` appears in
+    "add or replace the entry for this flow". Deleting the bullet that
+    actually derives `file` would leave those prose hits behind and the
+    assertion would still pass.
+
+    Every real reference in every host is delimited: the field is either
+    JSON-quoted (`"file": "user_login.json"`), wrapped in a markdown code
+    span (`` `file` ``), or dotted onto its parent (``coverage.flowsTraced``,
+    ``meta.mode``). Requiring one of those three leading delimiters, plus a
+    word boundary after the name, keeps the prose occurrences out.
+    """
+    return re.compile(r"[`\".]" + re.escape(field) + r"\b")
 
 
 def _index_instructions_region(text: str) -> str:
@@ -83,15 +113,14 @@ def test_map_template_names_index_fields(repo_root: Path, host: str, name: str) 
     across the hosts' different voices. What it catches: a host dropping a
     field from its Step 6 instructions. What it does NOT catch: a host that
     names a field but omits the rule for how to derive or preserve its
-    value (e.g. this test passes as long as the word "entry" appears
-    anywhere in the Step 6 region, even if that region never says which
-    node's `id` to use for it). That class of divergence — a
-    present-but-underspecified field — is caught only by review, not by
-    this test.
+    value (e.g. this test passes as long as `entry` is referenced somewhere
+    in the Step 6 region, even if that region never says which node's `id`
+    to use for it). That class of divergence — a present-but-underspecified
+    field — is caught only by review, not by this test.
     """
     text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
     region = _index_instructions_region(text)
     for field in INDEX_FIELD_NAMES:
-        assert field in region, (
+        assert _field_reference(field).search(region), (
             f"{host}/{name} Step 6 instructions are missing the '{field}' field name"
         )

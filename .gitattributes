@@ -1,0 +1,11 @@
+# Both packagers ship the *working tree*, not the git index: `npm publish`
+# packs the files listed in package.json "files", and `uv build` packs `src/`
+# plus the force-included `templates/`. Without this file, the bytes that ship
+# in a release depend on the publisher's local `core.autocrlf` setting — on
+# Windows (autocrlf=true) the released templates would carry CRLF, and the
+# installers copy them byte-for-byte into consumers' projects.
+#
+# `* text=auto eol=lf` rather than a templates-only rule: every file both
+# packagers ship is affected (bin/, src/, README.md, LICENSE, NOTICE — not just
+# templates/), and this repo has no file that requires CRLF.
+* text=auto eol=lf

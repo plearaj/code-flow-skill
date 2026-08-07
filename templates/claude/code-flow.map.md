@@ -92,18 +92,20 @@ By default, **also** produce a self-contained interactive HTML page next to the 
     "tool": "code-flow"
   },
   "nodes": [
-    { "id": "login_view", "label": "login_view()", "file": "src/web/views.py", "line": 12, "kind": "entry", "description": "HTTP handler for POST /login.", "snippet": "def login_view(request):\n    ..." }
+    { "id": "src_web_views_login_view", "label": "login_view()", "file": "src/web/views.py", "line": 12, "kind": "entry", "description": "HTTP handler for POST /login.", "snippet": "def login_view(request):\n    ..." }
   ],
   "edges": [
-    { "from": "login_view", "to": "authenticate_user", "kind": "call", "label": "", "back": false }
+    { "from": "src_web_views_login_view", "to": "src_auth_service_authenticate_user", "kind": "call", "label": "", "back": false }
   ]
 }
 ```
 
 Rules — follow these exactly, or the page will refuse to render:
 
-- One node per function in the diagram. `id` is a unique slug of `[a-z0-9_]` characters. **Every `edge.from` and `edge.to` MUST match a node `id`.**
+- One node per function in the diagram. **Every `edge.from` and `edge.to` MUST match a node `id`.**
+- `id` is derived from the node's own `file` and function name, so that the same function always gets the same `id` and downstream tools can join flow nodes against a function catalog. Derive it exactly like this: take the repo-relative `file` path, drop the extension (the final `.` and everything after it), append `_` followed by the function's name, lowercase the whole string, replace every remaining character outside `[a-z0-9_]` — path separators, dots, dashes, spaces, `::` and the like — with `_`, collapse each run of `_` into a single `_`, and trim any leading or trailing `_`. Example: `src/web/views.py` + `login_view` → `src_web_views_login_view`. If two nodes still produce the same `id` (same-named methods in one file), append `_2`, `_3`, … in the order they appear in `nodes`.
 - `kind` on a **node** ∈ `entry` | `step` | `external` | `io` (default `step`). `entry` = where the flow starts; `external` = a third-party/library boundary; `io` = a DB/network/file side effect. This drives node color.
+- **Exactly one** node MUST have `kind: entry`. If the flow has several plausible roots — two HTTP handlers, say — pick the one the user asked about, make that the `entry`, and mark the others `step`.
 - `kind` on an **edge** ∈ `call` | `async` | `conditional` (default `call`). Set `"back": true` on any edge that closes a loop or recursion (points back to an ancestor) so it is drawn as a routed dashed curve.
 - All file paths use **forward slashes**, repo-relative. `meta.root` is the absolute project root with forward slashes (used only to build editor links).
 - `snippet` is optional — a short excerpt (≤ ~40 lines). **Inside every `snippet` string, replace each `</` with `<\/`** (a literal `</script>` would terminate the data block). No trailing commas anywhere.
@@ -146,7 +148,11 @@ so downstream tools never have to parse markup.
 **6b. The index.** Create or update `Code_Flows/index.json`. If it does not exist,
 create it with this shape. If it does exist, read it, add or replace the entry for
 this flow in `flows` (matching on `slug`), and write it back — preserving every
-other entry and any existing `coverage` values you did not compute.
+other entry and any existing `coverage` values you did not compute. If it exists
+but does not parse as JSON, **stop**: do not overwrite it and do not regenerate
+it. Report the file path and what is wrong with it to the user, and let them
+repair or delete it — rewriting the file would silently discard the registry of
+every flow mapped before this one.
 
 ```json
 {
@@ -155,7 +161,7 @@ other entry and any existing `coverage` values you did not compute.
   "coverage": { "flowsTraced": 1 },
   "flows": [
     { "slug": "user_login", "title": "User Login", "file": "user_login.json",
-      "entry": "login_view", "nodes": 9 }
+      "entry": "src_web_views_login_view", "nodes": 9 }
   ]
 }
 ```
@@ -163,7 +169,8 @@ other entry and any existing `coverage` values you did not compute.
 - `slug` is the snake_case functionality name. `title` is `meta.feature` from
   the sidecar's JSON object (step 5a). `file` is the sidecar's filename,
   relative to `Code_Flows/` — a bare filename, not a path.
-- `entry` is the `id` of the node whose `kind` is `entry`.
+- `entry` is the `id` of the one node whose `kind` is `entry` — step 5a requires
+  exactly one.
 - `nodes` is the count of entries in the flow's `nodes` array.
 - `coverage.flowsTraced` is the length of `flows` after your update.
 - Set `meta.mode` to `feature`. Whole-codebase mapping sets it differently and is

@@ -1,13 +1,13 @@
 ---
 mode: agent
-description: Map a code flow (or the whole codebase) into markdown plus an interactive HTML page.
+description: Analyze and document the flow of a code feature, generating a markdown file and an interactive HTML page with flow diagrams and function reference tables.
 ---
 
-The project includes a **Code Flow** skill that analyzes and documents code execution flows.
+Analyze the codebase and document the execution flow of the requested functionality (e.g., "the user login flow").
 
-When asked to document a code flow (e.g., "document the user login flow"), follow these steps:
+Follow these steps exactly:
 
-1. **Identify the target flow** from the user's request. Derive a snake_case filename.
+1. **Identify the target flow** from the user's request. Derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further.
 2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain.
 3. **Document undocumented functions** — add docstrings to any function in the flow that lacks one.
 4. **Generate `Code_Flows/<functionality_name>.md`** containing:
@@ -16,8 +16,8 @@ When asked to document a code flow (e.g., "document the user login flow"), follo
    - Bullet list of all function names in the flow
    - Function reference table with columns: Function, Description, File (`file:line` format)
 5. **Generate `Code_Flows/<functionality_name>.html`** — an interactive, self-contained page of the same flow (see below).
-6. **Write the machine-readable artifacts.** Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`: `title` is `meta.feature` from the sidecar's JSON object (step 5), `file` is the sidecar's filename relative to `Code_Flows/` (a bare filename, not a path), `entry` is the `id` of the node whose `kind` is `entry`, and `nodes` is the count of entries in the flow's `nodes` array. The file also carries `meta` (`root`, `generated`, `mode: "feature"`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update.
-7. **Report both output paths** to the user, and mention that the JSON artifacts were updated.
+6. **Write the machine-readable artifacts.** These are the contract consumed by `code-flow.quality`; they are not optional. Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. If `Code_Flows/index.json` exists but does not parse as JSON, **stop**: do not overwrite it and do not regenerate it. Report the file path and what is wrong with it to the user and let them repair or delete it — rewriting the file would silently discard the registry of every flow mapped before this one. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`: `title` is `meta.feature` from the sidecar's JSON object (step 5), `file` is the sidecar's filename relative to `Code_Flows/` (a bare filename, not a path), `entry` is the `id` of the one node whose `kind` is `entry` (exactly one node has it), and `nodes` is the count of entries in the flow's `nodes` array. The file also carries `meta` (`root`, `generated`, `mode: "feature"`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update.
+7. **Report the markdown and HTML paths** to the user, and mention that the JSON artifacts were updated.
 
 ### Interactive HTML view
 
@@ -36,17 +36,18 @@ By default, also produce a self-contained interactive HTML page next to the mark
     "tool": "code-flow"
   },
   "nodes": [
-    { "id": "login_view", "label": "login_view()", "file": "src/web/views.py", "line": 12, "kind": "entry", "description": "HTTP handler for POST /login.", "snippet": "def login_view(request):\n    ..." }
+    { "id": "src_web_views_login_view", "label": "login_view()", "file": "src/web/views.py", "line": 12, "kind": "entry", "description": "HTTP handler for POST /login.", "snippet": "def login_view(request):\n    ..." }
   ],
   "edges": [
-    { "from": "login_view", "to": "authenticate_user", "kind": "call", "label": "", "back": false }
+    { "from": "src_web_views_login_view", "to": "src_auth_service_authenticate_user", "kind": "call", "label": "", "back": false }
   ]
 }
 ```
 
 Rules (follow exactly or the page refuses to render):
-- One node per function. `id` is a unique `[a-z0-9_]` slug. **Every `edge.from`/`edge.to` MUST match a node `id`.**
-- Node `kind` ∈ `entry` | `step` | `external` | `io` (default `step`). Edge `kind` ∈ `call` | `async` | `conditional` (default `call`). Set `"back": true` on edges that close a loop/recursion.
+- One node per function. **Every `edge.from`/`edge.to` MUST match a node `id`.**
+- `id` is derived from the node's own `file` and function name, so that the same function always gets the same `id` and downstream tools can join flow nodes against a function catalog. Derive it exactly like this: take the repo-relative `file` path, drop the extension (the final `.` and everything after it), append `_` followed by the function's name, lowercase the whole string, replace every remaining character outside `[a-z0-9_]` — path separators, dots, dashes, spaces, `::` and the like — with `_`, collapse each run of `_` into a single `_`, and trim any leading or trailing `_`. Example: `src/web/views.py` + `login_view` → `src_web_views_login_view`. If two nodes still produce the same `id` (same-named methods in one file), append `_2`, `_3`, … in the order they appear in `nodes`.
+- Node `kind` ∈ `entry` | `step` | `external` | `io` (default `step`). **Exactly one** node MUST have `kind: entry`; if the flow has several plausible roots, pick the one the user asked about and mark the rest `step`. Edge `kind` ∈ `call` | `async` | `conditional` (default `call`). Set `"back": true` on edges that close a loop/recursion.
 - File paths use **forward slashes**, repo-relative; `meta.root` is the absolute root, forward slashes.
 - `snippet` is optional (≤ ~40 lines). **Replace each `</` with `<\/` inside every snippet.** No trailing commas.
 
@@ -77,4 +78,9 @@ Rules (follow exactly or the page refuses to render):
 
 ### Output Location
 
-Flow docs go in: `Code_Flows/<functionality_name>.md` and `Code_Flows/<functionality_name>.html`
+All four outputs go in `Code_Flows/` at the project root — create that directory if it does not exist. None of them is optional:
+
+- `Code_Flows/<functionality_name>.md` — the flow document (step 4)
+- `Code_Flows/<functionality_name>.html` — the interactive page (step 5)
+- `Code_Flows/<functionality_name>.json` — the flow sidecar (step 6)
+- `Code_Flows/index.json` — the shared flow registry, created or updated in place, never rewritten from scratch (step 6)
