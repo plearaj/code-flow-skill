@@ -160,7 +160,9 @@ other entry and any existing `coverage` values you did not compute.
 }
 ```
 
-- `slug` is the snake_case functionality name; `file` is the sidecar's filename.
+- `slug` is the snake_case functionality name. `title` is `meta.feature` from
+  the sidecar's JSON object (step 5a). `file` is the sidecar's filename,
+  relative to `Code_Flows/` — a bare filename, not a path.
 - `entry` is the `id` of the node whose `kind` is `entry`.
 - `nodes` is the count of entries in the flow's `nodes` array.
 - `coverage.flowsTraced` is the length of `flows` after your update.
