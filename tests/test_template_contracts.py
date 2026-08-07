@@ -136,6 +136,40 @@ def test_map_template_names_index_fields(repo_root: Path, host: str, name: str) 
         )
 
 
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_step6_preserves_the_whole_codebase_marker(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 6 must not overwrite a whole-codebase `meta.mode`/`meta.detail`.
+
+    Step 6 is the only step that writes `meta`, and whole-codebase mode's pass 2
+    reuses it verbatim for every entry point it traces. A step 6 that sets
+    `meta.mode` to `feature` unconditionally therefore rewrites the marker pass 1
+    wrote, and the finished whole-repository map claims to be a single-feature
+    one — corrupting the exact field phase 3 reads to decide what it is looking
+    at. `meta.detail` rides along on the same bug wherever a host enumerates the
+    meta block as a closed list.
+
+    Keyed on the literal `whole-code-base` inside the Step 6 region. That string
+    has no other reason to appear there: step 6 is feature mode's own step, and
+    every other mention of the mode in these templates lives in step 1's
+    cross-reference or in the mode section itself, both outside this region. The
+    weaker check next door — `mode` appearing in `INDEX_FIELD_NAMES` — passed
+    with this bug present, because the buggy text named the field too.
+
+    What it does NOT catch: a host that mentions `whole-code-base` in step 6 but
+    states the rule backwards, or that preserves `mode` while still clobbering
+    `detail`. Only review sees that.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _index_instructions_region(text)
+    assert "whole-code-base" in region, (
+        f"{host}/{name} Step 6 never mentions 'whole-code-base': it must say to "
+        f"leave meta.mode and meta.detail alone when the index is already a "
+        f"whole-codebase map"
+    )
+
+
 # --- Phase 2: whole-codebase mode -----------------------------------------
 
 # Anchored on the *heading*, not the words. Every host also mentions
@@ -152,17 +186,41 @@ _MODE_SECTION_START = re.compile(r"^#{2,3} +Whole-[Cc]odebase +[Mm]ode *$", re.M
 # ordinary words and prose elsewhere in these templates.
 WHOLE_CODEBASE_FLAGS = ("--whole-code-base", "--detail", "thin|standard|verbose")
 
+# Step 1 — where the flags are actually parsed — in every host: Claude and
+# Gemini open it with the heading "#### 1. Identify the Target Flow", Copilot
+# with the numbered item "1. **Read the request for option flags first.**".
+_STEP1_START = re.compile(r"^(?:#### 1\.|1\. \*\*)", re.MULTILINE)
+
+# Step 2's opening in every host ("#### 2. Discover..." / "2. **Discover..."),
+# used as the end boundary so the step 1 region cannot run on into the mode
+# section, where the flags are named again.
+_STEP1_END = re.compile(r"^(?:#### 2\.|2\. \*\*)", re.MULTILINE)
+
 
 @pytest.mark.parametrize("host,name", MAP_TEMPLATES)
 def test_map_template_documents_the_mode_flags(repo_root: Path, host: str, name: str) -> None:
-    """Every host must document both option flags and all three detail levels.
+    """Every host must document both option flags and all three detail levels
+    *in step 1*, where its instructions actually parse them.
 
     These are the user-facing surface of phase 2. A host that omits `--detail`
     silently gives its users a different command from the other two.
+
+    Scoped to step 1's own region rather than searched over the whole file.
+    Unscoped, this assertion was satisfied by coincidence: `--whole-code-base`
+    and `--detail` both recur in the whole-codebase-mode section further down,
+    so deleting a host's entire step 1 flag-parsing block left two of the three
+    tokens green, and only `thin|standard|verbose` failed — and only because
+    that exact token happens to appear nowhere else. Scoping makes the deletion
+    fail deliberately instead of by luck.
+
+    What it does NOT catch: a step 1 that names all three tokens but gives the
+    wrong rule for them (e.g. the wrong default, or the wrong fallback for an
+    unrecognized `--detail` value). That is review's job, not this test's.
     """
     text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _STEP1_START, _STEP1_END)
     for flag in WHOLE_CODEBASE_FLAGS:
-        assert flag in text, f"{host}/{name} never mentions {flag}"
+        assert flag in region, f"{host}/{name} step 1 never mentions {flag}"
 
 
 @pytest.mark.parametrize("host,name", MAP_TEMPLATES)

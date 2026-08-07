@@ -16,7 +16,7 @@ Follow these steps exactly:
    - Bullet list of all function names in the flow
    - Function reference table with columns: Function, Description, File (`file:line` format)
 5. **Generate `Code_Flows/<functionality_name>.html`** — an interactive, self-contained page of the same flow (see below).
-6. **Write the machine-readable artifacts.** These are the contract consumed by `code-flow.quality`; they are not optional. Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. If `Code_Flows/index.json` exists but does not parse as JSON, **stop**: do not overwrite it and do not regenerate it. Report the file path and what is wrong with it to the user and let them repair or delete it — rewriting the file would silently discard the registry of every flow mapped before this one. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`: `title` is `meta.feature` from the sidecar's JSON object (step 5), `file` is the sidecar's filename relative to `Code_Flows/` (a bare filename, not a path), `entry` is the `id` of the one node whose `kind` is `entry` (exactly one node has it), and `nodes` is the count of entries in the flow's `nodes` array. The file also carries `meta` (`root`, `generated`, `mode: "feature"`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update.
+6. **Write the machine-readable artifacts.** These are the contract consumed by `code-flow.quality`; they are not optional. Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. If `Code_Flows/index.json` exists but does not parse as JSON, **stop**: do not overwrite it and do not regenerate it. Report the file path and what is wrong with it to the user and let them repair or delete it — rewriting the file would silently discard the registry of every flow mapped before this one. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`: `title` is `meta.feature` from the sidecar's JSON object (step 5), `file` is the sidecar's filename relative to `Code_Flows/` (a bare filename, not a path), `entry` is the `id` of the one node whose `kind` is `entry` (exactly one node has it), and `nodes` is the count of entries in the flow's `nodes` array. The file also carries `meta` (`root`, `generated`, `mode`, `detail`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update. Set `meta.mode` to `"feature"` — **unless the file already has `"mode": "whole-code-base"`, in which case leave `meta.mode` and `meta.detail` exactly as you found them.** Whole-codebase mode reuses this step, and rewriting the marker there would leave a whole-repository map claiming to be a single-feature one.
 7. **Report the markdown and HTML paths** to the user, and mention that the JSON artifacts were updated.
 
 ### Interactive HTML view
@@ -134,6 +134,8 @@ per function or method you find:
   `name`. This is the whole point of the pass: a flow node and the inventory entry
   for the same function carry the same `id`, and that join is what lets a later
   command compute which catalogued functions no flow ever reaches.
+- `name` — the function's **unqualified** name, the same form the `id` rule uses:
+  `send`, never `EmailGateway.send`.
 - `line` — the line of the function's own definition keyword, never a decorator or
   comment above it. `loc` — its length in lines, definition line through last line
   inclusive.
@@ -184,6 +186,10 @@ is already there, and preserve every `coverage` value you did not compute. The
 same rule as feature mode applies: if `index.json` exists but does not parse,
 **stop**, report it, and do not overwrite it.
 
+`filesScanned` and `functionsCatalogued` describe the whole catalog, including files
+carried forward unchanged from an earlier run — not only what this session re-read.
+They are facts about the map, not about the session.
+
 `hash` lets a later command warn that the map is stale without re-reading source.
 Compute it with whatever the environment provides — `sha256sum <file>`,
 `Get-FileHash -Algorithm SHA256 <file>`, or `certutil -hashfile <file> SHA256` —
@@ -195,6 +201,11 @@ Never invent a hash value**; `size` alone still catches most edits.
 unchanged, keep that file's existing `functions` entries and move on rather than
 re-reading it. A repository too large to catalogue in one session is finished by
 running the command again.
+
+Before trusting `files[]`, read `Code_Flows/inventory.json`. If it is missing, or
+exists but does not parse, ignore the census entirely and catalogue every file from
+scratch — a census without a readable inventory would carry forward entries that are
+no longer there, and the counts would describe a catalog that does not exist.
 
 ### Pass 2 — trace: map the flows
 
@@ -214,6 +225,10 @@ and 6 exactly as written, treating that entry point as the requested flow — bu
 **skip step 3**: this mode does not edit source. Each flow produces its own
 `Code_Flows/<slug>.md`, `.html` and `.json`, and its own entry in `index.json`'s
 `flows` array. Derive the slug from the entry point's own name.
+
+Step 6 must leave `meta.mode` at `whole-code-base` and `meta.detail` as pass 1 set
+them — it is the only step here that writes `meta`, and this mode depends on those
+two values surviving every flow you trace.
 
 **c. Skip what is already mapped.** Before tracing, check `index.json`'s `flows`
 for that slug. If it is already there, skip it and move on — do not re-trace and do

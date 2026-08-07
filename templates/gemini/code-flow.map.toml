@@ -183,8 +183,11 @@ every flow mapped before this one.
   exactly one.
 - `nodes` is the count of entries in the flow's `nodes` array.
 - `coverage.flowsTraced` is the length of `flows` after your update.
-- Set `meta.mode` to `feature`. Whole-codebase mapping sets it differently and is
-  not part of this command yet.
+- Set `meta.mode` to `feature` — **unless the file already has
+  `"mode": "whole-code-base"`, in which case leave `meta.mode` and `meta.detail`
+  exactly as you found them.** Whole-codebase mode reuses this step, and rewriting
+  the marker there would leave a whole-repository map claiming to be a
+  single-feature one.
 
 #### 7. Finalize
 
@@ -247,6 +250,8 @@ per function or method you find:
   `name`. This is the whole point of the pass: a flow node and the inventory entry
   for the same function carry the same `id`, and that join is what lets a later
   command compute which catalogued functions no flow ever reaches.
+- `name` — the function's **unqualified** name, the same form the `id` rule uses:
+  `send`, never `EmailGateway.send`.
 - `line` — the line of the function's own definition keyword, never a decorator or
   comment above it. `loc` — its length in lines, definition line through last line
   inclusive.
@@ -297,6 +302,10 @@ is already there, and preserve every `coverage` value you did not compute. The
 same rule as feature mode applies: if `index.json` exists but does not parse,
 **stop**, report it, and do not overwrite it.
 
+`filesScanned` and `functionsCatalogued` describe the whole catalog, including files
+carried forward unchanged from an earlier run — not only what this session re-read.
+They are facts about the map, not about the session.
+
 `hash` lets a later command warn that the map is stale without re-reading source.
 Compute it with whatever the environment provides — `sha256sum <file>`,
 `Get-FileHash -Algorithm SHA256 <file>`, or `certutil -hashfile <file> SHA256` —
@@ -308,6 +317,11 @@ Never invent a hash value**; `size` alone still catches most edits.
 unchanged, keep that file's existing `functions` entries and move on rather than
 re-reading it. A repository too large to catalogue in one session is finished by
 running the command again.
+
+Before trusting `files[]`, read `Code_Flows/inventory.json`. If it is missing, or
+exists but does not parse, ignore the census entirely and catalogue every file from
+scratch — a census without a readable inventory would carry forward entries that are
+no longer there, and the counts would describe a catalog that does not exist.
 
 ### Pass 2 — Trace: map the flows
 
@@ -327,6 +341,10 @@ steps 2, 4, 5 and 6 exactly as written, treating that entry point as the request
 flow — but **skip step 3**: this mode does not edit source. Each flow produces its
 own `Code_Flows/<slug>.md`, `.html` and `.json`, and its own entry in `index.json`'s
 `flows` array. Derive the slug from the entry point's own name.
+
+Step 6 must leave `meta.mode` at `whole-code-base` and `meta.detail` as pass 1 set
+them — it is the only step here that writes `meta`, and this mode depends on those
+two values surviving every flow you trace.
 
 **2.3 Skip what is already mapped.** Before tracing, check `index.json`'s `flows`
 for that slug. If it is already there, skip it and move on — do not re-trace and do
