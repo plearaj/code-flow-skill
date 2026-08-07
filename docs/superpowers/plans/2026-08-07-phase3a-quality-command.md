@@ -1321,6 +1321,40 @@ git add templates/claude/code-flow.quality.md templates/gemini/code-flow.quality
 git commit -m "feat: --read-code verification, and verify-before-drop on stale files"
 ```
 
+#### Amendments applied during execution
+
+Task 4's review found the template prose spec-compliant and at parity; both Important
+findings were in the test harness. Where this section and the shipped files disagree,
+**the shipped files govern**.
+
+1. **`_VERIFY_END`'s Copilot branch was title-locked** (`5\.\s*\*\*Write`), repeating
+   one step later the exact mistake `_DETECTORS_END`'s own comment forbids. Had Task 5
+   titled Copilot's step anything but "Write", the verify region would have silently
+   swallowed steps 5-6. Loosened to `\n(?:#### 5\.|5\.\s*\*\*)`, with the explanatory
+   comment carried forward.
+2. **`_verify_region` omitted `_flatten`, and one assertion branch was already dead.**
+   The phrase hard-wraps as "it is **not\na second scan of the repository**", so
+   `not a second scan` matched nothing in Claude or Copilot and
+   `test_quality_template_verifies_only_cited_files` was passing on its fallback
+   branch alone. Wrapping the region in `_flatten` revived it; the re-review confirmed
+   both branches now match in all three hosts, and swept the other ten assertions for
+   the same latent problem (none found).
+
+One Minor was folded in: the staleness-drop rule did not say whether one stale site
+among several dropped the whole finding or only that site. All three hosts now say the
+whole finding goes, because a finding is only as trustworthy as its weakest citation.
+That added three tests, so this task shipped **63**, not the 60 predicted above.
+
+Two additions the implementer made on its own initiative and the review endorsed:
+`test_quality_template_marks_confidence_both_ways` was strengthened from the brief's
+`"verified" in region` to `\bverified\b`, and the line-correction rule gained the
+forward-slash / repo-relative clause — step 4 is the only step that rewrites a `line`
+after the map wrote it, so it is the only place that rule can be enforced.
+
+**Length budget, carried forward.** `templates/claude/code-flow.quality.md` is 211
+lines after this step, against the ~250 the plan intends for all six. Step 4 alone
+took 39 lines. Tasks 5 and 6 share roughly 39 between them.
+
 ---
 
 ### Task 5: Write the two reports
@@ -1586,9 +1620,9 @@ Append to `templates/copilot/code-flow.quality.prompt.md`:
 
 Run: `uv run --group dev pytest tests/test_template_contracts.py -v -k quality`
 
-Expected: PASS, 84 tests (28 assertions across 3 hosts) — 60 carried in from Task 4,
+Expected: PASS, 87 tests (29 assertions across 3 hosts) — 63 carried in from Task 4,
 plus this task's 8. The figure written when this plan was drafted was 78, before
-Task 3 gained two assertions in review.
+Tasks 3 and 4 gained three assertions between them in review.
 
 - [ ] **Step 6: Re-run the parity script**
 
