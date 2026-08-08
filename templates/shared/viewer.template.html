@@ -160,6 +160,12 @@ function validate(raw, TOKEN){
            edges: edges.filter(function(e){ return byId.has(e.from) && byId.has(e.to); }) };
 }
 /* ==== validate:end ==== */
+/* Nothing below this line is covered by any test in this repository: the
+   suite pins that validate()'s verdict is called through fail()/return, but
+   what fail() writes to the DOM and everything the render code below builds
+   is exercised only by the pre-release manual browser pass (see the "Before
+   publishing" section of README.md). A change to this file's rendering
+   re-opens that gap silently -- run the manual pass again. */
 
 var v = validate(document.getElementById("flow-data").textContent, TOKEN);
 if (!v.ok){ fail(v.title, v.lines); return; }

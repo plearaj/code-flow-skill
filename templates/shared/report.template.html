@@ -180,6 +180,12 @@ function validate(raw, TOKEN){
   return { ok:true, data:data, meta:meta, coverage:coverage, findings:findings };
 }
 /* ==== validate:end ==== */
+/* Nothing below this line is covered by any test in this repository: the
+   suite pins that validate()'s verdict is called through fail()/return, but
+   what fail() writes to the DOM and everything the render code below builds
+   is exercised only by the pre-release manual browser pass (see the "Before
+   publishing" section of README.md). A change to this file's rendering
+   re-opens that gap silently -- run the manual pass again. */
 
 var raw = document.getElementById("report-data").textContent;
 var v = validate(raw, TOKEN);
