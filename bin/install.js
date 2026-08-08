@@ -24,14 +24,23 @@ const target = path.resolve(process.cwd(), parseArg("--target", "."));
 const tool = parseArg("--tool", "all");
 const selected = tool === "all" ? ["claude", "gemini", "copilot"] : [tool];
 
-// The interactive HTML viewer scaffold is tool-agnostic: every command
-// template references it, so install it regardless of the selected tool.
-function installViewer() {
-  const src = path.join(pkgRoot, "templates", "shared", "viewer.template.html");
-  const dst = path.join(target, ".code-flow", "viewer.template.html");
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.copyFileSync(src, dst);
-  console.log(`Installed interactive viewer template: ${dst}`);
+// Both scaffolds are tool-agnostic: every command template references one of
+// them, so both install regardless of --tool. This list and the one in
+// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests
+// in both languages are what holds them there.
+const sharedFiles = [
+  ["viewer.template.html", "interactive viewer"],
+  ["report.template.html", "quality report viewer"],
+];
+
+function installShared() {
+  for (const [name, label] of sharedFiles) {
+    const src = path.join(pkgRoot, "templates", "shared", name);
+    const dst = path.join(target, ".code-flow", name);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    console.log(`Installed ${label} template: ${dst}`);
+  }
 }
 
 // Each host installs one file per command. This list and the one in
@@ -67,4 +76,4 @@ for (const name of selected) {
   }
 }
 
-installViewer();
+installShared();

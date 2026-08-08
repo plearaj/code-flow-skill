@@ -25,6 +25,7 @@ export function tempTarget() {
 const EXPECTED_ALL = [
   ".claude/commands/code-flow.map.md",
   ".claude/commands/code-flow.quality.md",
+  ".code-flow/report.template.html",
   ".code-flow/viewer.template.html",
   ".gemini/commands/code-flow.map.toml",
   ".gemini/commands/code-flow.quality.toml",

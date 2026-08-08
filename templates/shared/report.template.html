@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Flow — Quality Report</title>
+<style>
+:root { color-scheme: light dark; }
+body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+#err { padding: 24px; }
+#err h2 { margin: 0 0 8px; font-size: 16px; }
+#err pre { white-space: pre-wrap; margin: 0; }
+</style>
+</head>
+<body>
+<div id="err" hidden></div>
+<main id="app"></main>
+<script type="application/json" id="report-data">__REPORT_DATA__</script>
+<script>
+(function(){
+"use strict";
+/* built dynamically so the installer's string replacement cannot touch the check itself */
+var TOKEN = "__REPORT" + "_DATA__";
+var errBox = document.getElementById("err");
+function fail(title, lines){
+  errBox.hidden = false;
+  errBox.innerHTML = "";
+  var card = document.createElement("div");
+  var h = document.createElement("h2"); h.textContent = title; card.appendChild(h);
+  var pre = document.createElement("pre"); pre.textContent = lines.join("\n"); card.appendChild(pre);
+  errBox.appendChild(card);
+}
+
+/* ==== validate:start ==== */
+function validate(raw, TOKEN){
+  return { ok: false, title: "Not implemented", lines: ["Task 3 writes this."] };
+}
+/* ==== validate:end ==== */
+
+var raw = document.getElementById("report-data").textContent;
+var v = validate(raw, TOKEN);
+if (!v.ok) { fail(v.title, v.lines); return; }
+/* Task 4 renders v.data into #app here. */
+})();
+</script>
+</body>
+</html>

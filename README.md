@@ -281,9 +281,10 @@ mkdir -p .github/prompts
 cp /path/to/code-flow-skill/templates/copilot/code-flow.map.prompt.md .github/prompts/code-flow.map.prompt.md
 cp /path/to/code-flow-skill/templates/copilot/code-flow.quality.prompt.md .github/prompts/code-flow.quality.prompt.md
 
-# Interactive HTML viewer scaffold (needed for all tools)
+# Interactive HTML viewer + quality report scaffolds (needed for all tools)
 mkdir -p .code-flow
 cp /path/to/code-flow-skill/templates/shared/viewer.template.html .code-flow/viewer.template.html
+cp /path/to/code-flow-skill/templates/shared/report.template.html .code-flow/report.template.html
 ```
 
 On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` for `cp`.
@@ -313,8 +314,9 @@ Defaults: `--tool all`, `--target .`.
 | GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
+| _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 
-The `.code-flow/viewer.template.html` scaffold is tool-agnostic and is installed regardless of which `--tool` you select, since every command template references it.
+The `.code-flow/viewer.template.html` and `.code-flow/report.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
 
 ## Packages
 
