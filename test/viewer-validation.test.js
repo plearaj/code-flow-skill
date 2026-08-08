@@ -24,7 +24,11 @@ function extractValidate(templateName) {
   assert.ok(to !== -1, `${templateName} is missing ${END}`);
   assert.ok(to > from, `${templateName} has its sentinels in the wrong order`);
   const block = src.slice(from + START.length, to);
-  return new Function(`${block}; return validate;`)();
+  // Both scaffolds run this code inside `(function(){"use strict"; ...})()`.
+  // Evaluating the extracted block without the same directive would run it in
+  // sloppy mode, which is not "the same decision logic the browser runs" —
+  // the one thing this harness exists to claim.
+  return new Function('"use strict";' + block + "; return validate;")();
 }
 
 const SCAFFOLDS = [
