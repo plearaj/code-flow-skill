@@ -1330,6 +1330,69 @@ def test_quality_template_states_the_html_escaping_rule(
     ), f"{host} does not state the </ escaping rule"
 
 
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_states_the_three_files_never_contradict(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`quality-report.json`, `.md` and `.html` are three renderings of one
+    document, and this rule is what keeps a future edit to just one of them
+    from being read as a spec change instead of a bug.
+
+    `tests/test_host_parity.py` only diffs Claude against Gemini, so it
+    structurally cannot see Copilot drift -- this project's recurring failure
+    is a rule present in two hosts and absent from the third. Before this
+    test, that rule's only guard in Copilot was a human read that expires the
+    moment this branch merges.
+
+    The wording is not byte-identical across hosts: Claude and Gemini say
+    "All three files are renderings of the same data"; Copilot's own register
+    says "All three files render the same data". The pattern is written
+    around that difference -- anchored on "All three files" and "none may
+    contradict another" with a loose gap for "same data" between them -- so it
+    does not require reflowing Copilot's prose to match Claude's, only that
+    every host state the same rule.
+
+    "All three files" is unique to this sentence in every host (the only other
+    "three ..." phrase in this step is "report all three file paths to the
+    user", which does not start with "All"), so this is not satisfied by
+    incidental prose elsewhere in the output region.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"All three files\b.{0,40}same data.{0,30}none may contradict another", region), (
+        f"{host} never states that the three report files are renderings of the same data "
+        f"that must not contradict one another"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_degrades_gracefully_without_the_scaffold(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The other half of the step-6 rule pair introduced alongside the test
+    above: if `.code-flow/report.template.html` cannot be read, the command
+    still writes the JSON and the markdown rather than stopping.
+
+    Same parity gap as the test above -- `test_host_parity.py` cannot see
+    Copilot, so this rule's only guard there was a human read. The lead-in
+    clause differs by host (Claude/Gemini: "If you cannot read the scaffold";
+    Copilot: "If the scaffold cannot be read"), so the pattern matches either
+    phrasing rather than reflowing one host's prose to match the other's. The
+    consequence clause that follows -- "a missing viewer is a missing
+    convenience, not a missing report" -- is byte-identical in all three hosts
+    and anchors the assertion to the specific degradation rule rather than to
+    any other sentence that happens to contain "cannot" or "missing".
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"cannot (?:read the scaffold|be read),? say so and write the other two"
+        r".{0,10}a missing viewer is a missing convenience, not a missing report",
+        region,
+    ), (
+        f"{host} does not say the command still writes the JSON and markdown "
+        f"when the report scaffold cannot be read"
+    )
+
+
 # --- Phase 3b: the two viewer scaffolds ------------------------------------
 
 SCAFFOLDS = (
