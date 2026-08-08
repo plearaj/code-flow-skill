@@ -5,16 +5,107 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Code Flow — Quality Report</title>
 <style>
-:root { color-scheme: light dark; }
-body { margin: 0; font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
-#err { padding: 24px; }
-#err h2 { margin: 0 0 8px; font-size: 16px; }
-#err pre { white-space: pre-wrap; margin: 0; }
+/* ============ theme tokens (shared vocabulary with the flow viewer) ============ */
+:root{
+  --bg:#15171c; --panel:#1a1d24; --border:#2b2f3a; --text:#d7dae1; --dim:#868d9a;
+  --accent:#e8a33d; --err:#e06c5f; --code:#11131a;
+  --high:#e06c5f; --medium:#e8a33d; --low:#7f8794;
+}
+[data-theme="light"]{
+  --bg:#f3f2ee; --panel:#fbfaf7; --border:#d7d4ca; --text:#2c2e34; --dim:#767b86;
+  --accent:#b57511; --err:#b3372a; --code:#f0eee7;
+  --high:#b3372a; --medium:#b57511; --low:#767b86;
+}
+/* ============ page frame ============ */
+*{box-sizing:border-box; margin:0}
+[hidden]{display:none !important}
+body{background:var(--bg); color:var(--text); font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+.mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
+#app{max-width:880px; margin:0 auto; padding:0 20px 64px}
+/* ============ error card ============ */
+#err{max-width:880px; margin:24px auto; padding:0 20px}
+#err>div{border:1px solid var(--err); border-left:4px solid var(--err); border-radius:8px;
+  background:var(--panel); padding:18px 20px}
+#err h2{color:var(--err); font-size:14px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px}
+#err pre{white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.7;
+  font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+/* ============ header ============ */
+.topbar{display:flex; align-items:flex-start; gap:12px; padding:22px 0 16px; border-bottom:1px solid var(--border)}
+.topbar h1{font-size:16px; letter-spacing:.14em; text-transform:uppercase; font-weight:600}
+.topbar .sub{margin-top:5px; font-size:11.5px; color:var(--dim); word-break:break-word}
+.topbar .spacer{flex:1}
+button.ghost{padding:5px 11px; border:1px solid var(--border); border-radius:6px;
+  background:var(--panel); color:var(--text); font:12px system-ui,sans-serif; cursor:pointer; flex:none}
+button.ghost:hover{border-color:var(--accent); color:var(--accent)}
+/* ============ coverage-banner: leads the page, never collapsible ============ */
+.coverage-banner{margin-top:20px; border:1px solid var(--border); border-left:4px solid var(--accent);
+  border-radius:8px; background:var(--panel); padding:16px 18px}
+.coverage-banner h2{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent)}
+.coverage-banner .lead{margin-top:8px; font-size:14.5px}
+.coverage-banner .lead.partial{font-weight:600}
+.coverage-banner ul.facts{list-style:none; margin-top:12px; display:grid; gap:5px}
+.coverage-banner ul.facts li{font-size:13px; padding-left:20px; position:relative}
+.coverage-banner ul.facts li::before{content:"—"; position:absolute; left:0; color:var(--dim)}
+.coverage-banner ul.facts li.warn{color:var(--err)}
+.coverage-banner .note{margin-top:12px; font-size:12px; color:var(--dim)}
+/* ============ the no-findings screen ============ */
+.no-findings{margin-top:22px; border:1px solid var(--accent); border-left:4px solid var(--accent);
+  border-radius:8px; background:var(--panel); padding:18px 20px}
+.no-findings h2{font-size:16px; line-height:1.4}
+.no-findings p{margin-top:10px; font-size:13.5px}
+/* ============ filters ============ */
+.filters{display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin-top:26px}
+.filters .filter{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim)}
+.filters select{padding:4px 8px; border:1px solid var(--border); border-radius:6px;
+  background:var(--panel); color:var(--text); font:12px system-ui,sans-serif}
+.filters .count{margin-left:auto; font-size:12px; color:var(--dim)}
+.hint{margin-top:8px; font-size:11.5px; color:var(--dim)}
+.filter-empty{margin-top:18px; border:1px dashed var(--border); border-radius:8px;
+  padding:14px 16px; font-size:13px; color:var(--dim)}
+/* ============ findings-list ============ */
+.findings-list{margin-top:16px; display:grid; gap:14px}
+.finding{border:1px solid var(--border); border-left:4px solid var(--low); border-radius:8px;
+  background:var(--panel); padding:15px 17px}
+.finding.sev-high{border-left-color:var(--high)}
+.finding.sev-medium{border-left-color:var(--medium)}
+.finding.sev-low{border-left-color:var(--low)}
+.fhead{display:flex; align-items:center; flex-wrap:wrap; gap:7px}
+.fid{font-size:12px; font-weight:600; letter-spacing:.06em}
+.chip{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--dim);
+  border:1px solid var(--border); border-radius:4px; padding:1px 7px}
+.chip.sev-high{color:var(--high); border-color:var(--high)}
+.chip.sev-medium{color:var(--medium); border-color:var(--medium)}
+.chip.sev-low{color:var(--low)}
+.chip.conf-unverified{color:var(--err); border-color:var(--err)}
+.finding h3{margin-top:10px; font-size:15px}
+.finding p{margin-top:8px; font-size:13.5px}
+.candidate-note{border-left:2px solid var(--dim); padding-left:10px; color:var(--dim); font-size:12.5px}
+dl.evidence{margin-top:10px; display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:12.5px}
+dl.evidence dt{color:var(--dim); text-transform:uppercase; font-size:10px; letter-spacing:.09em; padding-top:3px}
+.finding h4{margin-top:14px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim)}
+ul.sites{list-style:none; margin-top:7px; display:grid; gap:9px}
+ul.sites li{border:1px solid var(--border); border-radius:6px; padding:8px 10px}
+ul.sites .loc{font-size:12.5px; word-break:break-all}
+ul.sites .sym{font-size:11.5px; color:var(--dim); margin-top:2px}
+ul.sites pre{margin-top:7px; background:var(--code); border:1px solid var(--border); border-radius:6px;
+  padding:9px 11px; font-size:12px; line-height:1.5; overflow:auto; white-space:pre;
+  font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+ul.sites .nosnip{margin-top:6px; font-size:11.5px; color:var(--dim); font-style:italic}
+.suggestion{margin-top:13px; font-size:13.5px}
+.suggestion .lbl{display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin-bottom:3px}
+@media (max-width:600px){ .filters .count{margin-left:0; width:100%} }
 </style>
 </head>
 <body>
 <div id="err" hidden></div>
 <main id="app"></main>
+
+<!-- Report data. The token below is replaced verbatim with a JSON object matching
+     the quality-report schema. IMPORTANT for whoever fills this in: any literal
+     "</" inside snippet strings must be written as "<\/" (e.g. "<\/div>"),
+     otherwise a "</script>" sequence inside the JSON would terminate this script
+     block. Everything downstream of the parse renders with textContent, so a
+     snippet that survives the parse can never be interpreted as markup. -->
 <script type="application/json" id="report-data">__REPORT_DATA__</script>
 <script>
 (function(){
@@ -93,7 +184,234 @@ function validate(raw, TOKEN){
 var raw = document.getElementById("report-data").textContent;
 var v = validate(raw, TOKEN);
 if (!v.ok) { fail(v.title, v.lines); return; }
-/* Task 4 renders v.data into #app here. */
+
+/* ============ render ============
+   Every value below reaches the page through textContent. Snippets are source
+   code from the analyzed repository: they routinely contain angle brackets and
+   must always land on the page as characters, never as markup. */
+var meta = v.meta, coverage = v.coverage, findings = v.findings;
+var app = document.getElementById("app");
+
+function el(tag, cls, text, parent){
+  var d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (text != null) d.textContent = text;
+  (parent || app).appendChild(d);
+  return d;
+}
+function count(x){ return (typeof x === "number" && isFinite(x)) ? x : null; }
+function plural(n, one, many){ return n === 1 ? one : many; }
+
+/* ---- header ---- */
+var topbar = el("header", "topbar");
+var titles = el("div", "titles", null, topbar);
+el("h1", null, "Code Flow — Quality Report", titles);
+var sub = [];
+if (meta.generated) sub.push("generated " + meta.generated);
+if (meta.mapGenerated) sub.push("from a map of " + meta.mapGenerated);
+if (meta.mapMode) sub.push(String(meta.mapMode));
+if (meta.mapDetail) sub.push("detail: " + meta.mapDetail);
+sub.push(meta.readCode ? "findings verified against source" : "findings not verified against source");
+el("div", "sub", sub.join("  ·  "), titles);
+el("div", "spacer", null, topbar);
+var themeBtn = el("button", "ghost", "◐", topbar);
+themeBtn.title = "Toggle light/dark";
+themeBtn.setAttribute("aria-label", "Toggle light and dark theme");
+
+/* ---- coverage banner: leads the page, structurally and visually, and is not
+   collapsible. Everything below it is only as trustworthy as these numbers. ---- */
+var traced = count(coverage.flowsTraced), entries = count(coverage.entryPointsFound);
+var partial = traced !== null && entries !== null && traced < entries;
+var banner = el("section", "coverage-banner");
+el("h2", null, "Coverage", banner);
+var lead = el("p", partial ? "lead partial" : "lead", null, banner);
+if (partial){
+  lead.textContent = "The map is partial: " + traced + " of " + entries +
+    " entry points were traced. Everything below is clean within what was mapped — " +
+    "never a clean bill of health for the repository.";
+} else if (traced !== null && entries !== null){
+  lead.textContent = traced + " of " + entries + " entry " + plural(entries, "point", "points") +
+    " found were traced. Findings describe what the map catalogued, not what the repository contains.";
+} else {
+  lead.textContent = "This report does not record how many entry points were traced, " +
+    "so how much of the repository it covers is unknown.";
+}
+
+var facts = el("ul", "facts", null, banner);
+function fact(text, warn){ return el("li", warn ? "warn" : null, text, facts); }
+
+if (count(coverage.functionsCatalogued) !== null){
+  fact(coverage.functionsCatalogued + " functions catalogued");
+}
+if (count(coverage.filesChanged) !== null){
+  fact(coverage.filesChanged + " of the files the map recorded " +
+    plural(coverage.filesChanged, "has", "have") + " changed since mapping",
+    coverage.filesChanged > 0);
+}
+if (count(coverage.findingsDropped) !== null){
+  fact(coverage.findingsDropped + " " + plural(coverage.findingsDropped, "finding", "findings") +
+    " dropped as stale", coverage.findingsDropped > 0);
+}
+if (count(coverage.flowsUnreadable)){
+  fact(coverage.flowsUnreadable + " " + plural(coverage.flowsUnreadable, "flow", "flows") +
+    " could not be read and " + plural(coverage.flowsUnreadable, "was", "were") + " not analyzed", true);
+}
+
+/* A skipped detector is a hole in the report, so it is shown with its reason
+   rather than hidden. `detectorsSkipped` carries names only, so the reason is
+   restated here from the rule in the quality command that gates the detector
+   off. A name this viewer does not recognise still gets a line — an unnamed
+   hole is worse than an unexplained one. */
+var SKIP_REASONS = {
+  "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
+    "re-run the quality command with --read-code, or re-map with --detail standard"
+};
+var skipped = Array.isArray(coverage.detectorsSkipped) ? coverage.detectorsSkipped : [];
+if (skipped.length){
+  skipped.forEach(function(name){
+    var why = SKIP_REASONS[name] || "reason not recorded in this report";
+    fact(String(name) + " did not run: " + why, true);
+  });
+} else {
+  fact("No detectors were skipped");
+}
+el("p", "note", "Discovery was Glob, Grep and Read — not a parser. These counts describe " +
+  "what the map catalogued, and anything it never reached was never examined.", banner);
+
+/* ---- findings ---- */
+if (!findings.length){
+  /* The most over-read screen in the product. It says what an empty findings
+     array actually means, in words, and deliberately carries no checkmark, no
+     green, and no empty-state illustration. */
+  var none = el("section", "no-findings");
+  el("h2", null, "No findings — clean within what was mapped", none);
+  el("p", null, "This is not a clean bill of health. The detectors only saw " +
+    (traced !== null && entries !== null
+      ? traced + " of " + entries + " entry " + plural(entries, "point", "points")
+      : "the portion of the repository the map reached") +
+    ", and code outside that was never examined. Read this together with the coverage above.", none);
+  el("p", null, "A clean result here means the detectors that ran found nothing they could " +
+    "cite evidence for in the mapped portion. It is not a statement about the repository.", none);
+} else {
+  var section = el("section", "findings");
+  var bar = el("div", "filters", null, section);
+
+  function chooser(id, label, options){
+    var wrap = el("label", "filter", null, bar);
+    el("span", null, label, wrap);
+    var sel = document.createElement("select");
+    sel.id = id;
+    options.forEach(function(pair){
+      var opt = document.createElement("option");
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      sel.appendChild(opt);
+    });
+    wrap.appendChild(sel);
+    sel.addEventListener("change", applyFilters);
+    return sel;
+  }
+  var bySeverity = chooser("filter-severity", "Severity",
+    [["", "any"], ["high", "high"], ["medium", "medium"], ["low", "low"]]);
+  var byPrinciple = chooser("filter-principle", "Principle",
+    [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"]]);
+  var shownCount = el("div", "count", null, bar);
+  el("div", "hint", "Findings appear in the order the analysis produced them — by severity, " +
+    "then site count, then principle. The filters hide rows; they never reorder them.", section);
+
+  var list = el("div", "findings-list", null, section);
+  var cards = [];
+
+  findings.forEach(function(f){
+    var card = el("article", "finding sev-" + f.severity, null, list);
+    cards.push({ f: f, el: card });
+
+    var head = el("div", "fhead", null, card);
+    el("span", "fid mono", f.id, head);
+    el("span", "chip sev-" + f.severity, f.severity, head);
+    el("span", "chip", f.principle, head);
+    el("span", "chip", f.detector, head);
+    el("span", "chip conf-" + f.confidence, f.confidence, head);
+    if (f.effort) el("span", "chip", "effort: " + f.effort, head);
+
+    el("h3", null, f.title, card);
+    if (f.rationale) el("p", null, f.rationale, card);
+
+    if (f.detector === "unreached"){
+      el("p", "candidate-note", "An unreached function is a candidate for review, never a verdict: " +
+        "parser-free tracing cannot see every caller. Confirm the call sites " +
+        "yourself before acting on this.", card);
+    }
+
+    var evidence = [];
+    if (Array.isArray(f.flows) && f.flows.length) evidence.push(["flows", f.flows.join(", ")]);
+    if (f.metric != null){
+      evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "")]);
+    } else if (f.value != null){
+      evidence.push(["value", String(f.value)]);
+    }
+    if (typeof f.exported === "boolean") evidence.push(["exported", f.exported ? "yes" : "no"]);
+    if (f.reachedBy){
+      evidence.push(["reached by", f.reachedBy === "tests" ? "its own tests only" : String(f.reachedBy)]);
+    }
+    if (evidence.length){
+      var dl = el("dl", "evidence", null, card);
+      evidence.forEach(function(pair){
+        el("dt", null, pair[0], dl);
+        el("dd", null, pair[1], dl);
+      });
+    }
+
+    el("h4", null, plural(f.sites.length, "Site", "Sites"), card);
+    var sites = el("ul", "sites", null, card);
+    f.sites.forEach(function(s){
+      var li = el("li", null, null, sites);
+      el("div", "loc mono", String(s.file) + ":" + String(s.line), li);
+      if (s.symbol) el("div", "sym mono", String(s.symbol), li);
+      /* A missing snippet is normal: a thin map read without --read-code has
+         none. Say so quietly; it is not an error. */
+      if (s.snippet) el("pre", "mono", String(s.snippet), li);
+      else el("div", "nosnip", "no snippet in the map", li);
+    });
+
+    if (f.suggestion){
+      var sg = el("div", "suggestion", null, card);
+      el("span", "lbl", "Suggestion", sg);
+      el("span", null, f.suggestion, sg);
+    }
+  });
+
+  var filterEmpty = el("div", "filter-empty", null, section);
+  filterEmpty.hidden = true;
+
+  function applyFilters(){
+    var wantSeverity = bySeverity.value, wantPrinciple = byPrinciple.value, shown = 0;
+    cards.forEach(function(c){
+      var keep = (!wantSeverity || c.f.severity === wantSeverity) &&
+                 (!wantPrinciple || c.f.principle === wantPrinciple);
+      c.el.hidden = !keep;
+      if (keep) shown++;
+    });
+    shownCount.textContent = (shown === findings.length)
+      ? findings.length + " " + plural(findings.length, "finding", "findings")
+      : "showing " + shown + " of " + findings.length + " findings";
+    filterEmpty.textContent = "No finding matches the current filter. That is a filter " +
+      "result and says nothing about the code — widen the filters to see the findings again.";
+    filterEmpty.hidden = shown !== 0;
+  }
+  applyFilters();
+}
+
+/* ---- theme: same control and same localStorage key as the flow viewer, so the
+   two artifacts agree about a user's choice ---- */
+var rootEl = document.documentElement;
+function setTheme(t){ rootEl.setAttribute("data-theme", t); try { localStorage.setItem("codeflow-theme", t); } catch (e) {} }
+var saved = null; try { saved = localStorage.getItem("codeflow-theme"); } catch (e) {}
+rootEl.setAttribute("data-theme", saved ||
+  (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+themeBtn.addEventListener("click", function(){
+  setTheme(rootEl.getAttribute("data-theme") === "light" ? "dark" : "light");
+});
 })();
 </script>
 </body>
