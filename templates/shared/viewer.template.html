@@ -121,31 +121,49 @@ function fail(title, lines){
   var pre = document.createElement("pre"); pre.textContent = lines.join("\n"); card.appendChild(pre);
   errBox.appendChild(card);
 }
-var raw = (document.getElementById("flow-data").textContent || "").trim();
-if (raw === TOKEN){ fail("No flow data", ["The " + TOKEN + " placeholder was never replaced.", "This template must be filled with a JSON data block before viewing."]); return; }
-var data;
-try { data = JSON.parse(raw); }
-catch(e){ fail("Invalid JSON in #flow-data", [String(e.message || e), "", "Tip: literal </ inside snippet strings must be escaped as <\\/."]); return; }
+/* ==== validate:start ==== */
+function validate(raw, TOKEN){
+  raw = (raw || "").trim();
+  if (raw === TOKEN){
+    return { ok:false, title:"No flow data", lines:[
+      "The " + TOKEN + " placeholder was never replaced.",
+      "This template must be filled with a JSON data block before viewing."
+    ]};
+  }
+  var data;
+  try { data = JSON.parse(raw); }
+  catch(e){
+    return { ok:false, title:"Invalid JSON in #flow-data", lines:[
+      String(e.message || e), "",
+      "Tip: literal </ inside snippet strings must be escaped as <\\/."
+    ]};
+  }
+  var meta  = (data && typeof data === "object" && data.meta) || {};
+  var nodes = Array.isArray(data && data.nodes) ? data.nodes : null;
+  var edges = Array.isArray(data && data.edges) ? data.edges : [];
+  var problems = [];
+  if (!nodes || !nodes.length) problems.push("`nodes` must be a non-empty array.");
+  var byId = new Map();
+  (nodes || []).forEach(function(n, i){
+    if (!n || typeof n.id !== "string" || !n.id) { problems.push("nodes[" + i + "] is missing a string `id`."); return; }
+    if (!/^[\w.\-]+$/.test(n.id)) problems.push("node id \"" + n.id + "\" has unexpected characters (want [a-z0-9_]).");
+    if (byId.has(n.id)) problems.push("duplicate node id \"" + n.id + "\".");
+    byId.set(n.id, n);
+  });
+  edges.forEach(function(e, i){
+    if (!e || typeof e !== "object") { problems.push("edges[" + i + "] is not an object."); return; }
+    if (!byId.has(e.from)) problems.push("edge[" + i + "].from \"" + e.from + "\" does not match any node id.");
+    if (!byId.has(e.to))   problems.push("edge[" + i + "].to \"" + e.to + "\" does not match any node id.");
+  });
+  if (problems.length) return { ok:false, title:"Flow data failed validation", lines:problems };
+  return { ok:true, data:data, meta:meta, nodes:nodes, byId:byId,
+           edges: edges.filter(function(e){ return byId.has(e.from) && byId.has(e.to); }) };
+}
+/* ==== validate:end ==== */
 
-var meta  = (data && typeof data === "object" && data.meta) || {};
-var nodes = Array.isArray(data && data.nodes) ? data.nodes : null;
-var edges = Array.isArray(data && data.edges) ? data.edges : [];
-var problems = [];
-if (!nodes || !nodes.length) problems.push("`nodes` must be a non-empty array.");
-var byId = new Map();
-(nodes || []).forEach(function(n, i){
-  if (!n || typeof n.id !== "string" || !n.id) { problems.push("nodes[" + i + "] is missing a string `id`."); return; }
-  if (!/^[\w.\-]+$/.test(n.id)) problems.push("node id \"" + n.id + "\" has unexpected characters (want [a-z0-9_]).");
-  if (byId.has(n.id)) problems.push("duplicate node id \"" + n.id + "\".");
-  byId.set(n.id, n);
-});
-edges.forEach(function(e, i){
-  if (!e || typeof e !== "object") { problems.push("edges[" + i + "] is not an object."); return; }
-  if (!byId.has(e.from)) problems.push("edge[" + i + "].from \"" + e.from + "\" does not match any node id.");
-  if (!byId.has(e.to))   problems.push("edge[" + i + "].to \"" + e.to + "\" does not match any node id.");
-});
-if (problems.length){ fail("Flow data failed validation", problems); return; }
-edges = edges.filter(function(e){ return byId.has(e.from) && byId.has(e.to); });
+var v = validate(document.getElementById("flow-data").textContent, TOKEN);
+if (!v.ok){ fail(v.title, v.lines); return; }
+var data = v.data, meta = v.meta, nodes = v.nodes, edges = v.edges, byId = v.byId;
 
 /* ============ layout: layered DAG (Sugiyama-lite) ============ */
 var NW = 176, NH = 54, COL = 216, ROW = 122;
