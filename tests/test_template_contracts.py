@@ -1451,6 +1451,38 @@ def test_scaffold_marks_its_validator_with_sentinels(
 
 
 @pytest.mark.parametrize("name,token", SCAFFOLDS)
+def test_scaffold_wires_a_failed_validation_to_fail(repo_root: Path, name: str, token: str) -> None:
+    """`validate()`'s verdict must actually gate the render. Mutation-confirmed
+    gap: changing the call site's `if (!v.ok) { ... }` to `if (false) { ... }`
+    left both `test_template_contracts.py` and `test/viewer-validation.test.js`
+    green, because the Node harness only ever calls `validate()` directly and
+    asserts its return value -- it never touches the line that reads that
+    return value back in the scaffold. Nothing in either suite verified the
+    verdict was honored at all.
+
+    Pinned as one flattened, whitespace-tolerant sequence -- `if (!v.ok)`, the
+    opening brace, the `fail(v.title, v.lines);` call, `return;`, the closing
+    brace -- so that changing any link in that chain (swapping the condition,
+    dropping the `return`, calling `fail` with the wrong arguments) fails this
+    test. Whitespace is tolerated rather than pinned literally because the two
+    scaffolds already format the same line differently (`){ fail` in the flow
+    viewer, `) { fail` in the report viewer) and that formatting difference
+    carries no meaning.
+
+    Scoped to the text after the `validate:end` sentinel, not the whole file:
+    `if (!v.ok)` only ever appears once in either scaffold, but scoping keeps
+    this test honest about which half of the file it is pinning -- the call
+    site, not `validate()` itself, which is covered separately by
+    `test/viewer-validation.test.js`.
+    """
+    text = _scaffold(repo_root, name)
+    render = _flatten(text[text.index("/* ==== validate:end ==== */") :])
+    assert re.search(
+        r"if\s*\(!v\.ok\)\s*\{\s*fail\(v\.title,\s*v\.lines\);\s*return;\s*\}", render
+    ), f"{name} does not wire a failed validate() verdict to fail() and a return"
+
+
+@pytest.mark.parametrize("name,token", SCAFFOLDS)
 def test_scaffold_shares_one_theme_key(repo_root: Path, name: str, token: str) -> None:
     """The two artifacts sit side by side in `Code_Flows/`, so a user who puts one
     in dark mode expects the other to follow. That only happens if both write the
