@@ -83,6 +83,21 @@ def _field_reference(field: str) -> re.Pattern[str]:
     return re.compile(r"[`\".]" + re.escape(field) + r"\b")
 
 
+def _section_region(text: str, start: re.Pattern[str], end: re.Pattern[str]) -> str:
+    """Return the slice of ``text`` from the first ``start`` match to the next
+    ``end`` match (or to the end of the text if ``end`` never matches).
+
+    Region scoping is what keeps these content assertions from being vacuous:
+    a bare substring search over a whole template passes on incidental prose
+    elsewhere in the file, so deleting the rule under test would not fail.
+    """
+    start_match = start.search(text)
+    assert start_match, f"template has no section matching {start.pattern!r}"
+    begin = start_match.start()
+    end_match = end.search(text, begin)
+    return text[begin : end_match.start() if end_match else len(text)]
+
+
 def _index_instructions_region(text: str) -> str:
     """Return only the slice of a map template that gives the Step 6
     index/sidecar instructions.
@@ -96,12 +111,7 @@ def _index_instructions_region(text: str) -> str:
     to the region between the machine-readable-artifacts heading and the
     next section closes that hole.
     """
-    start_match = _INDEX_SECTION_START.search(text)
-    assert start_match, "template has no machine-readable-artifacts section"
-    start = start_match.start()
-    end_match = _INDEX_SECTION_END.search(text, start)
-    end = end_match.start() if end_match else len(text)
-    return text[start:end]
+    return _section_region(text, _INDEX_SECTION_START, _INDEX_SECTION_END)
 
 
 @pytest.mark.parametrize("host,name", MAP_TEMPLATES)
@@ -124,3 +134,263 @@ def test_map_template_names_index_fields(repo_root: Path, host: str, name: str) 
         assert _field_reference(field).search(region), (
             f"{host}/{name} Step 6 instructions are missing the '{field}' field name"
         )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_step6_preserves_the_whole_codebase_marker(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 6 must not overwrite a whole-codebase `meta.mode`/`meta.detail`.
+
+    Step 6 is the only step that writes `meta`, and whole-codebase mode's pass 2
+    reuses it verbatim for every entry point it traces. A step 6 that sets
+    `meta.mode` to `feature` unconditionally therefore rewrites the marker pass 1
+    wrote, and the finished whole-repository map claims to be a single-feature
+    one — corrupting the exact field phase 3 reads to decide what it is looking
+    at. `meta.detail` rides along on the same bug wherever a host enumerates the
+    meta block as a closed list.
+
+    Keyed on the literal `whole-code-base` inside the Step 6 region. That string
+    has no other reason to appear there: step 6 is feature mode's own step, and
+    every other mention of the mode in these templates lives in step 1's
+    cross-reference or in the mode section itself, both outside this region. The
+    weaker check next door — `mode` appearing in `INDEX_FIELD_NAMES` — passed
+    with this bug present, because the buggy text named the field too.
+
+    What it does NOT catch: a host that mentions `whole-code-base` in step 6 but
+    states the rule backwards, or that preserves `mode` while still clobbering
+    `detail`. Only review sees that.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _index_instructions_region(text)
+    assert "whole-code-base" in region, (
+        f"{host}/{name} Step 6 never mentions 'whole-code-base': it must say to "
+        f"leave meta.mode and meta.detail alone when the index is already a "
+        f"whole-codebase map"
+    )
+
+
+# --- Phase 2: whole-codebase mode -----------------------------------------
+
+# Anchored on the *heading*, not the words. Every host also mentions
+# "Whole-Codebase Mode" inline in step 1, where it tells the reader to jump to
+# the section — and that reference comes first in the file. A loose pattern
+# would start the region at that cross-reference, swallowing all of feature
+# mode and making every assertion scoped to this region vacuous.
+_MODE_SECTION_START = re.compile(r"^#{2,3} +Whole-[Cc]odebase +[Mm]ode *$", re.MULTILINE)
+
+
+# `thin`, `standard` and `verbose` are searched for as the single token
+# `thin|standard|verbose`, the form every host writes them in. Searched
+# separately they would be vacuous: "standard" and "thin" already occur inside
+# ordinary words and prose elsewhere in these templates.
+WHOLE_CODEBASE_FLAGS = ("--whole-code-base", "--detail", "thin|standard|verbose")
+
+# Step 1 — where the flags are actually parsed — in every host: Claude and
+# Gemini open it with the heading "#### 1. Identify the Target Flow", Copilot
+# with the numbered item "1. **Read the request for option flags first.**".
+_STEP1_START = re.compile(r"^(?:#### 1\.|1\. \*\*)", re.MULTILINE)
+
+# Step 2's opening in every host ("#### 2. Discover..." / "2. **Discover..."),
+# used as the end boundary so the step 1 region cannot run on into the mode
+# section, where the flags are named again.
+_STEP1_END = re.compile(r"^(?:#### 2\.|2\. \*\*)", re.MULTILINE)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_the_mode_flags(repo_root: Path, host: str, name: str) -> None:
+    """Every host must document both option flags and all three detail levels
+    *in step 1*, where its instructions actually parse them.
+
+    These are the user-facing surface of phase 2. A host that omits `--detail`
+    silently gives its users a different command from the other two.
+
+    Scoped to step 1's own region rather than searched over the whole file.
+    Unscoped, this assertion was satisfied by coincidence: `--whole-code-base`
+    and `--detail` both recur in the whole-codebase-mode section further down,
+    so deleting a host's entire step 1 flag-parsing block left two of the three
+    tokens green, and only `thin|standard|verbose` failed — and only because
+    that exact token happens to appear nowhere else. Scoping makes the deletion
+    fail deliberately instead of by luck.
+
+    What it does NOT catch: a step 1 that names all three tokens but gives the
+    wrong rule for them (e.g. the wrong default, or the wrong fallback for an
+    unrecognized `--detail` value). That is review's job, not this test's.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _STEP1_START, _STEP1_END)
+    for flag in WHOLE_CODEBASE_FLAGS:
+        assert flag in region, f"{host}/{name} step 1 never mentions {flag}"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_has_a_whole_codebase_section(repo_root: Path, host: str, name: str) -> None:
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert _MODE_SECTION_START.search(text), f"{host}/{name} has no whole-codebase mode section"
+
+
+INVENTORY_FIELD_NAMES = (
+    "id",
+    "name",
+    "file",
+    "line",
+    "loc",
+    "signature",
+    "purpose",
+    "role",
+    "exported",
+    "snippet",
+)
+
+# Pass 1's own heading, not the mode heading. The mode section opens with
+# Task 2's never-edit-source paragraph, which references `purpose` — so a
+# region starting at the mode heading satisfies the `purpose` assertion with
+# prose that has nothing to do with pass 1's rules.
+_PASS1_START = re.compile(r"^#{3,4} +Pass 1\b", re.MULTILINE)
+
+# The trace pass heading, used as the end boundary of the inventory region so
+# pass 1's assertions cannot be satisfied by text that belongs to pass 2.
+# Heading-anchored for the same reason as the mode heading: pass 1's own prose
+# says "belong to pass 2", and a loose pattern would end the inventory region
+# at that sentence instead of at the section it names.
+_PASS2_START = re.compile(r"^#{3,4} +Pass 2\b", re.MULTILINE)
+
+
+def _inventory_region(text: str) -> str:
+    return _section_region(text, _PASS1_START, _PASS2_START)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_names_inventory_fields(repo_root: Path, host: str, name: str) -> None:
+    """Pass 1's instructions must name every field an inventory entry carries.
+
+    Scoped to the region between the Pass 1 heading and the Pass 2 heading —
+    not the wider whole-codebase-mode heading. `file`, `line` and `name` all
+    occur throughout the feature-mode half of every template, so an unscoped
+    search would pass even with the inventory instructions deleted outright.
+    Anchoring on Pass 1's own heading (rather than the mode heading) matters
+    specifically for `purpose`: the mode section opens with Task 2's
+    never-edit-source paragraph, which already references `` `purpose` `` in
+    prose that has nothing to do with pass 1's own rule for the field — a
+    region starting any earlier would let that unrelated reference satisfy
+    the assertion even if pass 1's own `purpose` bullet were deleted.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _inventory_region(text)
+    for field in INVENTORY_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host}/{name} pass 1 instructions are missing the '{field}' field name"
+        )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_requires_inventory_file(repo_root: Path, host: str, name: str) -> None:
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "inventory.json" in _inventory_region(text)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_catalogues_tests_rather_than_skipping_them(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Test files must be catalogued with role "test", never excluded.
+
+    Excluding them makes every test-only helper look unreachable, which
+    produces a large class of false dead-code findings in phase 3. This is the
+    single rule whose omission would quietly poison the next phase, so it gets
+    its own assertion rather than riding on the `role` field-name check.
+    """
+    region = _inventory_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    )
+    assert '"test"' in region or "`test`" in region, (
+        f"{host}/{name} pass 1 never assigns the test role"
+    )
+
+
+def _iter_template_files(repo_root: Path) -> list[Path]:
+    """Every file the installer ships from templates/, recursively."""
+    return sorted(p for p in (repo_root / "templates").rglob("*") if p.is_file())
+
+
+def test_shipped_templates_have_no_crlf(repo_root: Path) -> None:
+    """Every file under templates/ must use bare LF line endings on disk.
+
+    `.gitattributes` normalizes the git *index* to LF (`* text=auto eol=lf`),
+    but neither `npm publish` nor `uv build` packs the index — both pack the
+    *working tree*, per the comment in `.gitattributes`. On Windows, a tool
+    that opens one of these files in text mode and writes it back (e.g.
+    `Path.write_text()` with its default `newline=None`) silently translates
+    `\n` to `\r\n`. That corrupts the working-tree copy without `git status`
+    ever flagging it, because git compares *normalized* content. A release
+    cut from a working tree in that state would ship CRLF templates to every
+    consumer — this happened during phase 2 development and was caught only
+    by manually inspecting bytes, not by any test.
+
+    Checked at the byte level, not via `Path.read_text()`: reading with
+    universal-newline translation silently normalizes CRLF back to `\n`, so
+    a text-mode read would pass even against a fully CRLF file on disk.
+    """
+    offenders = [
+        str(path.relative_to(repo_root))
+        for path in _iter_template_files(repo_root)
+        if b"\r\n" in path.read_bytes()
+    ]
+    assert not offenders, (
+        "templates/ files with CRLF line endings (must be bare LF): "
+        + ", ".join(offenders)
+    )
+
+
+COVERAGE_FIELD_NAMES = (
+    "filesScanned",
+    "filesSkipped",
+    "skipReason",
+    "functionsCatalogued",
+    "entryPointsFound",
+    "flowsTraced",
+)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_names_every_coverage_field(repo_root: Path, host: str, name: str) -> None:
+    """Whole-codebase mode must account for all six coverage fields.
+
+    Phase 3 decides how much of the map it can trust from these numbers, and
+    `flowsTraced` below `entryPointsFound` is how a partial run stays visible
+    rather than passing for a complete one.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _MODE_SECTION_START, re.compile(r"\Z"))
+    for field in COVERAGE_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host}/{name} whole-codebase mode never mentions '{field}'"
+        )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_skips_already_registered_flows(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Re-running must skip flows already in index.json.
+
+    Without this, a repository too large for one session can never finish: each
+    run redoes the flows the previous run completed.
+
+    Keyed on the literal clause "do not re-trace" rather than on the words
+    "already" and "skip", both of which occur elsewhere in the same region
+    ("every entry point not already mapped", "skip step 3") and would leave
+    this assertion green with the resume rule deleted. The cost of keying on a
+    phrase is that rewording the rule breaks the test; the failure message
+    below says exactly which phrase is expected, and all three hosts are
+    required to carry it verbatim.
+    """
+    region = _section_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8"),
+        _PASS2_START,
+        re.compile(r"\Z"),
+    )
+    assert "do not re-trace" in region.lower(), (
+        f"{host}/{name} pass 2 is missing the resume rule: its instructions for "
+        f"an already-registered flow must say 'do not re-trace'"
+    )

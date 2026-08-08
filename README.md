@@ -37,7 +37,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow.
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only.)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -87,6 +87,45 @@ Two things this project has **not** verified and therefore does not claim: that 
 **If you don't use Copilot in VS Code**, assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
 
 In all three, the assistant writes its output to `Code_Flows/<feature_name>.md`, `Code_Flows/<feature_name>.html`, and `Code_Flows/<feature_name>.json` at the project root, and creates or updates the shared `Code_Flows/index.json` registry.
+
+### Whole-codebase mode
+
+Instead of one feature, map the entire repository:
+
+```text
+/code-flow.map --whole-code-base
+```
+
+This runs two passes. The first walks the repository and catalogues every function
+it finds into `Code_Flows/inventory.json`, recording a file census — size and
+content hash — in `Code_Flows/index.json`. The second discovers entry points (HTTP
+routes, CLI commands, `main()`, event handlers, scheduled jobs, exported API) and
+traces each one into its own markdown, HTML and JSON, registering it in the index.
+
+The second pass is the expensive one, and on a large repository it may not finish in
+a single session. That is expected and not an error: re-run the command and it skips
+the flows already registered in `index.json` and continues. `coverage` in that file
+always records what was actually done — if `flowsTraced` is below
+`entryPointsFound`, the map is partial and says so.
+
+Whole-codebase mode never edits your source. Feature mode adds docstrings to
+undocumented functions as it traces; at repository scale that would be a sweeping
+unrequested rewrite, so this mode only reads.
+
+Control how much evidence the catalog carries with `--detail`:
+
+| Level | Each catalogued function carries | Use when |
+|---|---|---|
+| `thin` | signature, purpose, line count — no code snippet | Very large repositories |
+| `standard` (default) | the above plus a snippet capped at ~20 lines | The balanced default |
+| `verbose` | the above plus the full function body | Small repositories, or when you want artifacts that stand alone without the source tree |
+
+```text
+/code-flow.map --whole-code-base --detail verbose
+```
+
+Discovery is search and reading, not a compiler's view of your code. The artifacts
+say "catalogued", never "all", and they mean it.
 
 ### Example output
 
