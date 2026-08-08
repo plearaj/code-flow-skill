@@ -913,3 +913,66 @@ Stated so no one later reads the green suite as a stronger claim than it is.
 - **That the error card is visible.** `validate()` returning `{ok:false}` is asserted; `fail()` writing it to the page is not. Deleting `errBox.hidden = false` would leave the suite green.
 - **That the assistant actually produces a well-formed report.** The command runs inside an AI assistant; the templates are prompt text, and prompt text is tested for the rules it states, not for the behavior it induces. The same limitation phases 1, 2 and 3a disclosed, unchanged here.
 - **That the substitution the assistant performs escapes `</` correctly.** The rule is stated and its presence is tested. Whether a given run obeys it is not observable from this repository.
+
+---
+
+## Amendments applied during execution
+
+Every task in this plan shipped at least one correction to the plan's own text.
+They are recorded here rather than edited silently into the steps above, so the
+plan stays readable as what was *asked for* and this section carries what was
+*learned*. **Where a step above and this section disagree, the shipped files
+govern.**
+
+### Task 1 — the brief's installer-test snippet used a signature that does not exist
+
+Step 1 called `run_python_installer(tmp_path, "--tool", "claude")`. The fixture in
+`tests/conftest.py` is `_run(target, tool="all")`, so the positional form would not
+have run. Corrected to the keyword form, matching every other test in that file.
+
+The implementer also extended `test_installed_files_are_byte_identical_to_their_templates`
+to cover the new `report.template.html`. Not requested, and right: the `EXPECTED_ALL`
+set check alone would not catch a CRLF-corrupting regression in the new file.
+
+### Task 2 — the mutation in Step 6 did not break the fixture in Step 4
+
+Step 6 said to delete the `if (byId.has(e.from))` check and watch the dangling-reference
+case fail. It would not have: Step 4's fixture has a dangling `to` and a resolvable
+`from`, so deleting the `from` check left it green. **The plan's own non-vacuousness
+proof was itself vacuous** — the exact defect class this plan's Global Constraints
+were written to catch, reproduced by the constraints' author. A `from`-direction
+fixture was added and the mutation then failed as intended.
+
+Two shared assertions ("wrong shape", "empty document") were also strengthened: they
+passed against Task 1's stub, which rejects everything. `ok:false` is not evidence a
+validator works.
+
+### Task 4 — `test_scaffold_is_self_contained` could not pass as written
+
+The drafted blanket check rejects any `http://` or `https://`, and
+`viewer.template.html` legitimately contains `http://www.w3.org/2000/svg` twice — an
+XML namespace, not a network reference. That one string is excised before the blanket
+check; a CDN reference still fails it.
+
+The manual browser pass in Step 5 was performed, and found two copy defects **no test
+would have caught**: the `unreached` note duplicated the finding's rationale verbatim
+on screen, and the no-findings copy said "the four detectors" when one may have been
+skipped. This is the clearest evidence in the phase for why Decision 1's manual
+pre-release check is a real control and not a formality.
+
+### Task 5 — "step 5" names a section that is actually two steps
+
+The plan and the design doc's Decision 3 both said to append the HTML to step 5.
+The shipped templates split the output across two sections — `#### 5. Write the
+Report Data` writes the JSON, `#### 6. Write the Report` renders the markdown — so
+following that literally would have produced the written order `json → html → md`,
+contradicting Decision 3's own ordering rule and making the block's opening word
+("Last") false where it is read.
+
+**The HTML paragraph is appended to the end of step 6.** Decision 3 in the design doc
+has been corrected. `tests/test_template_contracts.py` now pins `json < md < html` in
+all three hosts, so moving the block back fails the suite instead of passing quietly.
+
+Step 6's closing sentence was also changed from "report both file paths" to "all
+three file paths" in all three hosts. Not in the plan, and necessary — leaving it
+would have made the step contradict itself.

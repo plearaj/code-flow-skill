@@ -132,23 +132,38 @@ flow. There is nothing to multiply.
 
 **Decision: written every run, alongside the `.json` and `.md`.** No flag.
 
-## Decision 3: step 5 gains a third rendering, and the parity baseline holds
+## Decision 3: the output section gains a third rendering, and the parity baseline holds
 
 3b must edit the quality templates, which Phase 3a just finished holding at parity
-baseline 0. That is safe, and it is exactly what step 5 was structured for: the JSON
-is written first and every other artifact renders from it, so a third rendering is an
-addition rather than a rewrite.
+baseline 0. That is safe, and it is exactly what the output section was structured
+for: the JSON is written first and every other artifact renders from it, so a third
+rendering is an addition rather than a rewrite.
 
 Two guards make this cheap now that they exist:
 
 - `tests/test_host_parity.py` is committed, so drift fails the suite automatically
   rather than depending on someone re-running a script by hand.
-- Step 5's rule that "nothing in it may contradict that file" already governs the
+- The rule that "nothing in it may contradict that file" already governs the
   markdown, and extends to the HTML unchanged.
 
-**Decision: edit step 5 in all three hosts, keep baseline 0, keep the ordering rule
-verbatim.** The HTML is named after the markdown so the written order is
-`json → md → html`.
+**Decision: edit the output section in all three hosts, keep baseline 0, keep the
+ordering rule verbatim.** The HTML is named after the markdown so the written order
+is `json → md → html`.
+
+### Correction, found in Phase 3b's Task 5 review: the output section is two steps, not one
+
+This decision was first written as "edit step 5", and its two halves were
+unsatisfiable together. The shipped templates split the output across **two**
+sections — `#### 5. Write the Report Data` writes the JSON, `#### 6. Write the
+Report` renders the markdown — so appending the HTML to step 5 would have produced
+the written order `json → html → md`, contradicting the ordering rule in this same
+decision and making the block's own opening word ("Last") false where it is read.
+
+**The HTML paragraph is appended to the end of step 6, after the markdown.** Read
+"step 5" anywhere in this document as naming the output section as a whole; the
+ordering rule is the binding half. `tests/test_template_contracts.py` pins the
+written order `json < md < html` in all three hosts, so moving the block back would
+now fail the suite rather than pass quietly.
 
 ## Decision 4: what the report viewer shows
 
