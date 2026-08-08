@@ -1532,19 +1532,35 @@ def test_report_viewer_filters_but_never_reorders(repo_root: Path) -> None:
 
     Filtering is in scope and is asserted present, so this test fails in both
     directions: it fails if the filters are dropped, and it fails if any
-    reordering -- a `.sort(` call or a sort control -- is added.
+    reordering -- a `.sort(`/`.reverse(` call, their non-mutating ES2023
+    counterparts `.toSorted(`/`.toReversed(`, or a sort/reverse control -- is
+    added.
 
-    The reordering half is keyed on the whole word rather than on `.sort(`
-    alone, so it catches a control (an `id` or a button label) as well as the
-    call. That makes it stricter than the rule strictly requires: the scaffold
-    cannot mention the word even in a comment. The cost is one awkwardly worded
-    comment in the scaffold; the benefit is that there is no phrasing of
-    reordering this assertion misses.
+    The reordering half is keyed on whole words rather than on `.sort(` alone,
+    so it catches a control (an `id` or a button label) as well as the call.
+    That makes it stricter than the rule strictly requires: the scaffold
+    cannot mention any of these words even in a comment.
+
+    `\bsort\b` alone -- the original form of this assertion -- is mutation-
+    confirmed insufficient: `findings.slice().reverse().forEach(...)` renders
+    findings back-to-front and left that pattern green, because `\bsort\b`
+    never considers "reverse" at all, and `\b` also blocks it from matching
+    "sorted" (there is no word boundary between the "t" and the "e") or
+    "toSorted"/"toReversed" (no boundary inside either name). This pattern
+    lists each form as its own alternative so the word-boundary check applies
+    to the whole token, not just a prefix of it.
+
+    That closes the specific escape that was found, not every conceivable one:
+    a hand-rolled reordering that reads and rewrites `findings` by index
+    without calling any of these six names would still slip past a text
+    search. Only review catches that.
     """
     text = _scaffold(repo_root, "report.template.html")
     assert "filter-severity" in text, "the severity filter is required"
     assert "filter-principle" in text, "the principle filter is required"
-    assert not re.search(r"\bsort\b", text, re.IGNORECASE), (
+    assert not re.search(
+        r"\b(?:sort|sorted|reverse|reversed|toSorted|toReversed)\b", text, re.IGNORECASE
+    ), (
         "the viewer must render findings in the JSON's order and offer no reordering control"
     )
 
