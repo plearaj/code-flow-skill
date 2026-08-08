@@ -300,5 +300,17 @@ than implying a clean bill of health.
 Say **"catalogued"**, never "all". The map came from search and reading, not an
 AST walk, so it is best-effort and the report must never claim completeness.
 
-Finally, report both file paths to the user, along with the coverage numbers and
+Last, write `Code_Flows/quality-report.html`. Read `.code-flow/report.template.html`
+and replace its single `__REPORT_DATA__` token with the exact JSON you just wrote.
+Change nothing else in the scaffold.
+
+Escape every literal `</` inside the JSON as `<\/` before substituting. Findings
+carry source snippets, and an unescaped `</` closes the script block early — the
+page then renders as plain text with no error to explain why.
+
+All three files are renderings of the same data and none may contradict another. If
+you cannot read the scaffold, say so and write the other two; a missing viewer is a
+missing convenience, not a missing report.
+
+Finally, report all three file paths to the user, along with the coverage numbers and
 the count of findings by severity.

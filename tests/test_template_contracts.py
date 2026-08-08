@@ -1262,6 +1262,74 @@ def test_quality_template_never_writes_source(
     assert re.search(r"never edits source code", text, re.IGNORECASE)
 
 
+# --- Phase 3b: the quality command's third rendering -----------------------
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_writes_the_html_last(repo_root: Path, host: str, name: str) -> None:
+    """The JSON is the data and both renderings come from it. Naming the HTML
+    before the JSON would invite writing them as independent transcriptions.
+
+    Strengthened from the plan's draft, which compared the HTML against the
+    JSON alone. The design's decision 3 fixes the written order as
+    `json -> md -> html` ("the HTML is named after the markdown"), and a
+    JSON-only comparison is satisfied by an HTML paragraph placed anywhere
+    after step 5's opening sentence -- including between the JSON and the
+    markdown, which is the one ordering that decision rules out. Both hops are
+    pinned, so that placement fails.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    j = region.index("quality-report.json")
+    m = region.index("quality-report.md")
+    h = region.index("quality-report.html")
+    assert j < h, f"{host} names the HTML before the JSON it renders from"
+    assert m < h, (
+        f"{host} names the HTML before the markdown; the written order is json, md, html"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_the_report_scaffold(repo_root: Path, host: str, name: str) -> None:
+    """The command fills a scaffold the installer placed; if it does not name the
+    path, the assistant will invent a viewer instead of using the shipped one.
+
+    Strengthened from the plan's draft, which asked only that the token appear
+    within 200 characters of the path, in any relationship at all -- a sentence
+    saying the scaffold arrives with `__REPORT_DATA__` already filled in would
+    have satisfied it. What the rule actually requires is the *action*: replace
+    that one token, and only it. Keyed on the clause that states it.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"\.code-flow/report\.template\.html.{0,120}?"
+        r"replace\s+its\s+single\s+`__REPORT_DATA__`\s+token",
+        region, re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not tie the scaffold to its token"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_states_the_html_escaping_rule(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Findings carry source snippets, which contain `</`. Substituted raw into a
+    script block that ends the block early and the page renders as text.
+
+    Strengthened from the plan's draft, `</.{0,120}?escape`. That pattern is
+    satisfied by any `</` within 120 characters of any inflection of "escape",
+    which the rule's own consequence clause supplies on its own: deleting the
+    instruction ("Escape every literal `</` ... as `<\\/`") while keeping the
+    explanation ("an unescaped `</` closes the script block early") leaves the
+    draft green with the actionable half gone. This pins both halves and the
+    replacement text between them, so neither can be deleted alone.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"[Ee]scape every literal `</`.{0,40}?as `<\\/`.{0,300}?"
+        r"unescaped `</` closes the script block early",
+        region, re.DOTALL,
+    ), f"{host} does not state the </ escaping rule"
+
+
 # --- Phase 3b: the two viewer scaffolds ------------------------------------
 
 SCAFFOLDS = (

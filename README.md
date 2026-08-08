@@ -37,7 +37,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` / `Code_Flows/quality-report.html` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -137,7 +137,12 @@ Once a whole-codebase map exists, analyze it:
 ```
 
 This reads `Code_Flows/index.json`, `inventory.json` and every `<flow>.json`, then
-writes `Code_Flows/quality-report.json` and `Code_Flows/quality-report.md`. Four
+writes `Code_Flows/quality-report.json`, `Code_Flows/quality-report.md` and
+`Code_Flows/quality-report.html`. The JSON is the data; the other two are
+renderings of it, and none of the three may contradict another. The `.html` is a
+single self-contained page — no server, no build step, no internet required —
+that you open straight from disk, with the same coverage banner, the same
+"catalogued, never all" wording, and filters by severity and principle. Four
 detectors run:
 
 | Detector | Principle | Reports |
