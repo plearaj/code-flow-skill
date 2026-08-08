@@ -348,13 +348,24 @@ condition that a human closes it by hand before every release:
 Do this for both files, every release — a change to either scaffold's rendering re-opens the
 gap and the test suite will not tell you.
 
+`npm publish` enforces this. `scripts/prepublish-check.js` runs as `prepublishOnly`, prints
+the checklist and **fails the publish** until you acknowledge it. To read the checklist
+without publishing anything:
+
+```bash
+npm run release-check
+```
+
 ### npm
 
 ```bash
-npm publish --access public
+CODE_FLOW_RELEASE_CHECKED=1 npm publish --access public
 ```
 
 ### PyPI
+
+`uv publish` has no equivalent hook, so the same checklist is on you here — run
+`npm run release-check` first and work through it by hand.
 
 ```bash
 uv build
