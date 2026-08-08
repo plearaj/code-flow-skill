@@ -20,6 +20,8 @@
   "scripts": {
     "check": "node bin/install.js --help",
     "test": "node --test \"test/**/*.test.js\"",
+    "release-check": "node scripts/prepublish-check.js",
+    "prepublishOnly": "node scripts/prepublish-check.js",
     "postinstall": "node bin/postinstall.js"
   },
   "keywords": [
