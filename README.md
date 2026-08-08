@@ -294,7 +294,7 @@ cp /path/to/code-flow-skill/templates/shared/report.template.html .code-flow/rep
 
 On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` for `cp`.
 
-If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer.
+If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer. If you skip the `.code-flow/report.template.html` step, `/code-flow.quality` still works too, but there is no fallback page for it: the command says so and still writes `quality-report.json` and `quality-report.md`.
 
 **3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list **both** new commands — `/code-flow.map` and `/code-flow.quality`. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
 
@@ -329,6 +329,24 @@ The `.code-flow/viewer.template.html` and `.code-flow/report.template.html` scaf
 - PyPI / uvx: `htst-code-flow-skill`
 
 ## Publishing
+
+### Before publishing
+
+No test in this repository executes either scaffold's rendering — `templates/shared/viewer.template.html`
+and `templates/shared/report.template.html` are checked for what their prompt-filled content
+says, never for how a browser draws it. That gap is accepted (see
+`docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md`, Decision 1), on the
+condition that a human closes it by hand before every release:
+
+1. Run `/code-flow.map` and `/code-flow.quality` against any project and open the resulting
+   `Code_Flows/<flow>.html` and `Code_Flows/quality-report.html` in a browser. Confirm each
+   renders its diagram or findings instead of a blank page or a raw JSON dump.
+2. Corrupt one of the two files' embedded JSON (edit a character inside the
+   `<script type="application/json">` block so it no longer parses) and reload it. Confirm
+   the page shows the red error card instead of a blank page or a silent failure.
+
+Do this for both files, every release — a change to either scaffold's rendering re-opens the
+gap and the test suite will not tell you.
 
 ### npm
 
