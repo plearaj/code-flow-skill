@@ -37,7 +37,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` / `Code_Flows/quality-report.html` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -137,7 +137,12 @@ Once a whole-codebase map exists, analyze it:
 ```
 
 This reads `Code_Flows/index.json`, `inventory.json` and every `<flow>.json`, then
-writes `Code_Flows/quality-report.json` and `Code_Flows/quality-report.md`. Four
+writes `Code_Flows/quality-report.json`, `Code_Flows/quality-report.md` and
+`Code_Flows/quality-report.html`. The JSON is the data; the other two are
+renderings of it, and none of the three may contradict another. The `.html` is a
+single self-contained page — no server, no build step, no internet required —
+that you open straight from disk, with the same coverage banner, the same
+"catalogued, never all" wording, and filters by severity and principle. Four
 detectors run:
 
 | Detector | Principle | Reports |
@@ -281,14 +286,15 @@ mkdir -p .github/prompts
 cp /path/to/code-flow-skill/templates/copilot/code-flow.map.prompt.md .github/prompts/code-flow.map.prompt.md
 cp /path/to/code-flow-skill/templates/copilot/code-flow.quality.prompt.md .github/prompts/code-flow.quality.prompt.md
 
-# Interactive HTML viewer scaffold (needed for all tools)
+# Interactive HTML viewer + quality report scaffolds (needed for all tools)
 mkdir -p .code-flow
 cp /path/to/code-flow-skill/templates/shared/viewer.template.html .code-flow/viewer.template.html
+cp /path/to/code-flow-skill/templates/shared/report.template.html .code-flow/report.template.html
 ```
 
 On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` for `cp`.
 
-If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer.
+If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer. If you skip the `.code-flow/report.template.html` step, `/code-flow.quality` still works too, but there is no fallback page for it: the command says so and still writes `quality-report.json` and `quality-report.md`.
 
 **3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list **both** new commands — `/code-flow.map` and `/code-flow.quality`. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
 
@@ -313,8 +319,9 @@ Defaults: `--tool all`, `--target .`.
 | GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
+| _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 
-The `.code-flow/viewer.template.html` scaffold is tool-agnostic and is installed regardless of which `--tool` you select, since every command template references it.
+The `.code-flow/viewer.template.html` and `.code-flow/report.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
 
 ## Packages
 
@@ -322,6 +329,24 @@ The `.code-flow/viewer.template.html` scaffold is tool-agnostic and is installed
 - PyPI / uvx: `htst-code-flow-skill`
 
 ## Publishing
+
+### Before publishing
+
+No test in this repository executes either scaffold's rendering — `templates/shared/viewer.template.html`
+and `templates/shared/report.template.html` are checked for what their prompt-filled content
+says, never for how a browser draws it. That gap is accepted (see
+`docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md`, Decision 1), on the
+condition that a human closes it by hand before every release:
+
+1. Run `/code-flow.map` and `/code-flow.quality` against any project and open the resulting
+   `Code_Flows/<flow>.html` and `Code_Flows/quality-report.html` in a browser. Confirm each
+   renders its diagram or findings instead of a blank page or a raw JSON dump.
+2. Corrupt one of the two files' embedded JSON (edit a character inside the
+   `<script type="application/json">` block so it no longer parses) and reload it. Confirm
+   the page shows the red error card instead of a blank page or a silent failure.
+
+Do this for both files, every release — a change to either scaffold's rendering re-opens the
+gap and the test suite will not tell you.
 
 ### npm
 

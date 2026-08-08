@@ -30,13 +30,6 @@ def test_map_template_requires_index(repo_root: Path, host: str, name: str) -> N
     assert "index.json" in text
 
 
-def test_viewer_scaffold_has_exactly_one_token(repo_root: Path) -> None:
-    text = (repo_root / "templates" / "shared" / "viewer.template.html").read_text(
-        encoding="utf-8"
-    )
-    assert text.count("__FLOW_DATA__") == 1
-
-
 INDEX_FIELD_NAMES = (
     "slug",
     "title",
@@ -1267,3 +1260,447 @@ def test_quality_template_never_writes_source(
     everywhere and its absence anywhere is the defect."""
     text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
     assert re.search(r"never edits source code", text, re.IGNORECASE)
+
+
+# --- Phase 3b: the quality command's third rendering -----------------------
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_writes_the_html_last(repo_root: Path, host: str, name: str) -> None:
+    """The JSON is the data and both renderings come from it. Naming the HTML
+    before the JSON would invite writing them as independent transcriptions.
+
+    Strengthened from the plan's draft, which compared the HTML against the
+    JSON alone. The design's decision 3 fixes the written order as
+    `json -> md -> html` ("the HTML is named after the markdown"), and a
+    JSON-only comparison is satisfied by an HTML paragraph placed anywhere
+    after step 5's opening sentence -- including between the JSON and the
+    markdown, which is the one ordering that decision rules out. Both hops are
+    pinned, so that placement fails.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    j = region.index("quality-report.json")
+    m = region.index("quality-report.md")
+    h = region.index("quality-report.html")
+    assert j < h, f"{host} names the HTML before the JSON it renders from"
+    assert m < h, (
+        f"{host} names the HTML before the markdown; the written order is json, md, html"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_the_report_scaffold(repo_root: Path, host: str, name: str) -> None:
+    """The command fills a scaffold the installer placed; if it does not name the
+    path, the assistant will invent a viewer instead of using the shipped one.
+
+    Strengthened from the plan's draft, which asked only that the token appear
+    within 200 characters of the path, in any relationship at all -- a sentence
+    saying the scaffold arrives with `__REPORT_DATA__` already filled in would
+    have satisfied it. What the rule actually requires is the *action*: replace
+    that one token, and only it. Keyed on the clause that states it.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"\.code-flow/report\.template\.html.{0,120}?"
+        r"replace\s+its\s+single\s+`__REPORT_DATA__`\s+token",
+        region, re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not tie the scaffold to its token"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_states_the_html_escaping_rule(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Findings carry source snippets, which contain `</`. Substituted raw into a
+    script block that ends the block early and the page renders as text.
+
+    Strengthened from the plan's draft, `</.{0,120}?escape`. That pattern is
+    satisfied by any `</` within 120 characters of any inflection of "escape",
+    which the rule's own consequence clause supplies on its own: deleting the
+    instruction ("Escape every literal `</` ... as `<\\/`") while keeping the
+    explanation ("an unescaped `</` closes the script block early") leaves the
+    draft green with the actionable half gone. This pins both halves and the
+    replacement text between them, so neither can be deleted alone.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"[Ee]scape every literal `</`.{0,40}?as `<\\/`.{0,300}?"
+        r"unescaped `</` closes the script block early",
+        region, re.DOTALL,
+    ), f"{host} does not state the </ escaping rule"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_states_the_three_files_never_contradict(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`quality-report.json`, `.md` and `.html` are three renderings of one
+    document, and this rule is what keeps a future edit to just one of them
+    from being read as a spec change instead of a bug.
+
+    `tests/test_host_parity.py` only diffs Claude against Gemini, so it
+    structurally cannot see Copilot drift -- this project's recurring failure
+    is a rule present in two hosts and absent from the third. Before this
+    test, that rule's only guard in Copilot was a human read that expires the
+    moment this branch merges.
+
+    The wording is not byte-identical across hosts: Claude and Gemini say
+    "All three files are renderings of the same data"; Copilot's own register
+    says "All three files render the same data". The pattern is written
+    around that difference -- anchored on "All three files" and "none may
+    contradict another" with a loose gap for "same data" between them -- so it
+    does not require reflowing Copilot's prose to match Claude's, only that
+    every host state the same rule.
+
+    "All three files" is unique to this sentence in every host (the only other
+    "three ..." phrase in this step is "report all three file paths to the
+    user", which does not start with "All"), so this is not satisfied by
+    incidental prose elsewhere in the output region.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"All three files\b.{0,40}same data.{0,30}none may contradict another", region), (
+        f"{host} never states that the three report files are renderings of the same data "
+        f"that must not contradict one another"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_degrades_gracefully_without_the_scaffold(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The other half of the step-6 rule pair introduced alongside the test
+    above: if `.code-flow/report.template.html` cannot be read, the command
+    still writes the JSON and the markdown rather than stopping.
+
+    Same parity gap as the test above -- `test_host_parity.py` cannot see
+    Copilot, so this rule's only guard there was a human read. The lead-in
+    clause differs by host (Claude/Gemini: "If you cannot read the scaffold";
+    Copilot: "If the scaffold cannot be read"), so the pattern matches either
+    phrasing rather than reflowing one host's prose to match the other's. The
+    consequence clause that follows -- "a missing viewer is a missing
+    convenience, not a missing report" -- is byte-identical in all three hosts
+    and anchors the assertion to the specific degradation rule rather than to
+    any other sentence that happens to contain "cannot" or "missing".
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"cannot (?:read the scaffold|be read),? say so and write the other two"
+        r".{0,10}a missing viewer is a missing convenience, not a missing report",
+        region,
+    ), (
+        f"{host} does not say the command still writes the JSON and markdown "
+        f"when the report scaffold cannot be read"
+    )
+
+
+# --- Phase 3b: the two viewer scaffolds ------------------------------------
+
+SCAFFOLDS = (
+    ("viewer.template.html", "__FLOW_DATA__"),
+    ("report.template.html", "__REPORT_DATA__"),
+)
+
+# The one URL either scaffold is allowed to contain. An XML namespace is an
+# opaque identifier, not a network reference: no browser ever dereferences it,
+# and `document.createElementNS` needs the literal string to build SVG nodes.
+# The flow viewer carries it twice (the `xmlns` attribute and `SVGNS`), so the
+# blanket "no http(s) anywhere" check the plan drafted cannot be applied as
+# written -- it fails on a file that is already fully offline. Excising exactly
+# this string and then applying the blanket check keeps the rule sharp: any
+# other remote reference, including one whose host merely contains "w3.org",
+# still fails.
+_XML_NAMESPACE = "http://www.w3.org/2000/svg"
+
+
+def _scaffold(repo_root: Path, name: str) -> str:
+    return (repo_root / "templates" / "shared" / name).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("name,token", SCAFFOLDS)
+def test_scaffold_has_exactly_one_token(repo_root: Path, name: str, token: str) -> None:
+    """More than one token means the installer's replacement would fill some and
+    not others; none means it fills nothing and the page shows the token check."""
+    assert _scaffold(repo_root, name).count(token) == 1
+
+
+@pytest.mark.parametrize("name,token", SCAFFOLDS)
+def test_scaffold_is_self_contained(repo_root: Path, name: str, token: str) -> None:
+    """Both scaffolds must render from a file:// URL with no network. An external
+    reference would leave a user staring at an unstyled or empty page offline."""
+    text = _scaffold(repo_root, name)
+    assert not re.search(r"<script[^>]+\bsrc\s*=", text), f"{name} loads an external script"
+    assert not re.search(
+        r"""<link[^>]+\brel\s*=\s*["']stylesheet""", text
+    ), f"{name} loads an external stylesheet"
+    assert "@import" not in text, f"{name} pulls in an external stylesheet with @import"
+    offline = text.replace(_XML_NAMESPACE, "")
+    assert "https://" not in offline and "http://" not in offline, (
+        f"{name} references a remote URL"
+    )
+
+
+@pytest.mark.parametrize("name,token", SCAFFOLDS)
+def test_scaffold_marks_its_validator_with_sentinels(
+    repo_root: Path, name: str, token: str
+) -> None:
+    """test/viewer-validation.test.js lifts the block between these markers. If a
+    scaffold loses them the harness cannot reach its validator at all."""
+    text = _scaffold(repo_root, name)
+    assert text.count("/* ==== validate:start ==== */") == 1
+    assert text.count("/* ==== validate:end ==== */") == 1
+
+
+@pytest.mark.parametrize("name,token", SCAFFOLDS)
+def test_scaffold_wires_a_failed_validation_to_fail(repo_root: Path, name: str, token: str) -> None:
+    """`validate()`'s verdict must actually gate the render. Mutation-confirmed
+    gap: changing the call site's `if (!v.ok) { ... }` to `if (false) { ... }`
+    left both `test_template_contracts.py` and `test/viewer-validation.test.js`
+    green, because the Node harness only ever calls `validate()` directly and
+    asserts its return value -- it never touches the line that reads that
+    return value back in the scaffold. Nothing in either suite verified the
+    verdict was honored at all.
+
+    Pinned as one flattened, whitespace-tolerant sequence -- `if (!v.ok)`, the
+    opening brace, the `fail(v.title, v.lines);` call, `return;`, the closing
+    brace -- so that changing any link in that chain (swapping the condition,
+    dropping the `return`, calling `fail` with the wrong arguments) fails this
+    test. Whitespace is tolerated rather than pinned literally because the two
+    scaffolds already format the same line differently (`){ fail` in the flow
+    viewer, `) { fail` in the report viewer) and that formatting difference
+    carries no meaning.
+
+    Scoped to the text after the `validate:end` sentinel, not the whole file:
+    `if (!v.ok)` only ever appears once in either scaffold, but scoping keeps
+    this test honest about which half of the file it is pinning -- the call
+    site, not `validate()` itself, which is covered separately by
+    `test/viewer-validation.test.js`.
+    """
+    text = _scaffold(repo_root, name)
+    render = _flatten(text[text.index("/* ==== validate:end ==== */") :])
+    assert re.search(
+        r"if\s*\(!v\.ok\)\s*\{\s*fail\(v\.title,\s*v\.lines\);\s*return;\s*\}", render
+    ), f"{name} does not wire a failed validate() verdict to fail() and a return"
+
+
+@pytest.mark.parametrize("name,token", SCAFFOLDS)
+def test_scaffold_shares_one_theme_key(repo_root: Path, name: str, token: str) -> None:
+    """The two artifacts sit side by side in `Code_Flows/`, so a user who puts one
+    in dark mode expects the other to follow. That only happens if both write the
+    same `localStorage` key, and a typo in either is invisible until someone opens
+    both. Pinned to the literal key rather than to "localStorage is used"."""
+    assert "codeflow-theme" in _scaffold(repo_root, name), (
+        f"{name} does not use the shared theme key"
+    )
+
+
+def test_report_viewer_leads_with_coverage(repo_root: Path) -> None:
+    """The same rule the markdown obeys. A prettier rendering makes over-reading
+    easier, so the caveat has to be the first thing on screen, not a footnote.
+
+    Four assertions, where the plan's draft had one.
+
+    The draft compared first occurrences over the *whole file*, and in this
+    scaffold the first occurrence of each name is its CSS rule, not its render
+    call. So the draft assertion is really about stylesheet order: moving the
+    banner's render call below the findings list, which is exactly the defect it
+    is named for, leaves it green as long as the two CSS blocks stay put. The
+    second assertion re-runs the comparison over the render code alone (the text
+    after the validator's end sentinel), where the order of the two names is the
+    order the DOM is built in.
+
+    The third pins "not collapsible", which position alone does not: a banner
+    wrapped in a `<details>` still precedes the findings list while being shut by
+    default. It is deliberately broader than the rule it names -- it forbids
+    disclosure widgets anywhere in the file -- because there is no cheap textual
+    way to scope it to the banner, and this scaffold has no other use for one.
+    It matches the tag name after a quote as well as after `<`: every element on
+    this page is built with `document.createElement`, so a collapsible banner
+    would be written `el("details", "coverage-banner")` and a check for literal
+    `<details` markup would never see it. Mutation-confirmed -- the markup-only
+    form of this assertion stayed green against exactly that change.
+
+    The fourth pins the partial-coverage wording. `flowsTraced` below
+    `entryPointsFound` is the case the whole banner exists for, and nothing else
+    in this suite requires the viewer to say so in words: the phrase "clean
+    within what was mapped" is also carried by the no-findings screen, so the
+    no-findings test stays green even with the partial branch deleted outright.
+
+    What none of them catches: CSS that renders the banner off-screen or at zero
+    height. Only the manual browser check sees that.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    assert text.index("coverage-banner") < text.index("findings-list"), (
+        "the coverage banner must come before the findings"
+    )
+    render = text[text.index("/* ==== validate:end ==== */") :]
+    assert render.index("coverage-banner") < render.index("findings-list"), (
+        "the coverage banner must be rendered into the page before the findings list"
+    )
+    assert not re.search(r"""["'<]details\b""", text, re.IGNORECASE), (
+        "the coverage banner must not be collapsible"
+    )
+    assert re.search(r"The map is partial", text), (
+        "when flowsTraced is below entryPointsFound the banner must say so in words"
+    )
+
+
+def test_report_viewer_never_claims_completeness(repo_root: Path) -> None:
+    """'catalogued, never all' binds the viewer exactly as it binds the report.
+
+    The bare-word check is the plan's; the third assertion is added because the
+    bare word is nearly vacuous on its own -- `functionsCatalogued` is a field
+    name the renderer has to mention anyway, so a viewer whose banner read "1180
+    functions found" would still pass a case-insensitive substring search for
+    "catalogued". Requiring the word next to the noun it qualifies ties the
+    assertion to the claim the banner actually makes.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    assert "catalogued" in text
+    assert not re.search(r"\ball files\b|\ball functions\b", text, re.IGNORECASE)
+    assert re.search(r"functions catalogued", text), (
+        "the coverage banner must say 'functions catalogued', not 'functions found'"
+    )
+
+
+def test_report_viewer_states_the_no_findings_caveat(repo_root: Path) -> None:
+    """The most dangerous screen in the product. An empty findings array means
+    'clean within what was mapped', and the viewer must say so in words rather
+    than rendering an empty state that reads as a pass.
+
+    The third assertion is added to the plan's two. The words can be exactly
+    right and the screen still read as a pass if a checkmark sits above them --
+    which is precisely what a designer reaches for on an empty state. There is
+    no glyph in either scaffold's legitimate vocabulary that this forbids: the
+    theme toggle is a half-circle, and every other affordance is a word.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    assert re.search(r"clean within what was mapped", text, re.IGNORECASE)
+    assert re.search(
+        r"no findings.{0,400}clean bill of health", text, re.IGNORECASE | re.DOTALL
+    )
+    for glyph in ("✓", "✔", "✅", "☑"):
+        assert glyph not in text, "a checkmark on the no-findings screen reads as a pass"
+
+
+def test_report_viewer_never_instructs_deletion(repo_root: Path) -> None:
+    """`unreached` is a candidate, never a verdict, so the viewer offers no delete
+    affordance and no copy that reads as an instruction to remove code.
+
+    Both assertions are strengthened from the plan's draft.
+
+    The 'candidate' half was a bare substring search, which the word "candidate"
+    anywhere in the file satisfies -- including in a comment, and including if
+    the `unreached` copy itself were rewritten as a verdict. Proximity to
+    `unreached` alone is not enough either: the note's own CSS class is
+    `candidate-note`, and mutation-testing confirmed that rewriting the copy to
+    "An unreached function is dead code" left a proximity-only assertion green,
+    satisfied by the class name a few characters away. So the claim is what is
+    pinned -- candidate *and* never a verdict, adjacent -- which no class name
+    can supply. `re.search` scans every occurrence, not just the first, so the
+    `unreached` inside the validator's detector enum does not fix the window.
+
+    The 'no affordance' half matched only `>Delete`, a label in literal markup.
+    But this scaffold builds every control in JS and sets labels with
+    `textContent`, so a genuine delete button would be written
+    `el("button", null, "Delete")` and the drafted regex would never see it.
+    Admitting a leading quote as well as `>` covers the form this file would
+    actually take. The trailing `\\b` keeps `classList.remove(` and
+    `removeChild(` out (both follow a dot, not a quote) and keeps past-tense
+    prose like "removed" out too.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    assert re.search(
+        r"unreached\b.{0,140}candidate\b.{0,40}never a verdict",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ), "the copy describing unreached findings must call them candidates, never verdicts"
+    assert not re.search(r"""["'>]\s*(delete|remove)\b""", text, re.IGNORECASE), (
+        "no delete affordance: the viewer never offers to remove code"
+    )
+
+
+def test_report_viewer_filters_but_never_reorders(repo_root: Path) -> None:
+    """Findings render in the JSON's order, full stop. The analysis already
+    ordered them by severity, then site count, then principle; a viewer that
+    reordered would make two renderings of one file disagree about which finding
+    comes first, and the markdown and the HTML would stop matching.
+
+    Filtering is in scope and is asserted present, so this test fails in both
+    directions: it fails if the filters are dropped, and it fails if any
+    reordering -- a `.sort(`/`.reverse(` call, their non-mutating ES2023
+    counterparts `.toSorted(`/`.toReversed(`, or a sort/reverse control -- is
+    added.
+
+    The reordering half is keyed on whole words rather than on `.sort(` alone,
+    so it catches a control (an `id` or a button label) as well as the call.
+    That makes it stricter than the rule strictly requires: the scaffold
+    cannot mention any of these words even in a comment.
+
+    `\bsort\b` alone -- the original form of this assertion -- is mutation-
+    confirmed insufficient: `findings.slice().reverse().forEach(...)` renders
+    findings back-to-front and left that pattern green, because `\bsort\b`
+    never considers "reverse" at all, and `\b` also blocks it from matching
+    "sorted" (there is no word boundary between the "t" and the "e") or
+    "toSorted"/"toReversed" (no boundary inside either name). This pattern
+    lists each form as its own alternative so the word-boundary check applies
+    to the whole token, not just a prefix of it.
+
+    That closes the specific escape that was found, not every conceivable one:
+    a hand-rolled reordering that reads and rewrites `findings` by index
+    without calling any of these six names would still slip past a text
+    search. Only review catches that.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    assert "filter-severity" in text, "the severity filter is required"
+    assert "filter-principle" in text, "the principle filter is required"
+    assert not re.search(
+        r"\b(?:sort|sorted|reverse|reversed|toSorted|toReversed)\b", text, re.IGNORECASE
+    ), (
+        "the viewer must render findings in the JSON's order and offer no reordering control"
+    )
+
+
+def test_report_viewer_renders_report_data_as_text_not_markup(repo_root: Path) -> None:
+    """Snippets are source code from the analyzed repository. A snippet
+    containing `</script>` or an `onerror` attribute must land on the page as
+    characters, never as markup -- the substitution that fills this file already
+    has a `</` trap, and an `innerHTML` render path would turn it into a second
+    one.
+
+    `innerHTML` is permitted in exactly one form, `innerHTML = ""`, which the
+    error card uses to clear itself before rebuilding. Every other sink is
+    banned outright rather than inspected, because none of them has a benign
+    form here.
+
+    What this does NOT catch: a value assigned through a DOM property that
+    parses markup indirectly, or a `setAttribute("href", ...)` carrying a
+    `javascript:` URL. Review's job, not this test's.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    for use in re.findall(r"innerHTML[^;\n]*", text):
+        assert re.fullmatch(r'innerHTML\s*=\s*""', use.strip()), (
+            f"innerHTML may only be used to clear an element, found: {use.strip()!r}"
+        )
+    for sink in ("insertAdjacentHTML", "outerHTML", "document.write", "createContextualFragment"):
+        assert sink not in text, f"{sink} would interpret a snippet as markup"
+
+
+def test_report_viewer_shows_a_skipped_detector_with_its_reason(repo_root: Path) -> None:
+    """A detector that did not run is a hole in the report, and a hole named
+    without its cause reads as a detail rather than as a limit on what the
+    findings below can mean.
+
+    `detectorsSkipped` carries names only -- the quality templates say so
+    explicitly and tell the markdown to restate the reason from the step 2
+    gating rule. The viewer renders the same JSON, so it has to do the same
+    thing: hold the reason itself. Both halves are required, because a viewer
+    that knew duplicate-intent's reason and rendered nothing at all for an
+    unrecognised name would silently hide the very thing this rule exists for.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    assert re.search(r"duplicate-intent.{0,240}snippet", text, re.DOTALL), (
+        "the viewer must restate why duplicate-intent was gated off: a thin map has no snippets"
+    )
+    assert re.search(r"reason[^\n]{0,60}not recorded", text, re.IGNORECASE), (
+        "a detector whose reason the viewer does not know must still say so, not be hidden"
+    )

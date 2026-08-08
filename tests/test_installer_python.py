@@ -9,6 +9,7 @@ from pathlib import Path
 EXPECTED_ALL = [
     ".claude/commands/code-flow.map.md",
     ".claude/commands/code-flow.quality.md",
+    ".code-flow/report.template.html",
     ".code-flow/viewer.template.html",
     ".gemini/commands/code-flow.map.toml",
     ".gemini/commands/code-flow.quality.toml",
@@ -33,6 +34,16 @@ def test_installs_viewer_scaffold(tmp_path: Path, run_python_installer) -> None:
     viewer = tmp_path / ".code-flow" / "viewer.template.html"
     assert viewer.is_file()
     assert "__FLOW_DATA__" in viewer.read_text(encoding="utf-8")
+
+
+def test_both_shared_scaffolds_are_installed_regardless_of_tool(
+    tmp_path: Path, run_python_installer
+) -> None:
+    """The scaffolds are tool-agnostic: every command template references one
+    of them, so selecting a single host must still install both."""
+    run_python_installer(tmp_path, tool="claude")
+    for name in ("viewer.template.html", "report.template.html"):
+        assert (tmp_path / ".code-flow" / name).is_file(), f"{name} was not installed"
 
 
 def test_tool_selection_installs_only_that_tool(tmp_path: Path, run_python_installer) -> None:
@@ -125,6 +136,8 @@ def test_installed_files_are_byte_identical_to_their_templates(
             repo_root / "templates" / "copilot" / "code-flow.map.prompt.md",
         tmp_path / ".code-flow" / "viewer.template.html":
             repo_root / "templates" / "shared" / "viewer.template.html",
+        tmp_path / ".code-flow" / "report.template.html":
+            repo_root / "templates" / "shared" / "report.template.html",
         tmp_path / ".claude" / "commands" / "code-flow.quality.md":
             repo_root / "templates" / "claude" / "code-flow.quality.md",
         tmp_path / ".gemini" / "commands" / "code-flow.quality.toml":

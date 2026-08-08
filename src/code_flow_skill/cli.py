@@ -25,16 +25,28 @@ def _template_path(*parts: str) -> Path:
     return _template_root().joinpath(*parts)
 
 
-def _install_viewer(target: Path) -> None:
-    """Install the tool-agnostic interactive HTML viewer scaffold.
+# Both scaffolds are tool-agnostic: every command template references one of
+# them, so both install regardless of --tool. This table and the one in
+# bin/install.js must stay in step; the installed-file-set tests in both
+# languages are what holds them there.
+_SHARED_FILES = (
+    ("viewer.template.html", "interactive viewer"),
+    ("report.template.html", "quality report viewer"),
+)
 
-    Every command template references this file, so it is installed
-    regardless of the selected tool.
+
+def _install_shared(target: Path) -> None:
+    """Copy every tool-agnostic scaffold into ``target``.
+
+    A plain copy, deliberately: ``shutil.copyfile`` preserves bytes, where a
+    text-mode read/write round-trip would translate "\\n" to "\\r\\n" on
+    Windows and silently corrupt every shipped template.
     """
-    out = target / ".code-flow" / "viewer.template.html"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_template_path("shared", "viewer.template.html"), out)
-    print(f"Installed interactive viewer template: {out}")
+    for name, label in _SHARED_FILES:
+        out = target / ".code-flow" / name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(_template_path("shared", name), out)
+        print(f"Installed {label} template: {out}")
 
 
 # Each host installs one file per command. This table and the one in
@@ -95,7 +107,7 @@ def main() -> None:
     for name in selected:
         _install_tool(target, name)
 
-    _install_viewer(target)
+    _install_shared(target)
 
 
 if __name__ == "__main__":

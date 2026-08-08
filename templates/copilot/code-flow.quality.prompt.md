@@ -203,5 +203,16 @@ Follow these steps exactly:
    immediately after, because an empty report under partial coverage means the
    mapped portion was clean and must not imply a clean bill of health. Say
    **"catalogued"**, never "all" — the map came from search and reading, not an AST
-   walk. Finally, report both file paths to the user with the coverage numbers and
+   walk.
+
+   Last, write `Code_Flows/quality-report.html`: read `.code-flow/report.template.html`
+   and replace its single `__REPORT_DATA__` token with the exact JSON you just wrote,
+   changing nothing else. Escape every literal `</` in that JSON as `<\/` first —
+   findings carry source snippets, and an unescaped `</` closes the script block early,
+   leaving the page rendered as plain text with nothing to explain why. All three files
+   render the same data and none may contradict another. If the scaffold cannot be read,
+   say so and write the other two: a missing viewer is a missing convenience, not a
+   missing report.
+
+   Finally, report all three file paths to the user with the coverage numbers and
    the count of findings by severity.

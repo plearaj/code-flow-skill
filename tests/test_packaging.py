@@ -15,6 +15,7 @@ EXPECTED_IN_WHEEL = (
     "code_flow_skill/templates/copilot/code-flow.map.prompt.md",
     "code_flow_skill/templates/copilot/code-flow.quality.prompt.md",
     "code_flow_skill/templates/shared/viewer.template.html",
+    "code_flow_skill/templates/shared/report.template.html",
 )
 
 
@@ -67,9 +68,9 @@ def test_readme_files_written_table_lists_exactly_the_installed_set(repo_root: P
     )
 
 
-def test_package_versions_match_and_are_1_2_0(repo_root: Path) -> None:
+def test_package_versions_match_and_are_1_3_0(repo_root: Path) -> None:
     npm_version = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))["version"]
     pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
     assert match is not None, "no version found in pyproject.toml"
-    assert npm_version == match.group(1) == "1.2.0"
+    assert npm_version == match.group(1) == "1.3.0"
