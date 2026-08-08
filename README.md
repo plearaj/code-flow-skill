@@ -22,6 +22,8 @@ The command was renamed and the Copilot integration changed. After upgrading:
 - `/code-flow.map` now also writes `Code_Flows/<feature_name>.json` and
   `Code_Flows/index.json`. Flows mapped before 1.0 have no sidecar until re-mapped.
 
+Everything 1.0 adds is listed in [CHANGELOG.md](CHANGELOG.md).
+
 A portable **Code Flow** skill for AI coding assistants — Claude Code, Gemini CLI, and GitHub Copilot. Installs a `/code-flow.map` command that asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
 
 ## What the skill does
@@ -347,6 +349,10 @@ condition that a human closes it by hand before every release:
 
 Do this for both files, every release — a change to either scaffold's rendering re-opens the
 gap and the test suite will not tell you.
+
+Add the release's entry to [CHANGELOG.md](CHANGELOG.md) before bumping the version.
+`tests/test_packaging.py` fails if the changelog's leading `## [version]` heading does not
+match the version both packages declare, so a forgotten entry is caught rather than shipped.
 
 `npm publish` enforces this. `scripts/prepublish-check.js` runs as `prepublishOnly`, prints
 the checklist and **fails the publish** until you acknowledge it. To read the checklist

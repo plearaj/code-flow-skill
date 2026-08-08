@@ -1,6 +1,6 @@
 {
   "name": "@htst/code-flow-skill",
-  "version": "1.3.0",
+  "version": "1.0.0",
   "description": "Installable Code Flow skill templates for Claude, Gemini, and Copilot workflows.",
   "license": "Apache-2.0",
   "type": "module",
@@ -11,6 +11,7 @@
     "bin",
     "templates",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "NOTICE"
   ],

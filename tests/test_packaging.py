@@ -68,9 +68,42 @@ def test_readme_files_written_table_lists_exactly_the_installed_set(repo_root: P
     )
 
 
-def test_package_versions_match_and_are_1_3_0(repo_root: Path) -> None:
+def _declared_version(repo_root: Path) -> str:
+    """The one version both packages must agree on."""
     npm_version = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))["version"]
     pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
     match = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE)
     assert match is not None, "no version found in pyproject.toml"
-    assert npm_version == match.group(1) == "1.3.0"
+    assert npm_version == match.group(1), (
+        f"package.json says {npm_version}, pyproject.toml says {match.group(1)}"
+    )
+    return npm_version
+
+
+def test_package_versions_match_and_are_1_0_0(repo_root: Path) -> None:
+    assert _declared_version(repo_root) == "1.0.0"
+
+
+def test_changelog_leads_with_the_version_being_shipped(repo_root: Path) -> None:
+    """A changelog that lags the version is worse than none — it states, with
+    apparent authority, that the release contains what the previous one did.
+    Pinned to the *first* version heading rather than to membership anywhere in
+    the file, because every past version is in there too."""
+    changelog = (repo_root / "CHANGELOG.md").read_text(encoding="utf-8")
+    headings = re.findall(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)
+    assert headings, "CHANGELOG.md has no `## [version]` headings"
+    assert headings[0] == _declared_version(repo_root), (
+        f"CHANGELOG.md leads with {headings[0]}, but the packages declare "
+        f"{_declared_version(repo_root)}"
+    )
+
+
+def test_changelog_ships_in_both_packages(repo_root: Path) -> None:
+    """It is only a changelog for users if it reaches them."""
+    npm_files = json.loads((repo_root / "package.json").read_text(encoding="utf-8"))["files"]
+    assert "CHANGELOG.md" in npm_files, "CHANGELOG.md is missing from package.json `files`"
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    sdist = re.search(r"^\[tool\.hatch\.build\.targets\.sdist\]\ninclude = \[([^\]]+)\]",
+                      pyproject, re.MULTILINE)
+    assert sdist is not None, "no sdist include list found in pyproject.toml"
+    assert '"CHANGELOG.md"' in sdist.group(1), "CHANGELOG.md is missing from the sdist include list"
