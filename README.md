@@ -37,7 +37,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only.)
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -127,9 +127,60 @@ Control how much evidence the catalog carries with `--detail`:
 Discovery is search and reading, not a compiler's view of your code. The artifacts
 say "catalogued", never "all", and they mean it.
 
-### Example output
+### Quality reporting
 
-`Code_Flows/user_login.md` will look roughly like:
+Once a whole-codebase map exists, analyze it:
+
+```text
+/code-flow.quality
+/code-flow.quality --read-code
+```
+
+This reads `Code_Flows/index.json`, `inventory.json` and every `<flow>.json`, then
+writes `Code_Flows/quality-report.json` and `Code_Flows/quality-report.md`. Four
+detectors run:
+
+| Detector | Principle | Reports |
+|---|---|---|
+| duplicate-intent | DRY | The same work implemented in several places |
+| repeated-sequence | DRY | Call chains repeated across flows |
+| complexity-hotspot | KISS | High fan-out, deep nesting, very long functions |
+| unreached | YAGNI | Catalogued functions no mapped flow reaches |
+
+Severity is rule-based — thresholds, not impressions — so findings do not all
+drift toward "medium".
+
+`--read-code` opens the files the candidate findings cite and confirms each
+against current source, marking the survivors `verified` and dropping the rest;
+without the flag every finding stays `unverified`. A candidate whose cited file
+cannot be reopened at all — deleted, or unreadable — is neither: it stays
+`unverified` and is then dropped as stale, which is why the dropped count is
+usually, not always, zero under `--read-code`. It verifies candidates rather than
+re-scanning the repository, so it costs far less than mapping. It requires the
+source tree to be present and current, not just the artifacts.
+
+The report **never edits your code** and never instructs deletion. Unreached
+findings are candidates: tracing here is search and reading, so it cannot see
+reflection, dependency injection, framework hooks or entry points declared in
+configuration. Anything exported is capped at low severity.
+
+Coverage leads every report. If the trace pass mapped 14 of 17 entry points, the
+banner says so, and a clean section means clean *within what was mapped* — not a
+clean bill of health.
+
+Three things stop the command rather than degrading it: no `index.json` (run
+`/code-flow.map` first), no `inventory.json` (run `/code-flow.map
+--whole-code-base` first), and an `index.json` or `inventory.json` that does not
+parse. A single unreadable `<flow>.json` does not stop it — that flow is skipped
+and counted in the banner.
+
+On a `--detail thin` map, duplicate-intent is skipped unless you pass
+`--read-code`: a thin map carries no code snippets, so that detector has no
+evidence to cite.
+
+### Example map output
+
+Back to `/code-flow.map`: `Code_Flows/user_login.md` will look roughly like:
 
 ````markdown
 # User Login — Flow
@@ -218,14 +269,17 @@ From the project root where you want the skill available:
 # Claude Code
 mkdir -p .claude/commands
 cp /path/to/code-flow-skill/templates/claude/code-flow.map.md .claude/commands/code-flow.map.md
+cp /path/to/code-flow-skill/templates/claude/code-flow.quality.md .claude/commands/code-flow.quality.md
 
 # Gemini CLI
 mkdir -p .gemini/commands
 cp /path/to/code-flow-skill/templates/gemini/code-flow.map.toml .gemini/commands/code-flow.map.toml
+cp /path/to/code-flow-skill/templates/gemini/code-flow.quality.toml .gemini/commands/code-flow.quality.toml
 
 # GitHub Copilot
 mkdir -p .github/prompts
 cp /path/to/code-flow-skill/templates/copilot/code-flow.map.prompt.md .github/prompts/code-flow.map.prompt.md
+cp /path/to/code-flow-skill/templates/copilot/code-flow.quality.prompt.md .github/prompts/code-flow.quality.prompt.md
 
 # Interactive HTML viewer scaffold (needed for all tools)
 mkdir -p .code-flow
@@ -236,7 +290,7 @@ On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkd
 
 If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer.
 
-**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list the new `/code-flow.map` command. For Copilot in VS Code, look for the prompt in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
+**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list **both** new commands — `/code-flow.map` and `/code-flow.quality`. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
 
 That's it — no install step runs any code on your machine. If you later want to update the skill, just re-copy the template files.
 
@@ -250,12 +304,15 @@ Defaults: `--tool all`, `--target .`.
 
 ## Files written
 
-| Tool | Path |
-|------|------|
-| Claude Code | `.claude/commands/code-flow.map.md` |
-| Gemini CLI | `.gemini/commands/code-flow.map.toml` |
-| GitHub Copilot | `.github/prompts/code-flow.map.prompt.md` |
-| _All tools_ | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
+| Tool | Command | Path |
+|------|---------|------|
+| Claude Code | `/code-flow.map` | `.claude/commands/code-flow.map.md` |
+| Claude Code | `/code-flow.quality` | `.claude/commands/code-flow.quality.md` |
+| Gemini CLI | `/code-flow.map` | `.gemini/commands/code-flow.map.toml` |
+| Gemini CLI | `/code-flow.quality` | `.gemini/commands/code-flow.quality.toml` |
+| GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
+| GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
+| _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 
 The `.code-flow/viewer.template.html` scaffold is tool-agnostic and is installed regardless of which `--tool` you select, since every command template references it.
 

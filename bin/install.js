@@ -34,31 +34,37 @@ function installViewer() {
   console.log(`Installed interactive viewer template: ${dst}`);
 }
 
+// Each host installs one file per command. This list and the one in
+// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests
+// in both languages are what holds them there.
 const toolMap = {
-  claude: {
-    src: path.join(pkgRoot, "templates", "claude", "code-flow.map.md"),
-    dst: path.join(target, ".claude", "commands", "code-flow.map.md"),
-  },
-  gemini: {
-    src: path.join(pkgRoot, "templates", "gemini", "code-flow.map.toml"),
-    dst: path.join(target, ".gemini", "commands", "code-flow.map.toml"),
-  },
-  copilot: {
-    src: path.join(pkgRoot, "templates", "copilot", "code-flow.map.prompt.md"),
-    dst: path.join(target, ".github", "prompts", "code-flow.map.prompt.md"),
-  },
+  claude: [
+    ["claude/code-flow.map.md", ".claude/commands/code-flow.map.md"],
+    ["claude/code-flow.quality.md", ".claude/commands/code-flow.quality.md"],
+  ],
+  gemini: [
+    ["gemini/code-flow.map.toml", ".gemini/commands/code-flow.map.toml"],
+    ["gemini/code-flow.quality.toml", ".gemini/commands/code-flow.quality.toml"],
+  ],
+  copilot: [
+    ["copilot/code-flow.map.prompt.md", ".github/prompts/code-flow.map.prompt.md"],
+    ["copilot/code-flow.quality.prompt.md", ".github/prompts/code-flow.quality.prompt.md"],
+  ],
 };
 
 for (const name of selected) {
-  if (!["claude", "gemini", "copilot"].includes(name)) {
+  if (!Object.prototype.hasOwnProperty.call(toolMap, name)) {
     console.error(`Unknown --tool value: ${name}`);
     process.exit(1);
   }
 
-  const { src, dst } = toolMap[name];
-  fs.mkdirSync(path.dirname(dst), { recursive: true });
-  fs.copyFileSync(src, dst);
-  console.log(`Installed ${name} template: ${dst}`);
+  for (const [relSrc, relDst] of toolMap[name]) {
+    const src = path.join(pkgRoot, "templates", ...relSrc.split("/"));
+    const dst = path.join(target, ...relDst.split("/"));
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    console.log(`Installed ${name} template: ${dst}`);
+  }
 }
 
 installViewer();
