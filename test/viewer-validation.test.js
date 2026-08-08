@@ -54,13 +54,16 @@ for (const { file, token } of SCAFFOLDS) {
     assert.equal(v.ok, false);
     assert.ok(v.lines.length > 0, "a shape failure must say what was wrong");
     // `ok:false` plus a non-empty `lines` array is satisfied by a validator
-    // that rejects everything unconditionally (this is exactly what the
-    // report.template.html stub does today, on purpose — see the RED-run
-    // notes in the task report). For the flow viewer we know the real shape
-    // rule, so pin the actual reason down rather than settling for "some
-    // lines came back."
+    // that rejects everything unconditionally. Both scaffolds now have a
+    // real validator, so pin the actual reason down for each rather than
+    // settling for "some lines came back."
     if (file === "viewer.template.html") {
       assert.match(v.lines.join(" "), /`nodes` must be a non-empty array/);
+    } else if (file === "report.template.html") {
+      assert.match(v.lines.join(" "), /`schema` must be 1/);
+      assert.match(v.lines.join(" "), /`meta` must be an object/);
+      assert.match(v.lines.join(" "), /`coverage` must be an object/);
+      assert.match(v.lines.join(" "), /`findings` must be an array/);
     }
   });
 
@@ -70,11 +73,9 @@ for (const { file, token } of SCAFFOLDS) {
     assert.equal(v.ok, false);
     // Same rationale as above: `ok:false` alone doesn't distinguish "the
     // parser correctly rejected empty input" from "everything is rejected."
-    // The flow viewer routes empty input through the JSON.parse failure
-    // path, so assert on that specific title.
-    if (file === "viewer.template.html") {
-      assert.match(v.title, /invalid json/i);
-    }
+    // Both scaffolds route empty input through the JSON.parse failure path,
+    // so assert on that specific title for each.
+    assert.match(v.title, /invalid json/i);
   });
 }
 
@@ -123,4 +124,77 @@ test("viewer.template.html: a valid flow document produces no problems", () => {
   assert.equal(v.ok, true, v.ok ? "" : v.title + ": " + (v.lines || []).join(" "));
   assert.equal(v.nodes.length, 2);
   assert.equal(v.edges.length, 1);
+});
+
+const VALID_REPORT = {
+  schema: 1,
+  meta: { root: "C:/Users/example/project", generated: "2026-08-07", readCode: false,
+          mapGenerated: "2026-08-06", mapMode: "whole-code-base", mapDetail: "standard" },
+  coverage: { flowsTraced: 14, entryPointsFound: 17, functionsCatalogued: 1180,
+              flowsUnreadable: 0, filesChanged: 6, findingsDropped: 2, detectorsSkipped: [] },
+  findings: [{
+    id: "DRY-01", principle: "DRY", detector: "duplicate-intent", severity: "high",
+    title: "Email validation is implemented three times",
+    rationale: "Three functions normalise and check an address with the same rules.",
+    suggestion: "Consolidate on one validator and have the others call it.",
+    confidence: "unverified", effort: "small",
+    sites: [{ file: "src/auth/validators.py", line: 12, symbol: "validate_email" }],
+  }],
+};
+
+function report(overrides) {
+  return JSON.stringify({ ...VALID_REPORT, ...overrides });
+}
+
+test("report.template.html: a valid report produces no problems", () => {
+  const validate = extractValidate("report.template.html");
+  const v = validate(report({}), "__REPORT_DATA__");
+  assert.equal(v.ok, true, v.ok ? "" : v.title + ": " + (v.lines || []).join(" "));
+  assert.equal(v.findings.length, 1);
+  assert.equal(v.coverage.flowsTraced, 14);
+});
+
+test("report.template.html: an empty findings array is valid, not an error", () => {
+  const validate = extractValidate("report.template.html");
+  const v = validate(report({ findings: [] }), "__REPORT_DATA__");
+  assert.equal(v.ok, true, "a clean report is a real report, not a failure");
+  assert.equal(v.findings.length, 0);
+});
+
+test("report.template.html: a duplicate finding id is reported", () => {
+  const validate = extractValidate("report.template.html");
+  const dup = [VALID_REPORT.findings[0], { ...VALID_REPORT.findings[0] }];
+  const v = validate(report({ findings: dup }), "__REPORT_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /duplicate finding id "DRY-01"/);
+});
+
+test("report.template.html: a finding with no sites is reported", () => {
+  const validate = extractValidate("report.template.html");
+  const bare = [{ ...VALID_REPORT.findings[0], sites: [] }];
+  const v = validate(report({ findings: bare }), "__REPORT_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /DRY-01.*at least one site/);
+});
+
+test("report.template.html: an out-of-enum severity is reported", () => {
+  const validate = extractValidate("report.template.html");
+  const bad = [{ ...VALID_REPORT.findings[0], severity: "critical" }];
+  const v = validate(report({ findings: bad }), "__REPORT_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /severity "critical"/);
+});
+
+test("report.template.html: a missing coverage block is reported", () => {
+  const validate = extractValidate("report.template.html");
+  const v = validate(report({ coverage: undefined }), "__REPORT_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /`coverage`/);
+});
+
+test("report.template.html: a wrong schema version is reported", () => {
+  const validate = extractValidate("report.template.html");
+  const v = validate(report({ schema: 2 }), "__REPORT_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /schema/i);
 });

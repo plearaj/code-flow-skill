@@ -33,7 +33,60 @@ function fail(title, lines){
 
 /* ==== validate:start ==== */
 function validate(raw, TOKEN){
-  return { ok: false, title: "Not implemented", lines: ["Task 3 writes this."] };
+  raw = (raw || "").trim();
+  if (raw === TOKEN){
+    return { ok:false, title:"No report data", lines:[
+      "The " + TOKEN + " placeholder was never replaced.",
+      "This template must be filled with a JSON data block before viewing."
+    ]};
+  }
+  var data;
+  try { data = JSON.parse(raw); }
+  catch(e){
+    return { ok:false, title:"Invalid JSON in #report-data", lines:[
+      String(e.message || e), "",
+      "Tip: literal </ inside snippet strings must be escaped as <\\/."
+    ]};
+  }
+  var SEVERITY = { high:1, medium:1, low:1 };
+  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1 };
+  var CONFIDENCE = { unverified:1, verified:1 };
+  var DETECTOR = { "duplicate-intent":1, "repeated-sequence":1, "complexity-hotspot":1, "unreached":1 };
+  var problems = [];
+  if (!data || typeof data !== "object" || Array.isArray(data)){
+    return { ok:false, title:"Report data failed validation", lines:["The document must be a JSON object."] };
+  }
+  if (data.schema !== 1) problems.push("`schema` must be 1, got " + JSON.stringify(data.schema) + ".");
+  var meta = (data.meta && typeof data.meta === "object") ? data.meta : null;
+  if (!meta) problems.push("`meta` must be an object.");
+  var coverage = (data.coverage && typeof data.coverage === "object") ? data.coverage : null;
+  if (!coverage) problems.push("`coverage` must be an object.");
+  var findings = Array.isArray(data.findings) ? data.findings : null;
+  if (!findings) problems.push("`findings` must be an array.");
+  var seen = {};
+  (findings || []).forEach(function(f, i){
+    if (!f || typeof f !== "object"){ problems.push("findings[" + i + "] is not an object."); return; }
+    var id = typeof f.id === "string" && f.id ? f.id : null;
+    if (!id){ problems.push("findings[" + i + "] is missing a string `id`."); return; }
+    if (Object.prototype.hasOwnProperty.call(seen, id)) problems.push("duplicate finding id \"" + id + "\".");
+    seen[id] = 1;
+    if (!SEVERITY[f.severity]) problems.push(id + " has severity " + JSON.stringify(f.severity) + "; want high, medium or low.");
+    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS or YAGNI.");
+    if (!DETECTOR[f.detector]) problems.push(id + " has detector " + JSON.stringify(f.detector) + ".");
+    if (!CONFIDENCE[f.confidence]) problems.push(id + " has confidence " + JSON.stringify(f.confidence) + "; want unverified or verified.");
+    if (!Array.isArray(f.sites) || !f.sites.length){
+      problems.push(id + " must cite at least one site; a finding without file:line evidence is not reportable.");
+      return;
+    }
+    f.sites.forEach(function(s, j){
+      if (!s || typeof s !== "object"){ problems.push(id + " site " + j + " is not an object."); return; }
+      if (typeof s.file !== "string" || !s.file) problems.push(id + " site " + j + " is missing `file`.");
+      else if (s.file.indexOf("\\") !== -1) problems.push(id + " site " + j + " uses backslashes; paths are forward-slash and repo-relative.");
+      if (typeof s.line !== "number" || s.line < 1) problems.push(id + " site " + j + " is missing a positive `line`.");
+    });
+  });
+  if (problems.length) return { ok:false, title:"Report data failed validation", lines:problems };
+  return { ok:true, data:data, meta:meta, coverage:coverage, findings:findings };
 }
 /* ==== validate:end ==== */
 
