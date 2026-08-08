@@ -24,9 +24,12 @@ export function tempTarget() {
 // against the same literal list, which is what keeps them in lockstep.
 const EXPECTED_ALL = [
   ".claude/commands/code-flow.map.md",
+  ".claude/commands/code-flow.quality.md",
   ".code-flow/viewer.template.html",
   ".gemini/commands/code-flow.map.toml",
+  ".gemini/commands/code-flow.quality.toml",
   ".github/prompts/code-flow.map.prompt.md",
+  ".github/prompts/code-flow.quality.prompt.md",
 ];
 
 // Hand-rolled walk rather than readdirSync({ recursive: true }): that option
@@ -96,4 +99,29 @@ test("copilot install leaves copilot-instructions.md untouched", () => {
   runInstaller(target, "copilot");
 
   assert.equal(fs.readFileSync(instructions, "utf8"), "# My own notes\n");
+});
+
+test("installs the claude quality command under its dotted name", () => {
+  const target = tempTarget();
+  runInstaller(target, "claude");
+  const commands = path.join(target, ".claude", "commands");
+  assert.ok(fs.existsSync(path.join(commands, "code-flow.quality.md")));
+  assert.ok(!fs.existsSync(path.join(commands, "code-flow.md")));
+});
+
+test("installs the gemini quality command under its dotted name", () => {
+  const target = tempTarget();
+  runInstaller(target, "gemini");
+  const commands = path.join(target, ".gemini", "commands");
+  assert.ok(fs.existsSync(path.join(commands, "code-flow.quality.toml")));
+});
+
+test("selecting one tool installs both of its commands and neither of another's", () => {
+  const target = tempTarget();
+  runInstaller(target, "copilot");
+  const prompts = path.join(target, ".github", "prompts");
+  assert.ok(fs.existsSync(path.join(prompts, "code-flow.map.prompt.md")));
+  assert.ok(fs.existsSync(path.join(prompts, "code-flow.quality.prompt.md")));
+  assert.ok(!fs.existsSync(path.join(target, ".claude")));
+  assert.ok(!fs.existsSync(path.join(target, ".gemini")));
 });

@@ -25,20 +25,6 @@ def _template_path(*parts: str) -> Path:
     return _template_root().joinpath(*parts)
 
 
-def _install_claude(target: Path) -> None:
-    out = target / ".claude" / "commands" / "code-flow.map.md"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_template_path("claude", "code-flow.map.md"), out)
-    print(f"Installed Claude template: {out}")
-
-
-def _install_gemini(target: Path) -> None:
-    out = target / ".gemini" / "commands" / "code-flow.map.toml"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_template_path("gemini", "code-flow.map.toml"), out)
-    print(f"Installed Gemini template: {out}")
-
-
 def _install_viewer(target: Path) -> None:
     """Install the tool-agnostic interactive HTML viewer scaffold.
 
@@ -51,11 +37,45 @@ def _install_viewer(target: Path) -> None:
     print(f"Installed interactive viewer template: {out}")
 
 
-def _install_copilot(target: Path) -> None:
-    out = target / ".github" / "prompts" / "code-flow.map.prompt.md"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(_template_path("copilot", "code-flow.map.prompt.md"), out)
-    print(f"Installed Copilot prompt: {out}")
+# Each host installs one file per command. This table and the one in
+# bin/install.js must stay in step; the installed-file-set tests in both
+# languages are what holds them there.
+_TOOL_FILES = {
+    "claude": (
+        (("claude", "code-flow.map.md"), (".claude", "commands", "code-flow.map.md")),
+        (("claude", "code-flow.quality.md"), (".claude", "commands", "code-flow.quality.md")),
+    ),
+    "gemini": (
+        (("gemini", "code-flow.map.toml"), (".gemini", "commands", "code-flow.map.toml")),
+        (("gemini", "code-flow.quality.toml"), (".gemini", "commands", "code-flow.quality.toml")),
+    ),
+    "copilot": (
+        (
+            ("copilot", "code-flow.map.prompt.md"),
+            (".github", "prompts", "code-flow.map.prompt.md"),
+        ),
+        (
+            ("copilot", "code-flow.quality.prompt.md"),
+            (".github", "prompts", "code-flow.quality.prompt.md"),
+        ),
+    ),
+}
+
+_TOOL_LABELS = {"claude": "Claude", "gemini": "Gemini", "copilot": "Copilot"}
+
+
+def _install_tool(target: Path, name: str) -> None:
+    """Copy every template belonging to one host into ``target``.
+
+    A plain copy, deliberately: ``shutil.copyfile`` preserves bytes, where a
+    text-mode read/write round-trip would translate "\\n" to "\\r\\n" on
+    Windows and silently corrupt every shipped template.
+    """
+    for src_parts, dst_parts in _TOOL_FILES[name]:
+        out = target.joinpath(*dst_parts)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(_template_path(*src_parts), out)
+        print(f"Installed {_TOOL_LABELS[name]} template: {out}")
 
 
 def main() -> None:
@@ -73,12 +93,7 @@ def main() -> None:
     selected = ["claude", "gemini", "copilot"] if args.tool == "all" else [args.tool]
 
     for name in selected:
-        if name == "claude":
-            _install_claude(target)
-        elif name == "gemini":
-            _install_gemini(target)
-        else:
-            _install_copilot(target)
+        _install_tool(target, name)
 
     _install_viewer(target)
 

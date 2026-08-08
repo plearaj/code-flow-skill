@@ -394,3 +394,876 @@ def test_map_template_skips_already_registered_flows(
         f"{host}/{name} pass 2 is missing the resume rule: its instructions for "
         f"an already-registered flow must say 'do not re-trace'"
     )
+
+
+# --- Phase 3a: quality command ---------------------------------------------
+
+QUALITY_TEMPLATES = (
+    ("claude", "code-flow.quality.md"),
+    ("gemini", "code-flow.quality.toml"),
+    ("copilot", "code-flow.quality.prompt.md"),
+)
+
+# Marks the start of the "load the map" instructions in every host
+# (Claude/Gemini: "#### 2. Load the Map"; Copilot: "2. **Load the map.**").
+_LOAD_START = re.compile(r"load the map", re.IGNORECASE)
+
+# Marks the start of the *next* section after it, in every host
+# (Claude/Gemini: "#### 3. Run the Detectors"; Copilot: "3. **Run the
+# detectors.**"). Used as the end boundary so the scoped region cannot run
+# past step 2 into the detector text, where "inventory.json" and "skipped"
+# both legitimately appear again.
+_LOAD_END = re.compile(r"\n(?:#### 3\.|3\.\s*\*\*Run the detectors)")
+
+
+def _load_region(text: str) -> str:
+    return _section_region(text, _LOAD_START, _LOAD_END)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_reads_all_three_artifact_kinds(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Every detector's input comes from one of these three, so the load step
+    must name all three. A template that forgot `<slug>.json` would produce a
+    report with two detectors silently missing."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for artifact in ("index.json", "inventory.json", "<slug>.json"):
+        assert artifact in region, f"{host} load step does not name {artifact}"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_stops_when_the_index_is_absent(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """No index means there is no map at all, so the remedy is the plain map
+    command — not the whole-code-base one, which is the inventory's remedy."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"`(?:Code_Flows/)?index\.json`\s+is absent.{0,60}?\bstop\b",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not say to stop when the index is absent"
+    assert re.search(
+        r"`(?:Code_Flows/)?index\.json`\s+is absent.{0,120}?`/code-flow\.map`",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not name /code-flow.map as the remedy for an absent index"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_stops_when_inventory_is_absent(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A missing inventory takes two of four detectors with it, so the command
+    stops rather than emitting a report whose meaning depends on how the user
+    happened to build their map. The remedy must be named, not implied."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"`(?:Code_Flows/)?inventory\.json`\s+is absent.{0,60}?\bstop\b",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not say to stop when the inventory is absent"
+    assert re.search(
+        r"`(?:Code_Flows/)?inventory\.json`\s+is absent.{0,160}?`/code-flow\.map\s+--whole-code-base`",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not name the whole-code-base remedy for an absent inventory"
+    assert re.search(
+        r"duplicate-intent\s+and\s+unreached", region, re.IGNORECASE
+    ), f"{host} does not say which detectors the missing catalog takes with it"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_refuses_to_overwrite_unparsable_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Mirrors the rule the map command already follows for index.json."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"does not\s+parse as JSON.{0,260}?do not overwrite.{0,80}?never\s+writes",
+        region,
+        re.IGNORECASE | re.DOTALL,
+    ), f"{host} does not couple the parse failure to the do-not-overwrite rule"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_skips_duplicate_intent_on_thin_maps(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A thin map carries no snippets, so duplicate-intent has no evidence to
+    cite. Both remedies must be named — the flag and the re-map."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "duplicate-intent" in region
+    assert "--read-code" in region
+    assert re.search(r"--detail\s+standard", region)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_survives_one_bad_flow_file(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """One unreadable flow is a coverage fact, not a stop condition — the other
+    flows are still analyzable."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"skip that flow|skip it and", region, re.IGNORECASE)
+
+
+# Marks the start of the detector instructions in every host (Claude/Gemini:
+# "#### 3. Run the Detectors"; Copilot: "3. **Run the detectors.**").
+_DETECTORS_START = re.compile(r"run the detectors", re.IGNORECASE)
+
+# Marks the start of the *next* section (Claude/Gemini: "#### 4. ..."; Copilot:
+# "4. **..."). Scoping matters here: "snippet", "severity" and "sites" all
+# appear again in the step 5/6 output instructions, so an unscoped search
+# would pass even with the detector rules deleted.
+#
+# The Copilot alternative is deliberately title-agnostic (`4\.\s*\*\*`, not
+# `4\.\s*\*\*Verify`). A title-locked pattern only works until Task 4 titles
+# Copilot's step 4 something other than "Verify" — at which point this anchor
+# would stop matching, `_section_region` would fall back to end-of-text, and
+# the detectors region would silently swallow steps 4-6. Every assertion in
+# this file would keep passing against that much larger haystack, which is
+# exactly the vacuity region-scoping exists to prevent. Do not re-tighten
+# this to a specific title.
+_DETECTORS_END = re.compile(r"\n(?:#### 4\.|4\.\s*\*\*)")
+
+# Each detector paired with the principle it reports under. The pairing is the
+# contract, not the name: a template that renamed `complexity-hotspot`'s
+# principle to `DRY` would still name all four detectors, and every suite would
+# stay green. Verified against all three templates, not assumed.
+DETECTOR_PRINCIPLES = (
+    ("duplicate-intent", "DRY"),
+    ("repeated-sequence", "DRY"),
+    ("complexity-hotspot", "KISS"),
+    ("unreached", "YAGNI"),
+)
+
+FINDING_FIELD_NAMES = (
+    "id",
+    "principle",
+    "detector",
+    "severity",
+    "confidence",
+    "title",
+    "rationale",
+    "sites",
+    "suggestion",
+    "effort",
+)
+
+SITE_FIELD_NAMES = ("file", "line", "symbol", "snippet")
+
+
+def _flatten(text: str) -> str:
+    """Contract tests assert what a rule says, not how it wraps. Collapsing
+    whitespace lets a paragraph reflow — including a reflow a formatter does
+    on its own — without turning the suite red for no reason."""
+    return re.sub(r"\s+", " ", text)
+
+
+def _detectors_region(text: str) -> str:
+    return _flatten(_section_region(text, _DETECTORS_START, _DETECTORS_END))
+
+
+def _detector_header_pattern(detector: str, principle: str) -> re.Pattern[str]:
+    """Match ``detector`` where it *introduces its own rule paragraph* —
+    immediately followed by ``principle`` in parentheses (Claude/Gemini:
+    "**a. duplicate-intent (DRY).**"; Copilot: "- **duplicate-intent
+    (DRY)**").
+
+    The principle is part of the pattern, not decoration. An earlier form
+    matched only ``detector`` followed by ``(`` and claimed in its docstring
+    and failure message to verify the detector's principle — so
+    ``complexity-hotspot (DRY)`` would have passed every suite, and the
+    detector-to-principle mapping was untested anywhere in the repository.
+
+    A bare substring search (`detector in region`, as the plan's own draft of
+    this test used) is vacuous for exactly one of the four names:
+    `duplicate-intent` is also the `detector` value in the finding-shape JSON
+    example that follows all four rules (`"detector": "duplicate-intent"`).
+    Deleting the entire duplicate-intent rule paragraph would still leave that
+    JSON example behind, and a bare substring check would still pass. The
+    other three names never recur in the JSON example, so only this one name
+    was actually vacuous — but the fix applies uniformly. Requiring the name
+    to be immediately followed by `(` (its principle) matches only the rule
+    header: the JSON example's next character after the value is a comma, and
+    the per-detector evidence-field bullets never put a `(` directly after the
+    bare detector name either.
+    """
+    return re.compile(re.escape(detector) + r"\s*\(" + re.escape(principle), re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_all_four_detectors(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for detector, principle in DETECTOR_PRINCIPLES:
+        assert _detector_header_pattern(detector, principle).search(region), (
+            f"{host} detector step does not introduce {detector} under {principle}"
+        )
+
+
+# Each threshold, tied to the concept it governs. A bare number search would
+# be vacuous — "8" and "6" and "2" all occur incidentally in a region this
+# size — so every pattern requires the number adjacent to what it measures.
+# The patterns are deliberately loose about the words *between* number and
+# concept, because Claude/Gemini say "fan-out is at least 8" where Copilot's
+# numbered-list register says "at fan-out 8", and both are correct.
+SEVERITY_THRESHOLDS = (
+    r"3 sites",
+    r"40 (?:duplicated )?lines",
+    r"3 consecutive calls",
+    r"2 (?:different )?flows",
+    r"fan-out.{0,20}\b8\b",
+    r"depth.{0,20}\b6\b",
+    r"`loc`.{0,20}\b120\b",
+)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_states_every_severity_threshold(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Severity is rule-based, not impressionistic. A template that dropped a
+    threshold would leave the assistant to invent one, and findings would drift
+    toward medium. Every number from the design must survive in every host."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for pattern in SEVERITY_THRESHOLDS:
+        assert re.search(pattern, region), f"{host} is missing threshold {pattern!r}"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_every_finding_field(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in FINDING_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host} detector step never references the finding field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_every_site_field(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`FINDING_FIELD_NAMES` only covers the ten top-level finding fields;
+    `sites` is itself an array of objects with fields of their own. Deleting
+    that inner object from the finding-shape example — the site's `file`,
+    `line`, `symbol` and `snippet` — would go unnoticed without this."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in SITE_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host} detector step never references the site field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_the_per_detector_evidence_fields(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three detectors are told to cite evidence the core schema has no home
+    for — flow slugs, the metric that tripped and its value, export status. If
+    the schema does not name those fields, each run invents its own key for
+    them and the report JSON stops being a stable shape."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in ("flows", "metric", "value", "exported", "reachedBy"):
+        assert _field_reference(field).search(region), (
+            f"{host} never names the evidence field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_gives_unreached_its_reached_by_values(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`unreached` and `production-unreached` are materially different outcomes
+    with different severity rules, and both emit `detector: "unreached"`. Before
+    `reachedBy`, the distinction survived only in `title`/`rationale` prose — so
+    nothing could assert it and phase 3b's viewer could not render it. The field
+    has exactly two values, and both must be named where the detector's evidence
+    fields are defined; naming the field without its enum would let each run
+    invent its own spelling of "reached only by tests".
+
+    Anchored by proximity from `reachedBy` to both values, and separately by
+    proximity from `production-unreached` to `"tests"`, since it is that
+    equivalence — not the bare presence of the field — that the JSON has to
+    carry.
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r'`reachedBy`.{0,120}`"none"`.{0,120}`"tests"`', region), (
+        f"{host} names `reachedBy` without both of its two values"
+    )
+    assert re.search(r'`"tests"`.{0,120}`production-unreached`', region), (
+        f'{host} never ties `reachedBy: "tests"` to production-unreached'
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_defers_id_numbering_to_step_5(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 3 defines the id *format*; step 4 then drops findings. If step 3 also
+    assigned the counter, a run that legitimately drops `DRY-02` would ship
+    `DRY-01, DRY-03` — and `tests/test_report_schema.py` requires contiguity. The
+    format stays here, the numbering moves to step 5 (asserted separately over
+    the output region), and step 3 must say so or the two steps both look
+    authoritative.
+
+    Keyed on the literal clause rather than on "step 5", which appears elsewhere
+    in this region ("`confidence` is `unverified` unless step 4 verified the
+    finding" is the neighbouring sentence, and other cross-references abound).
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"counter is assigned in step 5, after step 4's drops", region), (
+        f"{host} step 3 does not defer the id counter to step 5"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_enumerates_the_id_counter(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`DRY-01, DRY-02, KISS-01, YAGNI-01` is the clearest statement of "restarts
+    per principle" in the whole document — the rule's prose alone reads as a
+    single global counter to at least one reader in three. Copilot stated the
+    rule without the enumeration; all three hosts now carry it.
+
+    The full four-item sequence is required, not just `DRY-01`: that token alone
+    also appears in the finding-shape JSON example a few lines above, so a
+    single-token check would stay green with the enumeration deleted.
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "`DRY-01`, `DRY-02`, `KISS-01`, `YAGNI-01`" in region, (
+        f"{host} states the per-principle id rule without enumerating it"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_separates_test_only_reachability(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Excluding tests would make every test-only helper look dead. The design
+    splits the outcome in two rather than collapsing it."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "production-unreached" in region
+    assert "kept alive only by its own tests" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_defaults_production_unreached_to_medium(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Every other detector closes its severity rule with an explicit
+    "otherwise `medium`" default; `production-unreached` said only "never
+    `high`", leaving a non-exported entry as "medium or low" with no rule
+    choosing between them — impressionistic, which the severity model
+    forbids. Anchored on "never rate it `high`" immediately followed by the
+    `medium` default, not on a bare "otherwise `medium`" search: that phrase
+    already appears twice more in this region, once per other detector, so
+    an unscoped search would pass even with this specific default deleted."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"never rate it `high`.{0,20}otherwise `medium`", region), (
+        f"{host} never defaults a non-exported production-unreached finding to medium"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_caps_exported_and_never_instructs_deletion(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Parser-free tracing cannot see dynamic dispatch, so unreached is a
+    candidate and never a verdict."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "confirm before deleting" in region
+    assert re.search(r"`exported`.{0,120}\blow\b", region, re.IGNORECASE | re.DOTALL)
+    assert re.search(r"never instructs? deletion|do not tell the user to delete", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_clusters_rather_than_pairs(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three copies of one helper is one finding with three sites, not three
+    pairwise findings. Without this rule a 5-site cluster becomes 10 findings."""
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"never (one finding )?per pair|not pairwise", region, re.IGNORECASE)
+
+
+# --- Phase 3a: quality command, step 4 (verify against source) -------------
+
+# Marks the start of the verification instructions (Claude/Gemini: "#### 4.
+# Verify Against Source"; Copilot: "4. **Verify against source.**").
+_VERIFY_START = re.compile(r"verify against source", re.IGNORECASE)
+
+# Marks the start of the *next* section (Claude/Gemini: "#### 5. ..."; Copilot:
+# "5. **..."). Needed because "verified" and "stale" both recur in the step 6
+# banner text.
+#
+# The Copilot alternative is deliberately title-agnostic (`5\.\s*\*\*`, not
+# `5\.\s*\*\*Write`), for the same reason `_DETECTORS_END` above is: a
+# title-locked pattern only works until Task 5's review retitles Copilot's
+# step 5 (Task 3's own step was amended twice in review). At that point this
+# anchor would stop matching, `_section_region` would fall back to
+# end-of-text, and the verify region would silently swallow steps 5-6 —
+# exactly the vacuity region-scoping exists to prevent. Do not re-tighten
+# this to a specific title.
+_VERIFY_END = re.compile(r"\n(?:#### 5\.|5\.\s*\*\*)")
+
+
+def _verify_region(text: str) -> str:
+    """Flattened for the same reason `_detectors_region` is: these assertions
+    check what a rule says, not how it wraps, and several of this region's
+    phrases ("not a second scan", "forward-slash") are short enough to land
+    on a line break in the shipped templates. `not a second scan` already
+    does — see `test_quality_template_verifies_only_cited_files`'s history."""
+    return _flatten(_section_region(text, _VERIFY_START, _VERIFY_END))
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_verifies_only_cited_files(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """--read-code verifies candidates; it does not re-scan the repository.
+    Re-scanning would duplicate the cost of mapping and not fit on a large
+    codebase, which is the whole reason the map is persisted."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"only the files", region, re.IGNORECASE)
+    assert re.search(r"not a second scan|do not re-?scan", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_marks_confidence_both_ways(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A schema field with only one of its two values ever named is not a
+    schema.
+
+    Strengthened from the plan's `"verified" in region`: the substring
+    `verified` is contained inside `unverified` (u-n-**verified**), so a bare
+    substring check would already be satisfied by the *default* value alone —
+    it would still pass even if the template never named what a *confirmed*
+    finding is set to. `\\bverified\\b` requires a standalone occurrence,
+    which `unverified` never produces (there is no word boundary between the
+    `n` and the `v`), so this only matches where the template actually names
+    the confirmed value.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"\bverified\b", region), (
+        f"{host} verify step never names the standalone 'verified' confidence "
+        f"value (only 'unverified', which contains it as a substring)"
+    )
+    assert "unverified" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_drops_only_unverified_stale_findings(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The order is verify-then-drop. --read-code reads current source, so a
+    finding it confirms was checked against the very change that made the file
+    stale; dropping it afterwards would discard the best evidence in the
+    report."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"unverified", region)
+    assert re.search(r"hash", region, re.IGNORECASE)
+    assert re.search(r"verify first|before dropping|then drop", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_drops_the_whole_finding_on_one_stale_site(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A cluster finding can cite several `sites` across several files. The
+    drop rule above never said whether one stale site drops just that site or
+    the whole finding — for a DRY cluster with 3 sites, that ambiguity is the
+    difference between a finding silently losing evidence and a finding being
+    dropped outright. The design intent is the latter: a finding is only as
+    trustworthy as its weakest citation, so one stale site drops all of it.
+    Keyed on the literal phrase `weakest citation`, since it is the only place
+    in this region that states which of the two readings applies."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"weakest citation", region, re.IGNORECASE), (
+        f"{host} does not say a stale site drops the whole finding, not just that site"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_corrects_line_numbers_on_verified_findings(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A finding kept through a file change must cite where the code is now,
+    not where the map recorded it.
+
+    Also checks the forward-slash / repo-relative path rule is restated here:
+    this is the one step that rewrites a site's `line` after the map first
+    wrote it, so it is the one place a corrected `file` could silently drift
+    from the global path convention if the rule went unstated."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"correct.{0,40}line", region, re.IGNORECASE | re.DOTALL)
+    assert re.search(r"forward.slash", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_never_stops_on_staleness(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """There is no staleness threshold, because any threshold would be a number
+    the design cannot justify."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"never a reason to stop|does not stop the command", region, re.IGNORECASE)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_treats_unreadable_files_as_changed(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 4a's hash comparison only detects staleness for a file it can
+    still read. A deleted cited file trivially fails any hash comparison, but
+    one that merely can't be *read* — a permission error, a binary or
+    encoding failure — is unchanged on disk: its hash still matches, so
+    without this rule 4a would never flag it, 4c would never fire, and the
+    candidate would survive into the report `unverified` under `--read-code`
+    forever. That would make the "usually zero" dropped-count hedge in this
+    same step (and the identical claim in the README) false for that whole
+    sub-case, not just rare.
+
+    Anchored to the hash-comparison sentence itself via proximity between
+    "cannot be read" and "changed", not a bare keyword search: `hash` and
+    `changed`/`change` both recur several times in this region (the
+    comparison itself, the drop rule, the "what made the file stale" aside),
+    so an unscoped substring check for either word alone would stay green
+    even with this rule deleted outright.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"cannot be read.{0,60}changed", region, re.IGNORECASE | re.DOTALL), (
+        f"{host} never states that a cited file which cannot be read at all "
+        f"counts as changed for the staleness comparison"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_counts_step_4s_own_parts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 4 opens by saying how many things happen in it, then lists them. It
+    said "two" and listed three (staleness, verify, drop). This is prompt text an
+    assistant parses literally, and a miscount is exactly the shape of defect
+    that produces a silently skipped step — the third one.
+
+    Both halves are asserted: the stated count, and the three parts it counts.
+    Asserting the count alone would pass on a template that said "three" and
+    listed two.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"\bThree things\b", region), (
+        f"{host} step 4 does not open by counting its three parts"
+    )
+    for part in ("check staleness", "verify", "drop what is left stale"):
+        assert re.search(re.escape(part), region, re.IGNORECASE), (
+            f"{host} step 4 is missing the {part!r} part it counts"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_computes_files_changed_over_the_whole_census(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`filesChanged` is bannered as "how many mapped files have changed since
+    mapping", and the parent design says it exists so the command can warn that
+    the map is stale ("6 files changed since mapping"). Scoped to the cited files
+    only, that banner under-reports staleness on a command whose headline claim
+    is honest coverage: nobody reading "6 files have changed" against a 400-file
+    map guesses only the 8 cited files were checked.
+
+    Both scopes must be stated, because the whole defect was that one was
+    silently standing in for the other. The second assertion is what fails if the
+    census scope is ever narrowed back to the cited subset.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        # `\W{0,4}` spans the bold markers every host wraps "whole-census" in.
+        r"`filesChanged`.{0,40}whole-census\W{0,4}number.{0,60}"
+        r"every entry in `index\.json`'s `files` array",
+        region,
+    ), f"{host} does not compute filesChanged over the whole file census"
+    assert re.search(
+        r"cited-file subset.{0,140}drop rule below drops on", region
+    ), f"{host} does not keep the cited-file subset as what the drop rule uses"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_handles_a_cited_file_absent_from_the_census(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Step 4a compares a cited file against "the `hash` recorded for it in
+    `index.json`'s `files` array" — and the surrounding rules are exhaustive
+    about every other branch, so the one case with no such record read as an
+    oversight rather than a decision. A file the census never recorded is not
+    evidence of change, so it counts as changed in neither scope."""
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"no entry in `index\.json`'s `files` array.{0,200}changed in neither",
+        region,
+    ), f"{host} never says what to do with a cited file the census does not record"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_fills_missing_snippets_from_the_verified_read(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`--read-code` is named in step 2 as one of the two remedies for a thin
+    map, but until this rule existed no step supplied the snippet it promised.
+    Trace it: with `--read-code` on a thin map, duplicate-intent is not skipped,
+    so step 3a runs and is told to "cite every site, with its snippet" against an
+    inventory that carries none. Step 4b's other actions are confirm, drop, set
+    `confidence`, correct `line` — none of which fills a snippet in — and 4b's
+    "not a second scan" rule forbids widening the read to find one.
+
+    So step 4b takes the snippets from the files it is already opening. Keyed on
+    the phrase that states it; a bare `snippet` search would match step 3's
+    citation rule quoted elsewhere and the thin-map gate's reference to the field.
+    """
+    region = _verify_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"no `snippet` on its sites.{0,120}thin map.{0,120}"
+        r"takes its sites' snippets from the source read here",
+        region,
+    ), f"{host} step 4b never fills in the snippets a thin map could not supply"
+
+
+# --- Phase 3a: quality command, steps 5-6 (write the two reports) ----------
+
+# Marks the start of the output instructions (Claude/Gemini: "#### 5. Write
+# the Report Data"; Copilot: "5. **Write the report data.**"). Runs to the
+# end of the template, so no end anchor is needed — but one is supplied
+# anyway so a future step 7 cannot silently widen the region.
+_OUTPUT_START = re.compile(r"write the report data", re.IGNORECASE)
+_OUTPUT_END = re.compile(r"\n(?:#### 7\.|7\.\s*\*\*)")
+
+REPORT_FIELD_NAMES = ("schema", "meta", "coverage", "findings")
+
+
+def _output_region(text: str) -> str:
+    """Flattened for the same reason `_detectors_region` and `_verify_region`
+    are: these assertions check what a rule says, not how it wraps, and the
+    proximity windows below are measured against the flattened text."""
+    return _flatten(_section_region(text, _OUTPUT_START, _OUTPUT_END))
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_writes_both_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "quality-report.json" in region
+    assert "quality-report.md" in region
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_writes_json_before_markdown(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The JSON is the data and the markdown is one rendering of it. Writing
+    the markdown first would make them two independent transcriptions that can
+    disagree — and phase 3b adds a third rendering off the same JSON."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert region.index("quality-report.json") < region.index("quality-report.md")
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_every_report_field(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in REPORT_FIELD_NAMES:
+        assert _field_reference(field).search(region), (
+            f"{host} output step never references the report field {field!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_leads_with_coverage(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Honesty rule 2: a clean section under partial coverage means clean
+    within what was mapped, and the document must say so in words. Coverage
+    also has to *lead* — "Coverage leads the report" is a global constraint —
+    so this test also pins the leading position, not just the honesty phrase.
+
+    Two things worth being explicit about, from review:
+
+    1. The literal phrase `clean within what was mapped` is unique to the
+       partial-coverage sentence in this region, so it alone gates the first
+       assertion below — deleting that sentence fails this test regardless
+       of what else survives.
+    2. The `flowsTraced` / `entryPointsFound` checks use `_field_reference`,
+       but that is *not* a strengthening over a bare `re.search`: both
+       tokens are quote-delimited in step 5's JSON schema example
+       (`"flowsTraced": 14`, `"entryPointsFound": 17`), so `_field_reference`
+       matches that example exactly as a bare substring search would have.
+       An earlier version of this docstring claimed swapping to
+       `_field_reference` fixed a vacuousness gap here; it did not — review
+       caught that the claim was false. These two checks remain confirmatory
+       only (the fields are named somewhere), not load-bearing.
+
+    What *was* an unguarded gap: nothing pinned "coverage leads". Replacing
+    "Lead with coverage" / "the first thing under the title" with, say,
+    "Include a banner stating:" left every other assertion in this suite
+    green, because `_BANNER_ANCHOR` (used by the banner-contents test below)
+    anchors on the sentence's *middle* ("entry points were traced"), not its
+    opening mandate. The third assertion below closes that gap by requiring
+    the literal leading-position phrase.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "clean within what was mapped" in region
+    assert _field_reference("flowsTraced").search(region)
+    assert _field_reference("entryPointsFound").search(region)
+    assert re.search(r"first thing under the title", region, re.IGNORECASE), (
+        f"{host} never states that the banner is the first thing under the title"
+    )
+
+
+# The banner-describing sentence opens identically in every host: "how many
+# of `entryPointsFound` entry points were traced (`flowsTraced`)". Used below
+# as a proximity anchor instead of the bare field names, because
+# `filesChanged`, `findingsDropped`, `detectorsSkipped` and `flowsUnreadable`
+# all also appear as JSON keys in step 5's schema example, earlier in this
+# same region — a bare `_field_reference` search for them would stay green
+# even if the banner sentence itself (the rule this test guards) were deleted
+# outright, since the JSON keys are a separate concern from whether the
+# markdown banner narrates them. The banner narrates them in English, not by
+# field name, so the assertions below match that English phrasing, anchored
+# to the sentence that must contain all four.
+_BANNER_ANCHOR = r"entry points were traced \(`flowsTraced`\)"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_banners_skips_and_drops(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Everything the gating rule and the drop-rule suppressed has to surface,
+    or the report reads as complete when it is not."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for phrase in (
+        "flows were unreadable",
+        "files have changed",
+        "findings were dropped",
+        "detectors were skipped",
+    ):
+        assert re.search(_BANNER_ANCHOR + r".{0,300}" + phrase, region, re.IGNORECASE), (
+            f"{host} banner sentence omits {phrase!r}"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_banners_the_census_scope_and_the_skip_reason(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Two things the banner sentence names but does not pin down on its own.
+
+    The changed-file count: step 4a now computes it over the whole census, and
+    the banner has to say which set it is counting, or "6 files have changed"
+    reads as whichever set the reader assumes.
+
+    The skip reason: step 6 requires the banner say which detectors were skipped
+    **and why**, but `detectorsSkipped` in the JSON holds only names — and step 5
+    says the markdown is rendered from that JSON with nothing contradicting it.
+    Rather than widen the schema, the reason is restated from the step 2 rule
+    that gated the detector off. Whichever resolution is chosen, all three hosts
+    must state the same one, so this pins the chosen one.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"changed-file count is step 4's whole file census, not its cited-file subset",
+        region,
+    ), f"{host} banner does not say the changed-file count is the whole census"
+    assert re.search(
+        r"`detectorsSkipped` carries names only.{0,120}"
+        r"restate it from the step 2 rule that gated the detector off",
+        region,
+    ), f"{host} banner does not say where the skip reason comes from"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_orders_findings_deterministically(
+    repo_root: Path, host: str, name: str
+) -> None:
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"severity.{0,80}site count.{0,80}principle", region, re.IGNORECASE | re.DOTALL)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_assigns_ids_after_the_drops(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The counterpart to `test_quality_template_defers_id_numbering_to_step_5`:
+    step 3 has to hand the numbering off, and step 5 has to accept it. Assigning
+    ids here, after step 4's drops and in the documented order, is what makes the
+    per-principle counter contiguous — which is what
+    `tests/test_report_schema.py::test_finding_ids_restart_per_principle_as_a_contiguous_counter`
+    requires and what no template previously stated.
+
+    "no gaps" is asserted alongside the assignment clause, because the assignment
+    alone does not say the counter is dense: a step 5 that assigned ids in order
+    while still honouring numbers step 3 had already spent would satisfy the
+    first half and still ship `DRY-01, DRY-03`.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(
+        r"Assign the `id` counters here.{0,120}after step 4's drops.{0,200}no gaps",
+        region,
+    ), f"{host} step 5 does not assign the id counters after step 4's drops"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_reports_when_there_are_no_findings(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """An empty report is a real report, not a skipped one — and never a clean
+    bill of health.
+
+    Strengthened from the plan's independent `"no findings" in region` /
+    `"clean bill of health" in region` checks: `clean bill of health` occurs
+    *twice* in every host — once in the partial-coverage honesty sentence,
+    once in this no-findings caveat ("...rather than implying a clean bill
+    of health") — and the partial-coverage sentence precedes the no-findings
+    paragraph in every host's document order. Two independent substring
+    checks therefore stay green even if the no-findings caveat itself is
+    deleted outright: `no findings` still matches ("Say there were no
+    findings, ..."), and `clean bill of health` still matches the earlier,
+    unrelated occurrence. A forward proximity window from `no findings` can
+    only reach the caveat's own occurrence (the later one), not the earlier
+    sentence that precedes `no findings` in the text — so deleting just the
+    caveat now fails this test.
+    """
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"no findings.{0,300}clean bill of health", region, re.IGNORECASE), (
+        f"{host} no-findings paragraph does not restate 'clean bill of health' near 'no findings'"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_says_catalogued_never_all(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Discovery was Glob/Grep/Read, not an AST walk, so the map is
+    best-effort and the report must never claim completeness. This is a
+    global constraint on the report this step writes, so it belongs here
+    rather than waiting for Task 6's fixture to imply it indirectly."""
+    region = _output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r'"catalogued".{0,120}never.{0,10}"all"', region, re.IGNORECASE | re.DOTALL), (
+        f"{host} never says 'catalogued', never 'all'"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_never_writes_source(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Checked over the whole template, not a region: this rule belongs
+    everywhere and its absence anywhere is the defect."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert re.search(r"never edits source code", text, re.IGNORECASE)

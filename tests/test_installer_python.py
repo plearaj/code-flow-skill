@@ -8,9 +8,12 @@ from pathlib import Path
 # literal list, which is what keeps them in lockstep.
 EXPECTED_ALL = [
     ".claude/commands/code-flow.map.md",
+    ".claude/commands/code-flow.quality.md",
     ".code-flow/viewer.template.html",
     ".gemini/commands/code-flow.map.toml",
+    ".gemini/commands/code-flow.quality.toml",
     ".github/prompts/code-flow.map.prompt.md",
+    ".github/prompts/code-flow.quality.prompt.md",
 ]
 
 
@@ -67,6 +70,27 @@ def test_copilot_install_does_not_touch_instructions_file(
     assert instructions.read_text(encoding="utf-8") == "# My own notes\n"
 
 
+def test_installs_claude_quality_command(tmp_path: Path, run_python_installer) -> None:
+    run_python_installer(tmp_path, tool="claude")
+    assert (tmp_path / ".claude" / "commands" / "code-flow.quality.md").is_file()
+
+
+def test_installs_gemini_quality_command(tmp_path: Path, run_python_installer) -> None:
+    run_python_installer(tmp_path, tool="gemini")
+    assert (tmp_path / ".gemini" / "commands" / "code-flow.quality.toml").is_file()
+
+
+def test_selecting_one_tool_installs_both_of_its_commands(
+    tmp_path: Path, run_python_installer
+) -> None:
+    run_python_installer(tmp_path, tool="copilot")
+    prompts = tmp_path / ".github" / "prompts"
+    assert (prompts / "code-flow.map.prompt.md").is_file()
+    assert (prompts / "code-flow.quality.prompt.md").is_file()
+    assert not (tmp_path / ".claude").exists()
+    assert not (tmp_path / ".gemini").exists()
+
+
 def test_install_is_repeatable(tmp_path: Path, run_python_installer) -> None:
     run_python_installer(tmp_path)
     first = {
@@ -101,6 +125,12 @@ def test_installed_files_are_byte_identical_to_their_templates(
             repo_root / "templates" / "copilot" / "code-flow.map.prompt.md",
         tmp_path / ".code-flow" / "viewer.template.html":
             repo_root / "templates" / "shared" / "viewer.template.html",
+        tmp_path / ".claude" / "commands" / "code-flow.quality.md":
+            repo_root / "templates" / "claude" / "code-flow.quality.md",
+        tmp_path / ".gemini" / "commands" / "code-flow.quality.toml":
+            repo_root / "templates" / "gemini" / "code-flow.quality.toml",
+        tmp_path / ".github" / "prompts" / "code-flow.quality.prompt.md":
+            repo_root / "templates" / "copilot" / "code-flow.quality.prompt.md",
     }
 
     for installed, source in installed_to_source.items():
