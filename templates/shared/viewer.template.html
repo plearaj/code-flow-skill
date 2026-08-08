@@ -5,30 +5,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Code Flow</title>
 <style>
-/* ============ theme tokens ============ */
+/* ============ theme tokens (shared vocabulary with the report viewer) ============ */
 :root{
-  --bg:#15171c; --panel:#1a1d24; --border:#2b2f3a; --text:#d7dae1; --dim:#868d9a;
-  --accent:#e8a33d; --grid:#22252d; --edge:#5a6170; --err:#e06c5f;
-  --node-entry:#243529; --node-step:#232833; --node-ext:#2f2639; --node-io:#1f3340;
+  color-scheme:dark;
+  --bg:#14161b; --panel:#1b1e25; --code:#10131a;
+  --border:#2a2e38; --border-strong:#3d4350;
+  --text:#e2e5eb; --dim:#8d94a1;
+  --accent:#e3a53f; --err:#e06c5f;
+  --grid:#1d2027; --edge:#5d6575;
+  --node-entry:#223528; --node-entry-s:#4d7a58;
+  --node-step:#242936;  --node-step-s:#4a5268;
+  --node-ext:#302640;   --node-ext-s:#6d5590;
+  --node-io:#1e3442;    --node-io-s:#47708a;
+  --shadow:0 1px 2px rgba(0,0,0,.30), 0 5px 16px rgba(0,0,0,.14);
 }
 [data-theme="light"]{
-  --bg:#f3f2ee; --panel:#fbfaf7; --border:#d7d4ca; --text:#2c2e34; --dim:#767b86;
-  --accent:#b57511; --grid:#e1dfd6; --edge:#9aa0ab; --err:#b3372a;
-  --node-entry:#d9e8d9; --node-step:#e7e5de; --node-ext:#e5dcef; --node-io:#d7e5ee;
+  color-scheme:light;
+  --bg:#f4f2ed; --panel:#fdfcf9; --code:#f0ede3;
+  --border:#ddd9cd; --border-strong:#c6c1b2;
+  --text:#26282e; --dim:#656b77;
+  --accent:#9a6209; --err:#b3372a;
+  --grid:#e6e3d9; --edge:#959aa6;
+  --node-entry:#dcead8; --node-entry-s:#79a37c;
+  --node-step:#eae8e0;  --node-step-s:#b7b3a4;
+  --node-ext:#e8def2;   --node-ext-s:#a98cc4;
+  --node-io:#d8e6ef;    --node-io-s:#7fa5bd;
+  --shadow:0 1px 2px rgba(40,35,25,.07), 0 5px 16px rgba(40,35,25,.05);
 }
 /* ============ app frame ============ */
 *{box-sizing:border-box; margin:0}
 html,body{height:100%; overflow:hidden}
-body{background:var(--bg); color:var(--text); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{background:var(--bg); color:var(--text); font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased}
 .mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 #app{display:flex; flex-direction:column; height:100%}
-header{display:flex; align-items:center; gap:10px; padding:0 14px; height:46px; border-bottom:1px solid var(--border); background:var(--panel); flex:none}
-#ftitle{font-size:12px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+header{display:flex; align-items:center; gap:10px; padding:0 16px; height:52px; border-bottom:1px solid var(--border); background:var(--panel); flex:none}
+#ftitle{font-size:13px; font-weight:650; letter-spacing:.15em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 header .spacer{flex:1}
-#search{width:220px; max-width:34vw; padding:5px 9px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font:12px ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; outline:none}
-#search:focus{border-color:var(--accent)}
-header button{padding:5px 11px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font:12px system-ui,sans-serif; cursor:pointer}
-header button:hover{border-color:var(--accent); color:var(--accent)}
+#search{width:250px; max-width:34vw; height:32px; padding:0 11px; border:1px solid var(--border); border-radius:7px; background:var(--bg); color:var(--text); font:12.5px ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+#search::placeholder{color:var(--dim)}
+#search:hover{border-color:var(--border-strong)}
+#search:focus-visible{outline-offset:1px}
+header button{height:32px; min-width:32px; padding:0 12px; border:1px solid var(--border); border-radius:7px; background:transparent; color:var(--dim); font:12.5px/1 system-ui,sans-serif; cursor:pointer}
+header button:hover{border-color:var(--border-strong); color:var(--text); background:var(--bg)}
 #main{display:flex; flex:1; min-height:0}
 #canvas{flex:1; min-width:0; position:relative; cursor:grab;
   background-image:radial-gradient(var(--grid) 1px, transparent 1.5px); background-size:26px 26px}
@@ -37,16 +56,19 @@ header button:hover{border-color:var(--accent); color:var(--accent)}
 /* ============ error card ============ */
 #err{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg)}
 #err[hidden]{display:none}
-#err>div{max-width:640px; width:100%; border:1px solid var(--err); border-left:4px solid var(--err); border-radius:8px; background:var(--panel); padding:18px 20px}
-#err h2{color:var(--err); font-size:14px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px}
+#err>div{max-width:640px; width:100%; border:1px solid var(--border); border-left:3px solid var(--err); border-radius:10px; background:var(--panel); box-shadow:var(--shadow); padding:20px 22px}
+#err h2{color:var(--err); font-size:13px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:10px}
 #err pre{white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.7; color:var(--text); font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
 /* ============ graph elements ============ */
 .node{cursor:pointer}
-.node rect{stroke:var(--border); stroke-width:1; rx:8}
-.node.k-entry rect{fill:var(--node-entry)} .node.k-step rect{fill:var(--node-step)}
-.node.k-external rect{fill:var(--node-ext)} .node.k-io rect{fill:var(--node-io)}
-.node text{font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; fill:var(--text); font-size:13px}
-.node text.f{font-size:10px; fill:var(--dim)}
+.node rect{stroke-width:1.25; rx:9}
+.node.k-entry rect{fill:var(--node-entry); stroke:var(--node-entry-s)}
+.node.k-step rect{fill:var(--node-step); stroke:var(--node-step-s)}
+.node.k-external rect{fill:var(--node-ext); stroke:var(--node-ext-s)}
+.node.k-io rect{fill:var(--node-io); stroke:var(--node-io-s)}
+.node:hover rect{stroke:var(--accent)}
+.node text{font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; fill:var(--text); font-size:12.5px; font-weight:600}
+.node text.f{font-size:10px; font-weight:400; fill:var(--dim)}
 .node.sel rect{stroke:var(--accent); stroke-width:2}
 .edge path{fill:none; stroke:var(--edge); stroke-width:1.4; marker-end:url(#ar)}
 .edge.async path,.edge.backe path{stroke-dasharray:5 4}
@@ -54,26 +76,26 @@ header button:hover{border-color:var(--accent); color:var(--accent)}
 .edge.hot path{stroke:var(--accent); stroke-width:1.8; marker-end:url(#arh)}
 .edge.hot text{fill:var(--accent)}
 .node,.edge{transition:opacity .12s ease}
-.faded{opacity:.15}
+.faded{opacity:.14}
 /* ============ detail panel ============ */
-#panel{width:360px; flex:none; border-left:1px solid var(--border); background:var(--panel); overflow-y:auto; padding:16px 18px}
-#panel h1{font-size:15px; margin-bottom:2px}
-#panel .kind{display:inline-block; font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); border:1px solid var(--border); border-radius:4px; padding:1px 6px; margin-bottom:10px}
-#panel p{font-size:13px; color:var(--text); margin:8px 0}
-#panel .floc{font-size:12px; color:var(--dim); margin:10px 0 6px; word-break:break-all; font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
-#panel .acts{display:flex; gap:8px; margin:6px 0 12px}
-#panel .acts button,#panel .acts a{font-size:11.5px; padding:4px 9px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); text-decoration:none; cursor:pointer; font-family:system-ui,sans-serif}
-#panel .acts button:hover,#panel .acts a:hover{border-color:var(--accent); color:var(--accent)}
-#panel pre{border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:10px 12px; font-size:12px; line-height:1.55; overflow:auto; max-height:260px; margin:8px 0 14px; font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
-#panel h3{font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:14px 0 6px}
+#panel{width:360px; flex:none; border-left:1px solid var(--border); background:var(--panel); overflow-y:auto; padding:18px 20px 28px}
+#panel h1{font-size:15px; line-height:1.35; margin-bottom:4px; word-break:break-word}
+#panel .kind{display:inline-block; font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--dim); border:1px solid var(--border); border-radius:5px; padding:2px 8px; margin-bottom:12px}
+#panel p{font-size:13px; line-height:1.6; color:var(--text); margin:8px 0}
+#panel .floc{font-size:12px; color:var(--dim); margin:12px 0 8px; word-break:break-all; font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+#panel .acts{display:flex; gap:8px; margin:6px 0 14px}
+#panel .acts button,#panel .acts a{font-size:11.5px; line-height:1; padding:7px 11px; border:1px solid var(--border); border-radius:7px; background:transparent; color:var(--dim); text-decoration:none; cursor:pointer; font-family:system-ui,sans-serif}
+#panel .acts button:hover,#panel .acts a:hover{border-color:var(--border-strong); color:var(--text); background:var(--bg)}
+#panel pre{border:1px solid var(--border); border-radius:8px; background:var(--code); padding:10px 12px; font-size:12px; line-height:1.6; overflow:auto; max-height:260px; margin:8px 0 14px; font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace; tab-size:4}
+#panel h3{font-size:10.5px; font-weight:650; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin:18px 0 8px}
 #panel ul{list-style:none}
-#panel li{padding:5px 8px; border:1px solid var(--border); border-radius:6px; margin-bottom:5px; cursor:pointer; font-size:12.5px; display:flex; justify-content:space-between; gap:8px; font-family:ui-monospace,Menlo,Consolas,monospace}
-#panel li:hover{border-color:var(--accent)}
-#panel li .ek{color:var(--dim); font-size:10px}
+#panel li{padding:7px 10px; border:1px solid var(--border); border-radius:7px; margin-bottom:6px; cursor:pointer; font-size:12.5px; display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-family:ui-monospace,Menlo,Consolas,monospace}
+#panel li:hover{border-color:var(--border-strong); background:var(--bg)}
+#panel li .ek{color:var(--dim); font-size:10px; letter-spacing:.06em; text-transform:uppercase; flex:none}
 #panel .none{color:var(--dim); font-size:12px}
-.legend{display:grid; grid-template-columns:16px 1fr; gap:6px 8px; align-items:center; font-size:12px; color:var(--dim); margin-top:8px}
-.legend .sw{width:16px; height:12px; border-radius:3px; border:1px solid var(--border)}
-.legend svg{width:16px; height:12px; overflow:visible}
+.legend{display:grid; grid-template-columns:18px 1fr; gap:8px 10px; align-items:center; font-size:12px; color:var(--dim); margin-top:10px}
+.legend .sw{width:18px; height:13px; border-radius:4px; border:1px solid var(--border)}
+.legend svg{width:18px; height:13px; overflow:visible}
 @media (max-width:760px){ #panel{display:none} }
 </style>
 </head>
@@ -82,9 +104,9 @@ header button:hover{border-color:var(--accent); color:var(--accent)}
   <header>
     <div id="ftitle">Code Flow</div>
     <div class="spacer"></div>
-    <input id="search" type="text" placeholder="search nodes… (Enter selects)" autocomplete="off" spellcheck="false">
+    <input id="search" type="text" placeholder="search nodes… (Enter selects)" aria-label="Search nodes" autocomplete="off" spellcheck="false">
     <button id="fitbtn" title="Fit graph to view">Fit</button>
-    <button id="themebtn" title="Toggle light/dark">◐</button>
+    <button id="themebtn" title="Toggle light/dark" aria-label="Toggle light and dark theme">◐</button>
   </header>
   <div id="main">
     <div id="canvas">
@@ -374,7 +396,8 @@ function renderPanel(){
     el("h3", null, "Node kinds");
     var lg = el("div", "legend");
     [["entry","--node-entry"],["step","--node-step"],["external","--node-ext"],["io","--node-io"]].forEach(function(k){
-      var sw = el("div", "sw", null, lg); sw.style.background = "var(" + k[1] + ")";
+      var sw = el("div", "sw", null, lg);
+      sw.style.background = "var(" + k[1] + ")"; sw.style.borderColor = "var(" + k[1] + "-s)";
       el("div", null, k[0], lg);
     });
     el("h3", null, "Edge kinds");
