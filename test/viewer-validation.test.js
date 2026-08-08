@@ -53,12 +53,28 @@ for (const { file, token } of SCAFFOLDS) {
     const v = validate(JSON.stringify({ nothing: "useful" }), token);
     assert.equal(v.ok, false);
     assert.ok(v.lines.length > 0, "a shape failure must say what was wrong");
+    // `ok:false` plus a non-empty `lines` array is satisfied by a validator
+    // that rejects everything unconditionally (this is exactly what the
+    // report.template.html stub does today, on purpose — see the RED-run
+    // notes in the task report). For the flow viewer we know the real shape
+    // rule, so pin the actual reason down rather than settling for "some
+    // lines came back."
+    if (file === "viewer.template.html") {
+      assert.match(v.lines.join(" "), /`nodes` must be a non-empty array/);
+    }
   });
 
   test(`${file}: an empty document is reported, not silently accepted`, () => {
     const validate = extractValidate(file);
     const v = validate("", token);
     assert.equal(v.ok, false);
+    // Same rationale as above: `ok:false` alone doesn't distinguish "the
+    // parser correctly rejected empty input" from "everything is rejected."
+    // The flow viewer routes empty input through the JSON.parse failure
+    // path, so assert on that specific title.
+    if (file === "viewer.template.html") {
+      assert.match(v.title, /invalid json/i);
+    }
   });
 }
 
