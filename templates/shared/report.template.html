@@ -7,92 +7,113 @@
 <style>
 /* ============ theme tokens (shared vocabulary with the flow viewer) ============ */
 :root{
-  --bg:#15171c; --panel:#1a1d24; --border:#2b2f3a; --text:#d7dae1; --dim:#868d9a;
-  --accent:#e8a33d; --err:#e06c5f; --code:#11131a;
-  --high:#e06c5f; --medium:#e8a33d; --low:#7f8794;
+  color-scheme:dark;
+  --bg:#14161b; --panel:#1b1e25; --code:#10131a;
+  --border:#2a2e38; --border-strong:#3d4350;
+  --text:#e2e5eb; --dim:#8d94a1;
+  --accent:#e3a53f; --err:#e06c5f;
+  --high:#e06c5f; --medium:#dfa03c; --low:#98a0ad;
+  --shadow:0 1px 2px rgba(0,0,0,.30), 0 5px 16px rgba(0,0,0,.14);
 }
 [data-theme="light"]{
-  --bg:#f3f2ee; --panel:#fbfaf7; --border:#d7d4ca; --text:#2c2e34; --dim:#767b86;
-  --accent:#b57511; --err:#b3372a; --code:#f0eee7;
-  --high:#b3372a; --medium:#b57511; --low:#767b86;
+  color-scheme:light;
+  --bg:#f4f2ed; --panel:#fdfcf9; --code:#f0ede3;
+  --border:#ddd9cd; --border-strong:#c6c1b2;
+  --text:#26282e; --dim:#656b77;
+  --accent:#9a6209; --err:#b3372a;
+  --high:#ae3527; --medium:#8a5c07; --low:#656b77;
+  --shadow:0 1px 2px rgba(40,35,25,.07), 0 5px 16px rgba(40,35,25,.05);
 }
 /* ============ page frame ============ */
 *{box-sizing:border-box; margin:0}
 [hidden]{display:none !important}
-body{background:var(--bg); color:var(--text); font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+body{background:var(--bg); color:var(--text); font:14px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased}
 .mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
-#app{max-width:880px; margin:0 auto; padding:0 20px 64px}
+#app{max-width:820px; margin:0 auto; padding:0 24px 72px}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 /* ============ error card ============ */
-#err{max-width:880px; margin:24px auto; padding:0 20px}
-#err>div{border:1px solid var(--err); border-left:4px solid var(--err); border-radius:8px;
-  background:var(--panel); padding:18px 20px}
-#err h2{color:var(--err); font-size:14px; letter-spacing:.08em; text-transform:uppercase; margin-bottom:10px}
+#err{max-width:820px; margin:28px auto; padding:0 24px}
+#err>div{border:1px solid var(--border); border-left:3px solid var(--err); border-radius:10px;
+  background:var(--panel); box-shadow:var(--shadow); padding:20px 22px}
+#err h2{color:var(--err); font-size:13px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:10px}
 #err pre{white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.7;
   font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
 /* ============ header ============ */
-.topbar{display:flex; align-items:flex-start; gap:12px; padding:22px 0 16px; border-bottom:1px solid var(--border)}
-.topbar h1{font-size:16px; letter-spacing:.14em; text-transform:uppercase; font-weight:600}
-.topbar .sub{margin-top:5px; font-size:11.5px; color:var(--dim); word-break:break-word}
+.topbar{display:flex; align-items:flex-start; gap:12px; padding:28px 0 18px; border-bottom:1px solid var(--border)}
+.topbar h1{font-size:13px; letter-spacing:.15em; text-transform:uppercase; font-weight:650}
+.topbar .sub{margin-top:6px; font-size:12px; line-height:1.7; color:var(--dim); word-break:break-word}
 .topbar .spacer{flex:1}
-button.ghost{padding:5px 11px; border:1px solid var(--border); border-radius:6px;
-  background:var(--panel); color:var(--text); font:12px system-ui,sans-serif; cursor:pointer; flex:none}
-button.ghost:hover{border-color:var(--accent); color:var(--accent)}
+button.ghost{height:32px; min-width:32px; padding:0 12px; border:1px solid var(--border); border-radius:7px;
+  background:transparent; color:var(--dim); font:12.5px/1 system-ui,sans-serif; cursor:pointer; flex:none}
+button.ghost:hover{border-color:var(--border-strong); color:var(--text); background:var(--panel)}
 /* ============ coverage-banner: leads the page, never collapsible ============ */
-.coverage-banner{margin-top:20px; border:1px solid var(--border); border-left:4px solid var(--accent);
-  border-radius:8px; background:var(--panel); padding:16px 18px}
-.coverage-banner h2{font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent)}
-.coverage-banner .lead{margin-top:8px; font-size:14.5px}
+.coverage-banner{margin-top:24px; border:1px solid var(--border); border-left:3px solid var(--accent);
+  border-radius:10px; background:var(--panel); box-shadow:var(--shadow); padding:18px 20px}
+.coverage-banner h2{font-size:11px; letter-spacing:.16em; text-transform:uppercase; font-weight:650; color:var(--accent)}
+.coverage-banner .lead{margin-top:10px; font-size:14.5px; line-height:1.6}
 .coverage-banner .lead.partial{font-weight:600}
-.coverage-banner ul.facts{list-style:none; margin-top:12px; display:grid; gap:5px}
-.coverage-banner ul.facts li{font-size:13px; padding-left:20px; position:relative}
+.coverage-banner ul.facts{list-style:none; margin-top:12px; display:grid; gap:6px}
+.coverage-banner ul.facts li{font-size:13px; line-height:1.55; padding-left:20px; position:relative}
 .coverage-banner ul.facts li::before{content:"—"; position:absolute; left:0; color:var(--dim)}
 .coverage-banner ul.facts li.warn{color:var(--err)}
-.coverage-banner .note{margin-top:12px; font-size:12px; color:var(--dim)}
+.coverage-banner ul.facts li.warn::before{color:var(--err)}
+.coverage-banner .note{margin-top:14px; padding-top:12px; border-top:1px solid var(--border);
+  font-size:12px; line-height:1.65; color:var(--dim)}
 /* ============ the no-findings screen ============ */
-.no-findings{margin-top:22px; border:1px solid var(--accent); border-left:4px solid var(--accent);
-  border-radius:8px; background:var(--panel); padding:18px 20px}
-.no-findings h2{font-size:16px; line-height:1.4}
-.no-findings p{margin-top:10px; font-size:13.5px}
+.no-findings{margin-top:24px; border:1px solid var(--accent); border-left:3px solid var(--accent);
+  border-radius:10px; background:var(--panel); box-shadow:var(--shadow); padding:20px 22px}
+.no-findings h2{font-size:15.5px; line-height:1.4; font-weight:600}
+.no-findings p{margin-top:10px; font-size:13.5px; line-height:1.65}
 /* ============ filters ============ */
-.filters{display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin-top:26px}
-.filters .filter{display:flex; align-items:center; gap:7px; font-size:12px; color:var(--dim)}
-.filters select{padding:4px 8px; border:1px solid var(--border); border-radius:6px;
-  background:var(--panel); color:var(--text); font:12px system-ui,sans-serif}
-.filters .count{margin-left:auto; font-size:12px; color:var(--dim)}
-.hint{margin-top:8px; font-size:11.5px; color:var(--dim)}
-.filter-empty{margin-top:18px; border:1px dashed var(--border); border-radius:8px;
-  padding:14px 16px; font-size:13px; color:var(--dim)}
+.filters{display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin-top:32px}
+.filters .filter{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--dim)}
+.filters select{height:30px; padding:0 8px; border:1px solid var(--border); border-radius:7px;
+  background:var(--panel); color:var(--text); font:12.5px system-ui,sans-serif; cursor:pointer}
+.filters select:hover{border-color:var(--border-strong)}
+.filters .count{margin-left:auto; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums}
+.hint{margin-top:10px; font-size:11.5px; line-height:1.6; color:var(--dim)}
+.filter-empty{margin-top:18px; border:1px dashed var(--border-strong); border-radius:10px;
+  padding:16px 18px; font-size:13px; line-height:1.6; color:var(--dim)}
 /* ============ findings-list ============ */
-.findings-list{margin-top:16px; display:grid; gap:14px}
-.finding{border:1px solid var(--border); border-left:4px solid var(--low); border-radius:8px;
-  background:var(--panel); padding:15px 17px}
+/* minmax(0,1fr), not the default: grid items keep min-width:auto, so a single
+   column would be sized to the WIDEST item's min-content width — one long
+   snippet line anywhere in the report would then set the width of every card
+   and push the document into horizontal overflow. */
+.findings-list{margin-top:18px; display:grid; grid-template-columns:minmax(0,1fr); gap:16px}
+.finding{border:1px solid var(--border); border-left:3px solid var(--low); border-radius:10px;
+  background:var(--panel); box-shadow:var(--shadow); padding:16px 19px 18px}
 .finding.sev-high{border-left-color:var(--high)}
 .finding.sev-medium{border-left-color:var(--medium)}
 .finding.sev-low{border-left-color:var(--low)}
-.fhead{display:flex; align-items:center; flex-wrap:wrap; gap:7px}
-.fid{font-size:12px; font-weight:600; letter-spacing:.06em}
-.chip{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--dim);
-  border:1px solid var(--border); border-radius:4px; padding:1px 7px}
-.chip.sev-high{color:var(--high); border-color:var(--high)}
+.fhead{display:flex; align-items:center; flex-wrap:wrap; gap:8px}
+.fid{font-size:12.5px; font-weight:650; letter-spacing:.05em}
+.chip{font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; line-height:1.5;
+  color:var(--dim); border:1px solid var(--border); border-radius:5px; padding:2px 8px}
+/* severity is coded by fill, not hue alone: high is solid, medium is outlined in
+   its own color, low stays neutral — and every chip names its level in words */
+.chip.sev-high{background:var(--high); border-color:var(--high); color:var(--bg); font-weight:700}
 .chip.sev-medium{color:var(--medium); border-color:var(--medium)}
-.chip.sev-low{color:var(--low)}
-.chip.conf-unverified{color:var(--err); border-color:var(--err)}
-.finding h3{margin-top:10px; font-size:15px}
-.finding p{margin-top:8px; font-size:13.5px}
-.candidate-note{border-left:2px solid var(--dim); padding-left:10px; color:var(--dim); font-size:12.5px}
-dl.evidence{margin-top:10px; display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:12.5px}
-dl.evidence dt{color:var(--dim); text-transform:uppercase; font-size:10px; letter-spacing:.09em; padding-top:3px}
-.finding h4{margin-top:14px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim)}
-ul.sites{list-style:none; margin-top:7px; display:grid; gap:9px}
-ul.sites li{border:1px solid var(--border); border-radius:6px; padding:8px 10px}
-ul.sites .loc{font-size:12.5px; word-break:break-all}
+.chip.sev-low{color:var(--dim); border-color:var(--border-strong)}
+/* dashed border: an unconfirmed finding stays visibly provisional in any palette */
+.chip.conf-unverified{color:var(--err); border:1px dashed var(--err)}
+.finding h3{margin-top:12px; font-size:15.5px; line-height:1.4; font-weight:600}
+.finding p{margin-top:8px; font-size:13.5px; line-height:1.65}
+.candidate-note{margin-top:10px; border-left:2px solid var(--border-strong); padding:2px 0 2px 12px;
+  color:var(--dim); font-size:12.5px; line-height:1.6}
+dl.evidence{margin-top:12px; display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12.5px}
+dl.evidence dt{color:var(--dim); text-transform:uppercase; font-size:10px; font-weight:600; letter-spacing:.08em; padding-top:3px}
+dl.evidence dd{line-height:1.55}
+.finding h4{margin-top:16px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:650; color:var(--dim)}
+ul.sites{list-style:none; margin-top:8px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px}
+ul.sites li{border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:9px 12px 11px}
+ul.sites .loc{font-size:12.5px; font-weight:600; word-break:break-all}
 ul.sites .sym{font-size:11.5px; color:var(--dim); margin-top:2px}
-ul.sites pre{margin-top:7px; background:var(--code); border:1px solid var(--border); border-radius:6px;
-  padding:9px 11px; font-size:12px; line-height:1.5; overflow:auto; white-space:pre;
+ul.sites pre{margin-top:8px; background:var(--code); border:1px solid var(--border); border-radius:7px;
+  padding:10px 12px; font-size:12.5px; line-height:1.6; overflow-x:auto; white-space:pre; tab-size:4;
   font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
 ul.sites .nosnip{margin-top:6px; font-size:11.5px; color:var(--dim); font-style:italic}
-.suggestion{margin-top:13px; font-size:13.5px}
-.suggestion .lbl{display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin-bottom:3px}
+.suggestion{margin-top:15px; padding-top:13px; border-top:1px solid var(--border); font-size:13.5px; line-height:1.6}
+.suggestion .lbl{display:block; font-size:10px; font-weight:650; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin-bottom:4px}
 @media (max-width:600px){ .filters .count{margin-left:0; width:100%} }
 </style>
 </head>
