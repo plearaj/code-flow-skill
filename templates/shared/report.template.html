@@ -75,7 +75,11 @@ button.ghost:hover{border-color:var(--border-strong); color:var(--text); backgro
 .filter-empty{margin-top:18px; border:1px dashed var(--border-strong); border-radius:10px;
   padding:16px 18px; font-size:13px; line-height:1.6; color:var(--dim)}
 /* ============ findings-list ============ */
-.findings-list{margin-top:18px; display:grid; gap:16px}
+/* minmax(0,1fr), not the default: grid items keep min-width:auto, so a single
+   column would be sized to the WIDEST item's min-content width — one long
+   snippet line anywhere in the report would then set the width of every card
+   and push the document into horizontal overflow. */
+.findings-list{margin-top:18px; display:grid; grid-template-columns:minmax(0,1fr); gap:16px}
 .finding{border:1px solid var(--border); border-left:3px solid var(--low); border-radius:10px;
   background:var(--panel); box-shadow:var(--shadow); padding:16px 19px 18px}
 .finding.sev-high{border-left-color:var(--high)}
@@ -100,7 +104,7 @@ dl.evidence{margin-top:12px; display:grid; grid-template-columns:auto 1fr; gap:4
 dl.evidence dt{color:var(--dim); text-transform:uppercase; font-size:10px; font-weight:600; letter-spacing:.08em; padding-top:3px}
 dl.evidence dd{line-height:1.55}
 .finding h4{margin-top:16px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:650; color:var(--dim)}
-ul.sites{list-style:none; margin-top:8px; display:grid; gap:10px}
+ul.sites{list-style:none; margin-top:8px; display:grid; grid-template-columns:minmax(0,1fr); gap:10px}
 ul.sites li{border:1px solid var(--border); border-radius:8px; background:var(--bg); padding:9px 12px 11px}
 ul.sites .loc{font-size:12.5px; font-weight:600; word-break:break-all}
 ul.sites .sym{font-size:11.5px; color:var(--dim); margin-top:2px}

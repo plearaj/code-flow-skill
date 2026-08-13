@@ -1685,6 +1685,36 @@ def test_report_viewer_renders_report_data_as_text_not_markup(repo_root: Path) -
         assert sink not in text, f"{sink} would interpret a snippet as markup"
 
 
+def test_report_viewer_grid_columns_cannot_be_sized_by_their_widest_item(repo_root: Path) -> None:
+    """Found by the 2026-08-08 manual browser pass, which is the only check that
+    can see it: `.findings-list` and `ul.sites` are grid containers, and grid
+    items keep `min-width:auto`. Without an explicit `minmax(0,...)` the single
+    column is sized to the widest item's *min-content* width -- so one long
+    snippet line anywhere in the report sets the width of EVERY card. On a real
+    report that meant 1264px cards inside an 840px column, including cards with
+    no snippet at all, and a horizontal scrollbar below roughly 1650px.
+
+    `ul.sites pre{overflow:auto}` does not save it: the column grows instead of
+    the `<pre>` scrolling.
+
+    Pinned per selector rather than as a blanket rule over every `display:grid`,
+    because the layout grids in these files are content-sized on purpose.
+    """
+    text = _scaffold(repo_root, "report.template.html")
+    for selector in (r"\.findings-list", r"ul\.sites"):
+        rule = re.search(selector + r"\{([^}]*)\}", text)
+        assert rule is not None, f"no {selector} rule found in report.template.html"
+        body = rule.group(1)
+        assert "display:grid" in body.replace(" ", ""), (
+            f"{selector} is no longer a grid -- this test guards the grid sizing "
+            f"and must be revisited, not deleted"
+        )
+        assert re.search(r"grid-template-columns:\s*minmax\(\s*0\s*,", body), (
+            f"{selector} is a grid without minmax(0,...); one long snippet line "
+            f"will set the width of every card and overflow the document"
+        )
+
+
 def test_report_viewer_shows_a_skipped_detector_with_its_reason(repo_root: Path) -> None:
     """A detector that did not run is a hole in the report, and a hole named
     without its cause reads as a detail rather than as a limit on what the
