@@ -1,8 +1,8 @@
 # Design: Phase 4 — the Agent Skills standard
 
 **Date:** 2026-08-08
-**Status:** Draft, pending approval
-**Target version:** see Decision 6 — additive `1.1.0`, not `2.0.0`
+**Status:** Draft, pending approval. **Open Question 1 is ruled — see below.**
+**Target version:** `1.0.0` — see Decision 6, as amended
 **Extends:** [`2026-08-06-dry-kiss-yagni-reporting-design.md`](2026-08-06-dry-kiss-yagni-reporting-design.md)
 
 ## How this document was produced
@@ -71,16 +71,19 @@ The discovery paths overlap usefully:
 back-compat is unknown to this repository, and the shipped 1.0.0 Copilot integration
 depends on the answer.
 
-**Decision: correct the frontmatter to `agent: agent` and re-point the parity test, as
-a standalone fix that does not wait for the rest of Phase 4.** The test currently
-guarantees the wrong thing — the precise failure mode this project keeps finding in
-itself, this time in the file that guards against it.
+**Decision: correct the frontmatter to `agent: agent` and re-point the parity test.**
+The test currently guarantees the wrong thing — the precise failure mode this project
+keeps finding in itself, this time in the file that guards against it.
 
-**Rejected: bundling it into the skills migration.** That leaves a possibly-dead
-frontmatter key in the published package for however long Phase 4 takes, and Phase 4
-is not small.
+**Amended after the Open Question 1 ruling.** This was originally specified as a
+standalone fix that must not wait for the rest of Phase 4, because leaving a dead
+frontmatter key in a *published* package was the thing to avoid. With 1.0.0 held until
+Phase 4 ships, there is no published package to protect, and the argument for splitting
+it out disappears. **It folds into the phase as ordinary work.**
 
-**Not decided here:** whether to hold the 1.0.0 publish for it. That is Open Question 1.
+The test fix should still land early in the phase rather than late, for a different
+reason: while it asserts `mode: agent`, it will actively fail any correct change to that
+frontmatter.
 
 ## Decision 1: adopt the standard, and make `SKILL.md` the single source of truth
 
@@ -184,14 +187,23 @@ to no benefit.
 
 **Rejected: bundling them.** It reads tidier and costs context on every activation.
 
-## Decision 6: additive, at `1.1.0` — not a replacement, and not `2.0.0`
+## Decision 6: additive, and it ships *inside* `1.0.0`
+
+**Amended after the Open Question 1 ruling.** This decision originally targeted `1.1.0`,
+on the assumption that 1.0.0 would already be on the registries. It will not be: 1.0.0 is
+held until this phase is implemented, so the skills ship as part of the first public
+release rather than as a follow-up to it.
 
 **Decision: Phase 4 installs the skills alongside the existing commands and prompt files.
-Nothing is removed. Version `1.1.0`.**
+Nothing is removed. Version stays `1.0.0`.**
 
-1.0.0 has not been published for long — possibly not at all, depending on Open Question 1
-— and the 0.x → 1.0 upgrade already asks users to delete a stale command file by hand.
-Asking them to do it again immediately, for a rename, is a poor trade.
+Holding the release makes the version question simpler and the naming question moot —
+there is no published `/code-flow.map` to rename out from under anyone, because there has
+never been a published 1.x at all. The npm registry's latest is `0.2.0`, and PyPI has
+nothing. The 0.x → 1.0 upgrade note in the README covers the rename in one place instead
+of two.
+
+It does **not** make the additive-versus-replacing question moot, and additive still wins.
 
 Additive also hedges the real uncertainty: **this document has verified the format from
 documentation, not from running it.** Shipping skills next to what already works means a
@@ -259,10 +271,17 @@ previous phases did — which is why Open Question 3 exists.
 
 ## Open questions — these need a ruling
 
-1. **Does the `mode` → `agent` fix hold the 1.0.0 publish?** If VS Code no longer honours
-   `mode`, the Copilot half of 1.0.0 does not work, and publishing it means shipping a
-   known-broken integration. Fixing first costs a day. Recommendation: **fix first**,
-   because "we published it knowing" is a worse position than "we published it late".
+1. ~~**Does the `mode` → `agent` fix hold the 1.0.0 publish?**~~ **Ruled: 1.0.0 is held
+   until Phase 4 is implemented.** Broader than the question asked — the whole release
+   waits, not just the frontmatter fix. Consequences are folded into Decision 0 and
+   Decision 6 above: the fix is no longer split out, and the skills ship inside 1.0.0
+   rather than in a follow-up.
+
+   Two consequences worth stating plainly, since holding a release is not free:
+   nothing reaches a registry until a phase that is **verified from documentation rather
+   than from running it** is finished, so Phase 4's risks are now release-blocking rather
+   than additive; and the pre-publish manual browser pass will need re-running at the end
+   of Phase 4 regardless of how many times it is run before then.
 
 2. **Do the Gemini TOML commands survive Phase 4, or does Gemini move to skills only?**
    Gemini supports both. Keeping both is more surface to maintain; dropping TOML loses
