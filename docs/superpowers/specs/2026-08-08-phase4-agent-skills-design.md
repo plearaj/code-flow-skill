@@ -1,0 +1,282 @@
+# Design: Phase 4 — the Agent Skills standard
+
+**Date:** 2026-08-08
+**Status:** Draft, pending approval
+**Target version:** see Decision 6 — additive `1.1.0`, not `2.0.0`
+**Extends:** [`2026-08-06-dry-kiss-yagni-reporting-design.md`](2026-08-06-dry-kiss-yagni-reporting-design.md)
+
+## How this document was produced
+
+Drafted without the usual question-at-a-time dialogue, at the user's request, while
+they finished a separate design pass. Every decision that would normally have been a
+question is marked **Decision**, with the reasoning and the alternative that was
+rejected, so approval is a matter of ratifying or overturning specific calls.
+
+**Three questions at the end genuinely need a human ruling** and are not decided here.
+
+## What changed upstream
+
+This phase exists because the ground moved under all three host integrations at once.
+
+**GitHub Copilot is migrating off prompt files.** VS Code's prompt-file documentation
+now says: *"Agents running on the Agent Host don't use prompt files. To use an existing
+prompt with the Copilot agent, convert it to an agent skill."* The Agent Customizations
+editor ships a one-time migration that converts prompt files to skills.
+([prompt files](https://code.visualstudio.com/docs/copilot/customization/prompt-files),
+[agent skills](https://code.visualstudio.com/docs/agent-customization/agent-skills))
+
+**Our Copilot frontmatter key no longer exists.** The current documented prompt-file
+properties are `description`, `name`, `argument-hint`, `agent`, `model` and `tools`.
+The word `mode` does not appear on that page at all. We ship `mode: agent` in both
+Copilot templates, and `tests/test_host_parity.py:149` **asserts it is present**. The
+successor is `agent:`, whose allowed values are `ask`, `agent`, `plan`, or a custom
+agent name. See Decision 0 — this is the one part of this phase that should not wait.
+
+**Gemini CLI implements the same standard.** Its documentation describes skills as
+*"Based on the Agent Skills open standard"*, discovered from `.gemini/skills/` or
+`.agents/skills/` at workspace level and `~/.gemini/skills/` or `~/.agents/skills/`
+for the user. ([Gemini CLI skills](https://geminicli.com/docs/cli/skills/))
+
+**So does Claude Code**, which is where the `SKILL.md` format originated, discovered
+from `.claude/skills/`.
+
+The three hosts have converged on one format. This repository still writes three.
+
+## The problem this actually solves
+
+This project's dominant recurring cost is that every rule must be written three times
+and held in agreement by hand. Phase 1 lost four review rounds to host drift. Phase 2
+inherited a 27-line Claude/Gemini divergence it could reduce but not remove. Phase 3a
+had to commit `tests/test_host_parity.py` because the constraint was otherwise enforced
+by a script someone re-ran from memory. Every phase since has paid a parity tax.
+
+A single `SKILL.md` that all three hosts read removes the tax rather than automating it.
+That is the case for this phase, and it is a strong one.
+
+The discovery paths overlap usefully:
+
+| Location | Copilot | Gemini | Claude Code |
+|---|---|---|---|
+| `.claude/skills/` | yes | — | yes |
+| `.agents/skills/` | yes | yes | — |
+| `.github/skills/` | yes | — | — |
+| `.gemini/skills/` | — | yes | — |
+
+**Two installed copies of one file cover all three hosts**: `.claude/skills/` and
+`.agents/skills/`. There is no single directory that reaches all three.
+
+## Decision 0: fix `mode: agent` now, independently of this phase
+
+`mode` is not a documented prompt-file property. Whether VS Code still honours it for
+back-compat is unknown to this repository, and the shipped 1.0.0 Copilot integration
+depends on the answer.
+
+**Decision: correct the frontmatter to `agent: agent` and re-point the parity test, as
+a standalone fix that does not wait for the rest of Phase 4.** The test currently
+guarantees the wrong thing — the precise failure mode this project keeps finding in
+itself, this time in the file that guards against it.
+
+**Rejected: bundling it into the skills migration.** That leaves a possibly-dead
+frontmatter key in the published package for however long Phase 4 takes, and Phase 4
+is not small.
+
+**Not decided here:** whether to hold the 1.0.0 publish for it. That is Open Question 1.
+
+## Decision 1: adopt the standard, and make `SKILL.md` the single source of truth
+
+**Decision: one canonical `templates/shared/code-flow-map/SKILL.md` and one
+`templates/shared/code-flow-quality/SKILL.md`, installed byte-identically to every
+location a host reads.** The installer copies; it does not template per host.
+
+This inverts the current architecture. Today `templates/claude/`, `templates/gemini/`
+and `templates/copilot/` each hold a full copy of the same prose, and a test proves
+they agree. Under this decision there is one copy, and agreement is structural rather
+than asserted.
+
+`tests/test_host_parity.py` does not disappear — it changes job. Instead of measuring
+divergence between three hand-written files, it asserts that every installed skill file
+is byte-identical to its template, which is a stronger and much cheaper claim.
+
+**Rejected: per-host `SKILL.md` variants.** The whole benefit is that the standard is
+the same everywhere. A per-host variant re-creates the drift problem inside the new
+format and would be indistinguishable, six months later, from what we have now.
+
+## Decision 2: the names must change, and the failure mode if they don't is silent
+
+Skill names allow **lowercase letters, numbers and hyphens only** — no dots, no slashes,
+no namespace prefixes, 64 characters maximum. The Copilot documentation is explicit
+that *"Names with invalid characters cause the skill to silently fail to load."*
+
+`code-flow.map` and `code-flow.quality` are therefore invalid skill names.
+
+**Decision: `code-flow-map` and `code-flow-quality`.** The directory name must match
+the `name` field, so both change together.
+
+This is user-visible: `/code-flow.map` becomes `/code-flow-map`. See Decision 6 for how
+that is sequenced without breaking anyone.
+
+**Worth stating plainly:** an invalid name does not warn, it silently does not load. A
+user would see the skill simply not exist, with nothing to search for. That is the exact
+class of failure this project spent Phase 3b building tests against, and it argues for a
+contract test asserting both names match `^[a-z0-9-]{1,64}$` rather than trusting review.
+
+## Decision 3: invocation semantics differ per host, and the report must say so
+
+This is the sharpest difference and the one most likely to surprise a user.
+
+| Host | How a skill runs |
+|---|---|
+| Copilot | auto-matched from the description, **and** `/`-invocable |
+| Gemini CLI | auto-activated via an `activate_skill` tool call, with a confirmation prompt |
+| Claude Code | auto-matched from the description |
+
+Today, `/code-flow.map` runs **only when a user types it.** As a skill it may run because
+a model decided the description matched what the user was talking about.
+
+That matters more here than for most skills, because these commands are not read-only.
+`code-flow.map` writes `Code_Flows/`, updates `index.json`, and **edits source files to
+add missing docstrings.** A command with that blast radius should not start because a
+conversation drifted near the topic.
+
+**Decision: set `disable-model-invocation: true` on both skills, so they run only when
+explicitly invoked.** Copilot documents this field for exactly this purpose. Where a host
+has no equivalent, the skill's own first instruction is to confirm the target before
+writing anything.
+
+**Rejected: relying on Gemini's confirmation prompt.** It covers one host, is outside our
+control, and a confirmation dialog for an action the user never asked for is a worse
+experience than the action not starting.
+
+**Consequence to disclose:** `disable-model-invocation` is a Copilot-documented field.
+Whether Gemini and Claude Code honour it is **not verified by this document** and must be
+tested against each host before the phase ships. If a host ignores it, the fallback is
+the in-skill confirmation, and the README says which hosts have which guarantee.
+
+## Decision 4: `$ARGUMENTS` does not survive, and the flags need a new home
+
+The Claude and Gemini templates take `$ARGUMENTS` and parse flags out of it —
+`--whole-code-base`, `--detail thin|standard`, `--read-code`. The skill format has no
+`$ARGUMENTS`; it has `argument-hint`, which is display text, not a substitution.
+
+**Decision: the flags stay, stated in the skill body as things the user may say, and
+`argument-hint` advertises them.** The assistant already parses the flags out of prose
+today — no installer or CLI code has ever done it — so this is less of a change than it
+looks. What changes is that the skill can no longer rely on a literal `$ARGUMENTS`
+placeholder being substituted.
+
+**Rejected: dropping the flags for separate skills** (`code-flow-map-whole-codebase` and
+so on). It multiplies the artifact count, splits prose that must stay in agreement, and
+recreates the parity problem under new names.
+
+## Decision 5: bundle the HTML scaffolds as skill resources
+
+Skills may bundle supporting files, referenced from `SKILL.md` by relative Markdown link,
+with the documented caveat that *"If a file isn't referenced in the instructions, it won't
+be loaded."*
+
+**Decision: keep `.code-flow/viewer.template.html` and `.code-flow/report.template.html`
+exactly where they are, and do not move them inside the skill directories.**
+
+The scaffolds are read by the assistant at run time and written into `Code_Flows/`. They
+are not instructions and do not want to be pulled into a model's context — `viewer.template.html`
+is over a thousand lines. Referencing them as skill resources would load them into context
+to no benefit.
+
+**Rejected: bundling them.** It reads tidier and costs context on every activation.
+
+## Decision 6: additive, at `1.1.0` — not a replacement, and not `2.0.0`
+
+**Decision: Phase 4 installs the skills alongside the existing commands and prompt files.
+Nothing is removed. Version `1.1.0`.**
+
+1.0.0 has not been published for long — possibly not at all, depending on Open Question 1
+— and the 0.x → 1.0 upgrade already asks users to delete a stale command file by hand.
+Asking them to do it again immediately, for a rename, is a poor trade.
+
+Additive also hedges the real uncertainty: **this document has verified the format from
+documentation, not from running it.** Shipping skills next to what already works means a
+host that behaves differently than documented is a disappointment rather than an outage.
+
+The deprecation path, deliberately not scheduled here: once the skills are confirmed
+working against all three hosts in the wild, a later major version removes
+`.claude/commands/`, `.gemini/commands/` and `.github/prompts/` and the rename becomes the
+only form.
+
+**Rejected: a clean `2.0.0` replacement.** Faster to a single format, and it bets the
+whole integration on documentation this repository has not yet tested against three live
+hosts. This project's stated posture is that an untested artifact is unknown, not
+probably fine.
+
+## What Phase 4 ships
+
+- `templates/shared/code-flow-map/SKILL.md` and `templates/shared/code-flow-quality/SKILL.md`
+- Installer changes in `bin/install.js` and `src/code_flow_skill/cli.py` to copy each
+  skill to `.claude/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`
+- `agent: agent` replacing `mode: agent` in both Copilot prompt files (Decision 0, likely
+  landed earlier and separately)
+- `tests/test_host_parity.py` re-pointed from divergence-measuring to byte-identity
+- README: the new invocation forms, which host guarantees explicit invocation, and what
+  the existing commands still do
+- `CHANGELOG.md` entry
+- Version `1.1.0` in `package.json` and `pyproject.toml`
+
+## Testing
+
+**Skill-name validity.** Both names match `^[a-z0-9-]{1,64}$` and the directory name
+equals the `name` field. An invalid name fails silently at load, so this must be a test
+and not a review item.
+
+**Frontmatter contract.** `name` and `description` present, `description` at most 1024
+characters, `disable-model-invocation` present and `true`.
+
+**Byte identity.** Every installed skill file is byte-identical to its template, in both
+languages, extending the existing `EXPECTED_ALL` machinery.
+
+**Content contract.** The existing quality-template contract tests move to the single
+`SKILL.md` and stop being parametrized over three hosts. The honesty phrasings —
+"catalogued", "clean within what was mapped", `unreached` as a candidate — are unchanged
+requirements and keep their tests.
+
+**Not tested, disclosed:** that any host actually loads, matches or refuses to
+auto-invoke these skills. No test in this repository can observe a host's behavior. This
+is the same limitation every phase has disclosed, and Decision 3 depends on it more than
+previous phases did — which is why Open Question 3 exists.
+
+## Risks
+
+- **The format is verified from documentation, not from running it.** Gemini's page
+  describes workflow rather than a field-level `SKILL.md` specification, so
+  frontmatter compatibility across all three hosts is **assumed, not confirmed**. If
+  Gemini requires or rejects a field the others don't, the single-source-of-truth
+  premise weakens and Decision 1 needs revisiting.
+- **`disable-model-invocation` may be Copilot-only.** Decision 3's safety property is
+  only as good as the field's support. The in-skill confirmation is the fallback.
+- **Auto-invocation on a file-writing command is the highest-consequence risk in this
+  phase.** A model deciding on its own to run something that edits source files is worse
+  than any parity bug this project has had.
+- **Silent failure on a bad name.** Mitigated by a test, listed here because the failure
+  gives the user nothing to search for.
+
+## Open questions — these need a ruling
+
+1. **Does the `mode` → `agent` fix hold the 1.0.0 publish?** If VS Code no longer honours
+   `mode`, the Copilot half of 1.0.0 does not work, and publishing it means shipping a
+   known-broken integration. Fixing first costs a day. Recommendation: **fix first**,
+   because "we published it knowing" is a worse position than "we published it late".
+
+2. **Do the Gemini TOML commands survive Phase 4, or does Gemini move to skills only?**
+   Gemini supports both. Keeping both is more surface to maintain; dropping TOML loses
+   explicit slash invocation on that host, which Decision 3 argues is worth something.
+
+3. **Is auto-invocation acceptable at all for `code-flow.map`,** given it edits source
+   files to add docstrings? If the answer is no and `disable-model-invocation` turns out
+   not to be portable, the honest conclusion is that `code-flow.map` should not be a skill
+   on hosts that cannot suppress model invocation — and Phase 4 ships skills for
+   `code-flow.quality`, which only writes reports, first.
+
+## Deferred
+
+`code-flow.violations` remains reserved and undesigned, unchanged from the parent.
+
+Removal of the command and prompt-file integrations is deferred to a future major version
+and deliberately not scheduled here.
