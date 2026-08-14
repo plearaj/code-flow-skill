@@ -31,12 +31,39 @@ function extractValidate(templateName) {
   return new Function('"use strict";' + block + "; return validate;")();
 }
 
+// `wrongShape` is per-scaffold on purpose. `{nothing:"useful"}` breaks a rule in
+// the two data viewers, but the index legitimately *accepts* a registry carrying
+// neither `flows` nor `files` — it drops those sections rather than erroring, so
+// that document is valid there and would prove nothing. Each scaffold therefore
+// supplies a document that violates one of its own rules, and names the message
+// it expects back.
 const SCAFFOLDS = [
-  { file: "viewer.template.html", token: "__FLOW_DATA__" },
-  { file: "report.template.html", token: "__REPORT_DATA__" },
+  {
+    file: "viewer.template.html",
+    token: "__FLOW_DATA__",
+    wrongShape: { nothing: "useful" },
+    expect: [/`nodes` must be a non-empty array/],
+  },
+  {
+    file: "report.template.html",
+    token: "__REPORT_DATA__",
+    wrongShape: { nothing: "useful" },
+    expect: [
+      /`schema` must be 1/,
+      /`meta` must be an object/,
+      /`coverage` must be an object/,
+      /`findings` must be an array/,
+    ],
+  },
+  {
+    file: "index.template.html",
+    token: "__INDEX_DATA__",
+    wrongShape: { flows: "not-an-array" },
+    expect: [/`flows` must be an array when present/],
+  },
 ];
 
-for (const { file, token } of SCAFFOLDS) {
+for (const { file, token, wrongShape, expect } of SCAFFOLDS) {
   test(`${file}: an unreplaced token is reported, not parsed`, () => {
     const validate = extractValidate(file);
     const v = validate(token, token);
@@ -54,20 +81,14 @@ for (const { file, token } of SCAFFOLDS) {
 
   test(`${file}: well-formed JSON of the wrong shape is reported`, () => {
     const validate = extractValidate(file);
-    const v = validate(JSON.stringify({ nothing: "useful" }), token);
+    const v = validate(JSON.stringify(wrongShape), token);
     assert.equal(v.ok, false);
     assert.ok(v.lines.length > 0, "a shape failure must say what was wrong");
     // `ok:false` plus a non-empty `lines` array is satisfied by a validator
-    // that rejects everything unconditionally. Both scaffolds now have a
-    // real validator, so pin the actual reason down for each rather than
-    // settling for "some lines came back."
-    if (file === "viewer.template.html") {
-      assert.match(v.lines.join(" "), /`nodes` must be a non-empty array/);
-    } else if (file === "report.template.html") {
-      assert.match(v.lines.join(" "), /`schema` must be 1/);
-      assert.match(v.lines.join(" "), /`meta` must be an object/);
-      assert.match(v.lines.join(" "), /`coverage` must be an object/);
-      assert.match(v.lines.join(" "), /`findings` must be an array/);
+    // that rejects everything unconditionally, so pin the actual reason each
+    // scaffold gives rather than settling for "some lines came back."
+    for (const pattern of expect) {
+      assert.match(v.lines.join(" "), pattern);
     }
   });
 
@@ -201,4 +222,26 @@ test("report.template.html: a wrong schema version is reported", () => {
   const v = validate(report({ schema: 2 }), "__REPORT_DATA__");
   assert.equal(v.ok, false);
   assert.match(v.lines.join(" "), /schema/i);
+});
+
+// The index page's whole job is to survive a registry that is missing things:
+// a feature-mode map has no `files` census, and a fresh repo has no `flows`.
+// It must render those as absent sections, never as an error card — so the
+// permissive path needs pinning as tightly as the rejecting one.
+test("index.template.html: a registry with no flows and no files is accepted, not an error", () => {
+  const validate = extractValidate("index.template.html");
+  const v = validate(JSON.stringify({ meta: { mode: "feature" } }), "__INDEX_DATA__");
+  assert.equal(v.ok, true, "an empty registry must render, not fail");
+  assert.deepEqual(v.flows, [], "absent flows must normalise to an empty array");
+  assert.deepEqual(v.files, [], "absent files must normalise to an empty array");
+});
+
+test("index.template.html: a flow entry without a slug is reported", () => {
+  const validate = extractValidate("index.template.html");
+  const v = validate(
+    JSON.stringify({ flows: [{ title: "User Login" }] }),
+    "__INDEX_DATA__"
+  );
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /flows\[0\] is missing a string `slug`/);
 });

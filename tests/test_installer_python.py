@@ -9,6 +9,7 @@ from pathlib import Path
 EXPECTED_ALL = [
     ".claude/commands/code-flow.map.md",
     ".claude/commands/code-flow.quality.md",
+    ".code-flow/index.template.html",
     ".code-flow/report.template.html",
     ".code-flow/viewer.template.html",
     ".gemini/commands/code-flow.map.toml",
@@ -42,7 +43,7 @@ def test_both_shared_scaffolds_are_installed_regardless_of_tool(
     """The scaffolds are tool-agnostic: every command template references one
     of them, so selecting a single host must still install both."""
     run_python_installer(tmp_path, tool="claude")
-    for name in ("viewer.template.html", "report.template.html"):
+    for name in ("viewer.template.html", "report.template.html", "index.template.html"):
         assert (tmp_path / ".code-flow" / name).is_file(), f"{name} was not installed"
 
 

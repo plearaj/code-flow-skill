@@ -1396,6 +1396,7 @@ def test_quality_template_degrades_gracefully_without_the_scaffold(
 # --- Phase 3b: the two viewer scaffolds ------------------------------------
 
 SCAFFOLDS = (
+    ("index.template.html", "__INDEX_DATA__"),
     ("viewer.template.html", "__FLOW_DATA__"),
     ("report.template.html", "__REPORT_DATA__"),
 )
@@ -1734,3 +1735,33 @@ def test_report_viewer_shows_a_skipped_detector_with_its_reason(repo_root: Path)
     assert re.search(r"reason[^\n]{0,60}not recorded", text, re.IGNORECASE), (
         "a detector whose reason the viewer does not know must still say so, not be hidden"
     )
+
+
+def test_flow_index_token_cannot_render_as_visible_text(repo_root: Path) -> None:
+    """`__FLOW_INDEX__` is optional, so the common case is that it is never
+    replaced at all — the generator does not fill it today. An unreplaced
+    placeholder must therefore be impossible to see. It is safe only because it
+    sits inside a `<script type="application/json">` block, which browsers never
+    render; anywhere else in the document it would print raw on every flow page.
+    Pinned to that containment rather than to the token merely existing."""
+    text = _scaffold(repo_root, "viewer.template.html")
+    assert text.count("__FLOW_INDEX__") == 1, "the optional index token must appear exactly once"
+    holder = re.search(
+        r'<script[^>]+type="application/json"[^>]*id="flow-index"[^>]*>\s*__FLOW_INDEX__\s*</script>',
+        text,
+    )
+    assert holder is not None, (
+        "__FLOW_INDEX__ must sit alone inside its application/json script block; "
+        "outside one, an unreplaced token renders as visible text on every flow page"
+    )
+
+
+def test_every_scaffold_offers_a_way_back_to_the_index(repo_root: Path) -> None:
+    """A landing page that pages cannot return to is a one-way trip. The link is
+    plain markup in both viewers, so nothing else in the suite would notice it
+    disappearing during a restyle."""
+    for name in ("viewer.template.html", "report.template.html"):
+        text = _flatten(_scaffold(repo_root, name))
+        assert re.search(r'href\s*=\s*"index\.html"', text), (
+            f"{name} has no link back to index.html"
+        )

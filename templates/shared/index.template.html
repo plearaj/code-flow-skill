@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Flow</title>
+<style>
+:root{
+  color-scheme:dark;
+  /* Nocturne, inlined: this page is a single self-contained file, so the design
+     system's tokens are carried here rather than linked. */
+  --bg:#161826; --bg-2:#1b1d2c; --panel:#232532; --raise:#2b2d3b; --code:#14161f;
+  --border:#3f424d; --border-strong:#595d6c;
+  --text:#e9e9ed; --dim:#9397ab; --faint:#75798c;
+  --accent:#9184d9; --accent-soft:#b5abfc; --accent-dim:#5d5294; --err:#d98a95;
+  --section:#262a60; --section-ghost:#4c5397;
+  --shadow:0 0 0 1px #3f424d, 0 6px 18px rgba(0,0,0,.5);
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3f5fe; --bg-2:#e9ebf6; --panel:#fbfbff; --raise:#eceffb; --code:#eef0fa;
+  --border:#cfd3e5; --border-strong:#b2b6ca;
+  --text:#292b31; --dim:#595d6c; --faint:#75798c;
+  --accent:#5d5294; --accent-soft:#796cbf; --accent-dim:#b5abfc; --err:#8d3f4a;
+  --section:#d2cefd; --section-ghost:#9690c9;
+  --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08);
+}
+*{box-sizing:border-box; margin:0}
+[hidden]{display:none !important}
+body{background:var(--bg); color:var(--text);
+  font:14px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif; font-weight:400;
+  -webkit-font-smoothing:antialiased}
+#app{max-width:980px; margin:0 auto; padding:0 30px 110px}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+a{color:var(--accent); text-decoration:none}
+a:hover{color:var(--text)}
+h1,h2,h3{font-weight:500; letter-spacing:-.015em; line-height:1.15}
+.mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Menlo,Consolas,monospace}
+/* rules fade at their ends rather than stopping cleanly */
+.fade-rule{height:1px; border:0;
+  background:linear-gradient(90deg, transparent, var(--border) 48px, var(--border) calc(100% - 48px), transparent)}
+
+/* ---- error card ---- */
+#err{max-width:980px; margin:30px auto; padding:0 30px}
+#err>div{border:1px solid var(--border); border-top:2px solid var(--err); border-radius:8px;
+  background:var(--panel); box-shadow:var(--shadow); padding:20px 22px}
+#err h2{color:var(--err); font-size:12px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:10px}
+#err pre{white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.7;
+  font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+
+/* ---- header ---- */
+.topbar{display:flex; align-items:flex-start; gap:16px; padding:44px 0 22px}
+.kicker{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent)}
+.topbar h1{margin-top:10px; font-size:27px}
+.topbar .sub{margin-top:11px; font-size:11.5px; line-height:1.85; color:var(--faint); word-break:break-all;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.topbar .spacer{flex:1}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; height:32px; padding:0 13px;
+  border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--dim);
+  font:12px "Inter",system-ui,sans-serif; cursor:pointer; flex:none; text-decoration:none;
+  transition:border-color .14s,color .14s,background .14s}
+.btn:hover{border-color:var(--border-strong); color:var(--text); background:color-mix(in srgb, var(--text) 7%, transparent)}
+.btn:active{background:color-mix(in srgb, var(--text) 14%, transparent)}
+.btn-accent{border-color:var(--accent); color:var(--accent)}
+.btn-accent:hover{color:var(--accent-soft); border-color:var(--accent-soft);
+  background:color-mix(in srgb, var(--accent) 12%, transparent)}
+.btn-accent:active{background:color-mix(in srgb, var(--accent) 22%, transparent)}
+
+/* ---- coverage ---- */
+.coverage{margin-top:30px; display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px;
+  border:1px solid var(--border); border-radius:8px; background:var(--border); overflow:hidden}
+.coverage .cell{background:var(--panel); padding:15px 17px 16px}
+.coverage b{display:block; font-size:25px; font-weight:500; letter-spacing:-.03em; line-height:1.1;
+  font-variant-numeric:tabular-nums}
+.coverage span{display:block; margin-top:5px; font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--faint)}
+.coverage .cell.lit b{color:var(--accent-soft)}
+.notes{margin-top:13px; display:flex; flex-direction:column; gap:6px}
+.note{font-size:12.5px; line-height:1.65; color:var(--dim); padding-left:16px; position:relative; text-wrap:pretty}
+.note::before{content:""; position:absolute; left:2px; top:8px; width:5px; height:5px; border-radius:50%;
+  background:var(--faint)}
+.note.warn{color:var(--accent-soft)}
+.note.warn::before{background:var(--accent)}
+
+/* ---- section heads ---- */
+.sechead{display:flex; align-items:baseline; gap:12px; margin:46px 0 16px}
+.sechead h2{font-size:16px}
+.sechead .n{font-size:11px; color:var(--faint); font-family:ui-monospace,Menlo,monospace}
+.sechead .spacer{flex:1}
+
+/* ---- flow cards ---- */
+.flows{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px}
+.flow{position:relative; display:flex; flex-direction:column; gap:11px; padding:17px 18px 15px;
+  border:1px solid var(--border); border-radius:8px; background:var(--panel); box-shadow:var(--shadow);
+  transition:border-color .16s,transform .16s}
+.flow:hover{border-color:var(--accent); transform:translateY(-2px)}
+.flow:focus-visible{border-color:var(--accent)}
+.flow .mark{position:absolute; left:0; top:17px; width:2px; height:19px; background:var(--accent)}
+.flow .title{font-size:17px; font-weight:500; letter-spacing:-.015em; line-height:1.25; color:var(--text);
+  text-wrap:pretty}
+.flow .slug{font-size:11px; color:var(--faint); font-family:ui-monospace,Menlo,Consolas,monospace;
+  word-break:break-all}
+.flow .facts{display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-top:1px}
+.tag{display:inline-flex; align-items:center; gap:5px; height:21px; padding:0 8px; border-radius:4px;
+  border:1px solid var(--border); color:var(--dim); font-size:10px; letter-spacing:.09em; text-transform:uppercase}
+.tag.accent{border-color:var(--accent-dim); color:var(--accent-soft)}
+.flow .entry{font-size:11.5px; color:var(--dim); font-family:ui-monospace,Menlo,Consolas,monospace;
+  word-break:break-all}
+.flow .sides{display:flex; align-items:center; gap:12px; margin-top:auto; padding-top:12px;
+  border-top:1px solid var(--border); font-size:11px}
+.flow .sides a{color:var(--faint); font-family:ui-monospace,Menlo,monospace}
+.flow .sides a:hover{color:var(--accent)}
+.flow .open{margin-left:auto; color:var(--accent); font-size:11.5px}
+.empty{border:1px dashed var(--border-strong); border-radius:8px; padding:20px 22px; color:var(--dim);
+  font-size:13px; line-height:1.7; text-wrap:pretty}
+
+/* ---- report row ---- */
+.report{display:flex; align-items:center; gap:16px; padding:17px 19px; border:1px solid var(--border);
+  border-radius:8px; background:var(--panel); box-shadow:var(--shadow)}
+.report .t{font-size:15px; font-weight:500}
+.report .d{margin-top:3px; font-size:12px; color:var(--faint)}
+.report .spacer{flex:1}
+
+/* ---- census ---- */
+details.census{margin-top:16px; border:1px solid var(--border); border-radius:8px; background:var(--panel)}
+details.census>summary{cursor:pointer; padding:14px 18px; font-size:13px; color:var(--dim);
+  display:flex; align-items:center; gap:9px; list-style:none}
+details.census>summary::-webkit-details-marker{display:none}
+details.census>summary::before{content:"▸"; color:var(--faint); font-size:10px; transition:transform .16s}
+details.census[open]>summary::before{transform:rotate(90deg)}
+details.census>summary:hover{color:var(--text)}
+.censusbody{border-top:1px solid var(--border); padding:14px 18px 18px}
+.censusbody .filter{display:flex; align-items:center; gap:10px; margin-bottom:12px}
+.censusbody input{flex:1; min-width:0; height:32px; padding:0 11px; border:1px solid var(--border);
+  border-radius:8px; background:var(--bg-2); color:var(--text); caret-color:var(--accent);
+  font:12px ui-monospace,Menlo,Consolas,monospace}
+.censusbody input::placeholder{color:var(--faint)}
+.censusbody input:hover{border-color:var(--border-strong)}
+.censusbody input:focus-visible{border-color:var(--accent); outline-offset:0}
+.censusbody .fcount{font-size:11px; color:var(--faint); font-family:ui-monospace,Menlo,monospace}
+table.files{width:100%; border-collapse:collapse; font-size:12px}
+table.files th{text-align:left; padding:6px 10px 8px 0; font-size:9.5px; font-weight:500; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--faint); border-bottom:1px solid var(--border); white-space:nowrap}
+table.files th.num,table.files td.num{text-align:right; padding-right:0; font-variant-numeric:tabular-nums}
+table.files td.barcell{padding-left:14px; padding-right:14px; width:78px; text-align:left}
+table.files td{padding:6px 10px 6px 0; border-bottom:1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  font-family:ui-monospace,Menlo,Consolas,monospace; word-break:break-all}
+table.files tr:last-child td{border-bottom:0}
+table.files td.p{color:var(--text)}
+table.files td.h{color:var(--faint); white-space:nowrap}
+table.files .bar{display:block; height:3px; border-radius:2px; background:var(--section-ghost); min-width:2px}
+@media (max-width:620px){ table.files th.h,table.files td.h{display:none} }
+</style>
+</head>
+<body>
+<div id="err" hidden></div>
+<main id="app"></main>
+
+<!-- Registry data. The token below is replaced verbatim with the contents of
+     Code_Flows/index.json (meta, coverage, files[], flows[]). Any literal "</"
+     inside a string must be written "<\/" so it cannot end this script block. -->
+<script type="application/json" id="index-data">__INDEX_DATA__</script>
+
+<script>
+(function(){
+"use strict";
+var TOKEN = "__INDEX" + "_DATA__";   // assembled at runtime so a string-replace installer can't rewrite it
+var errBox = document.getElementById("err"), app = document.getElementById("app");
+function fail(title, lines){
+  errBox.hidden = false; errBox.innerHTML = "";
+  var card = document.createElement("div");
+  var h = document.createElement("h2"); h.textContent = title; card.appendChild(h);
+  var pre = document.createElement("pre"); pre.textContent = lines.join("\n"); card.appendChild(pre);
+  errBox.appendChild(card);
+}
+/* ==== validate:start ==== */
+function validate(raw, TOKEN){
+  raw = (raw || "").trim();
+  if (raw === TOKEN){
+    return { ok:false, title:"No registry data", lines:[
+      "The " + TOKEN + " placeholder was never replaced.",
+      "This template must be filled with the contents of Code_Flows/index.json before viewing."
+    ]};
+  }
+  var data;
+  try { data = JSON.parse(raw); }
+  catch(e){
+    return { ok:false, title:"Invalid JSON in #index-data", lines:[
+      String(e.message || e), "",
+      "Tip: literal </ inside strings must be escaped as <\\/."
+    ]};
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)){
+    return { ok:false, title:"Registry data failed validation", lines:["The top level must be a JSON object."]};
+  }
+  var problems = [];
+  if (data.flows != null && !Array.isArray(data.flows)) problems.push("`flows` must be an array when present.");
+  if (data.files != null && !Array.isArray(data.files)) problems.push("`files` must be an array when present.");
+  (Array.isArray(data.flows) ? data.flows : []).forEach(function(f, i){
+    if (!f || typeof f !== "object"){ problems.push("flows[" + i + "] is not an object."); return; }
+    if (typeof f.slug !== "string" || !f.slug) problems.push("flows[" + i + "] is missing a string `slug`.");
+  });
+  if (problems.length) return { ok:false, title:"Registry data failed validation", lines:problems };
+  return { ok:true, data:data, meta:(data.meta && typeof data.meta === "object") ? data.meta : {},
+           coverage:(data.coverage && typeof data.coverage === "object") ? data.coverage : {},
+           flows:Array.isArray(data.flows) ? data.flows : [],
+           files:Array.isArray(data.files) ? data.files : [] };
+}
+/* ==== validate:end ==== */
+
+var v = validate(document.getElementById("index-data").textContent, TOKEN);
+if (!v.ok){ fail(v.title, v.lines); return; }
+var meta = v.meta, cov = v.coverage, flows = v.flows, files = v.files;
+
+function el(tag, cls, text, parent){
+  var d = document.createElement(tag);
+  if (cls) d.className = cls;
+  if (text != null) d.textContent = text;
+  (parent || app).appendChild(d); return d;
+}
+function bytes(n){
+  if (typeof n !== "number" || !isFinite(n)) return "—";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
+}
+function num(x){ return typeof x === "number" && isFinite(x) ? x : null; }
+
+/* ---- header ---- */
+var top = el("header", "topbar");
+var titles = el("div", "titles", null, top);
+el("div", "kicker", "code flow", titles);
+el("h1", null, flows.length === 1 ? "One mapped flow" : (flows.length ? flows.length + " mapped flows" : "No mapped flows yet"), titles);
+var sub = [];
+if (meta.root) sub.push(meta.root);
+var bits = [];
+if (meta.mode) bits.push(meta.mode === "whole-code-base" ? "whole codebase" : String(meta.mode));
+if (meta.detail) bits.push(String(meta.detail) + " detail");
+if (meta.generated) bits.push("mapped " + meta.generated);
+if (bits.length) sub.push(bits.join("  ·  "));
+if (sub.length) el("div", "sub", sub.join("\n"), titles).style.whiteSpace = "pre-line";
+el("div", "spacer", null, top);
+var themeBtn = el("button", "btn", "◐", top);
+themeBtn.title = "Toggle light/dark";
+themeBtn.setAttribute("aria-label", "Toggle light and dark theme");
+el("hr", "fade-rule");
+
+/* ---- coverage ---- */
+var stats = [
+  ["filesScanned", "files scanned", false],
+  ["functionsCatalogued", "functions catalogued", false],
+  ["entryPointsFound", "entry points found", false],
+  ["flowsTraced", "flows traced", true]
+].filter(function(s){ return num(cov[s[0]]) != null; });
+if (stats.length){
+  var grid = el("div", "coverage");
+  stats.forEach(function(s){
+    var c = el("div", "cell" + (s[2] ? " lit" : ""), null, grid);
+    el("b", null, String(cov[s[0]]), c);
+    el("span", null, s[1], c);
+  });
+}
+var notes = el("div", "notes");
+var noteCount = 0;
+var ep = num(cov.entryPointsFound), ft = num(cov.flowsTraced);
+if (ep != null && ft != null && ep > ft){
+  el("div", "note warn", (ep - ft) + " discovered entry point" + (ep - ft === 1 ? " has" : "s have") +
+    " no traced flow yet — re-run the map to cover " + (ep - ft === 1 ? "it" : "them") + ".", notes); noteCount++;
+}
+var skipped = num(cov.filesSkipped);
+if (skipped){
+  var why = [];
+  if (cov.skipReason && typeof cov.skipReason === "object"){
+    Object.keys(cov.skipReason).forEach(function(k){ why.push(cov.skipReason[k] + " " + k); });
+  }
+  el("div", "note", skipped + " file" + (skipped === 1 ? "" : "s") + " skipped" +
+    (why.length ? " (" + why.join(", ") + ")" : "") + ".", notes); noteCount++;
+}
+if (meta.mode === "feature"){
+  el("div", "note", "Mapped in feature mode: only the traced flows below were walked, so the file census and " +
+    "function catalogue are partial. Run the map in whole-codebase mode for full breadth.", notes); noteCount++;
+}
+if (!noteCount) notes.remove();
+
+/* ---- flows ---- */
+var sh = el("div", "sechead");
+el("h2", null, "Flows", sh);
+el("div", "n", flows.length ? flows.length + " registered" : "", sh);
+if (!flows.length){
+  el("div", "empty", "The registry has no flows yet. Run the map command on a feature — each traced flow writes " +
+    "its own viewer page here and registers itself in index.json.");
+} else {
+  var wrap = el("div", "flows");
+  flows.slice().sort(function(a, b){ return (num(b.nodes) || 0) - (num(a.nodes) || 0); }).forEach(function(f){
+    var a = el("a", "flow", null, wrap);
+    a.href = f.slug + ".html";
+    el("div", "mark", null, a);
+    el("div", "title", f.title || f.slug, a);
+    el("div", "slug", f.slug, a);
+    var facts = el("div", "facts", null, a);
+    if (num(f.nodes) != null) el("span", "tag accent", f.nodes + (f.nodes === 1 ? " node" : " nodes"), facts);
+    if (f.entry) el("div", "entry", "entry · " + f.entry, a);
+    var sides = el("div", "sides", null, a);
+    ["md", "json"].forEach(function(ext){
+      var s = document.createElement("a");
+      s.href = f.slug + "." + ext; s.textContent = "." + ext;
+      s.title = "The " + (ext === "md" ? "written walkthrough" : "flow data");
+      s.addEventListener("click", function(ev){ ev.stopPropagation(); });
+      sides.appendChild(s);
+    });
+    el("span", "open", "open ›", sides);
+  });
+}
+
+/* ---- quality report ---- */
+el("div", "sechead").appendChild(Object.assign(document.createElement("h2"), { textContent: "Quality" }));
+var rep = el("div", "report");
+var rt = el("div", null, null, rep);
+el("div", "t", "Quality report", rt);
+el("div", "d", "Written by the quality command — findings, coverage and confidence across every mapped flow.", rt);
+el("div", "spacer", null, rep);
+var ra = el("a", "btn btn-accent", "Open report", rep);
+ra.href = "quality-report.html";
+
+/* ---- file census ---- */
+if (files.length){
+  var d = el("details", "census");
+  var sm = document.createElement("summary");
+  sm.textContent = "File census · " + files.length + " file" + (files.length === 1 ? "" : "s");
+  d.appendChild(sm);
+  var body = el("div", "censusbody", null, d);
+  var filt = el("div", "filter", null, body);
+  var inp = document.createElement("input");
+  inp.type = "text"; inp.placeholder = "filter by path…"; inp.spellcheck = false;
+  inp.setAttribute("aria-label", "Filter files by path");
+  filt.appendChild(inp);
+  var fc = el("div", "fcount", "", filt);
+  var table = el("table", "files", null, body);
+  var thead = document.createElement("thead");
+  var hr = document.createElement("tr");
+  [["path", ""], ["size", "num"], ["", "num"], ["hash", "h"]].forEach(function(h){
+    var th = document.createElement("th");
+    th.textContent = h[0]; if (h[1]) th.className = h[1];
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr); table.appendChild(thead);
+  var tbody = document.createElement("tbody"); table.appendChild(tbody);
+  var sorted = files.slice().sort(function(a, b){ return (num(b.size) || 0) - (num(a.size) || 0); });
+  var max = sorted.reduce(function(m, f){ return Math.max(m, num(f.size) || 0); }, 1);
+  function draw(q){
+    tbody.innerHTML = "";
+    var shown = 0;
+    sorted.forEach(function(f){
+      var p = String(f.path || "");
+      if (q && p.toLowerCase().indexOf(q) < 0) return;
+      shown++;
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td"); td1.className = "p"; td1.textContent = p; tr.appendChild(td1);
+      var td2 = document.createElement("td"); td2.className = "num"; td2.textContent = bytes(num(f.size)); tr.appendChild(td2);
+      var td3 = document.createElement("td"); td3.className = "num barcell";
+      var bar = document.createElement("span"); bar.className = "bar";
+      bar.style.width = Math.max(2, Math.round((num(f.size) || 0) / max * 64)) + "px";
+      td3.appendChild(bar); tr.appendChild(td3);
+      var td4 = document.createElement("td"); td4.className = "h";
+      td4.textContent = String(f.hash || "").replace(/^sha256:/, ""); tr.appendChild(td4);
+      tbody.appendChild(tr);
+    });
+    fc.textContent = q ? shown + " of " + sorted.length : "";
+  }
+  draw("");
+  inp.addEventListener("input", function(){ draw(inp.value.trim().toLowerCase()); });
+}
+
+/* ---- theme ---- */
+var rootEl = document.documentElement;
+var saved = null; try { saved = localStorage.getItem("codeflow-theme"); } catch (e) {}
+rootEl.setAttribute("data-theme", saved || "dark");
+themeBtn.addEventListener("click", function(){
+  var t = rootEl.getAttribute("data-theme") === "light" ? "dark" : "light";
+  rootEl.setAttribute("data-theme", t);
+  try { localStorage.setItem("codeflow-theme", t); } catch (e) {}
+});
+document.title = (meta.root ? String(meta.root).split(/[\\/]/).filter(Boolean).pop() + " · " : "") + "code flow";
+})();
+</script>
+</body>
+</html>
