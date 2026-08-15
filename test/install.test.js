@@ -10,18 +10,20 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const installer = path.join(repoRoot, "bin", "install.js");
 
 export function runInstaller(target, tool = "all") {
-  execFileSync(process.execPath, [installer, "--target", target, "--tool", tool], {
-    stdio: "pipe",
-  });
+  return execFileSync(
+    process.execPath,
+    [installer, "--target", target, "--tool", tool],
+    { stdio: "pipe" }
+  ).toString();
 }
 
 export function tempTarget() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "code-flow-test-"));
 }
 
-// The exact set `--tool all` must produce — nothing missing, nothing extra.
-// Both installers (this one and src/code_flow_skill/cli.py) are asserted
-// against the same literal list, which is what keeps them in lockstep.
+// Every path this installer can write — nothing missing, nothing extra. Both
+// installers (this one and src/code_flow_skill/cli.py) are asserted against the
+// same literal list, which is what keeps them in lockstep.
 const EXPECTED_ALL = [
   ".claude/commands/code-flow.map.md",
   ".claude/commands/code-flow.quality.md",
@@ -33,6 +35,10 @@ const EXPECTED_ALL = [
   ".github/prompts/code-flow.map.prompt.md",
   ".github/prompts/code-flow.quality.prompt.md",
 ];
+
+// What `--tool all` produces in a project with no sign of Gemini CLI, which is
+// now the common case: everything above except the two TOML commands.
+const EXPECTED_WITHOUT_GEMINI = EXPECTED_ALL.filter((p) => !p.startsWith(".gemini/"));
 
 // Hand-rolled walk rather than readdirSync({ recursive: true }): that option
 // landed in Node 18.17 and its Dirent.parentPath in 20.12, both above this
@@ -48,10 +54,49 @@ function installedPaths(root, prefix = "") {
     .sort();
 }
 
-test("--tool all installs exactly the expected file set", () => {
+// Gemini CLI was retired for individual users on 2026-06-18 and Antigravity
+// does not read `.gemini/commands/`, so writing those two files into every
+// project would leave a dead directory in almost all of them. The licence
+// remnant is real, though, so a project already using Gemini CLI still gets
+// them without anyone passing a flag.
+test("--tool all skips gemini when the project shows no sign of it", () => {
   const target = tempTarget();
   runInstaller(target, "all");
+  assert.deepEqual(installedPaths(target), EXPECTED_WITHOUT_GEMINI);
+});
+
+test("--tool all installs gemini when the project already uses it", () => {
+  const target = tempTarget();
+  fs.mkdirSync(path.join(target, ".gemini"));
+  runInstaller(target, "all");
   assert.deepEqual(installedPaths(target), EXPECTED_ALL);
+});
+
+test("explicit --tool gemini overrules the heuristic", () => {
+  // A detector that can silently overrule an explicit request is worse than no
+  // detector: it leaves someone who said exactly what they wanted with nothing.
+  const target = tempTarget();
+  runInstaller(target, "gemini");
+  const commands = path.join(target, ".gemini", "commands");
+  assert.ok(fs.existsSync(path.join(commands, "code-flow.map.toml")));
+  assert.ok(fs.existsSync(path.join(commands, "code-flow.quality.toml")));
+});
+
+test("skipping gemini says so, and says how to get it", () => {
+  // A silent omission is indistinguishable from a broken install.
+  const target = tempTarget();
+  const out = runInstaller(target, "all");
+  assert.match(out, /Skipped the Gemini CLI templates/);
+  assert.match(out, /--tool gemini/);
+});
+
+test("no skip notice when gemini is actually installed", () => {
+  // The inverse: a notice that always printed would satisfy the test above
+  // while telling Gemini users their templates were skipped when they weren't.
+  const target = tempTarget();
+  fs.mkdirSync(path.join(target, ".gemini"));
+  const out = runInstaller(target, "all");
+  assert.doesNotMatch(out, /Skipped/);
 });
 
 test("installs the viewer scaffold", () => {
