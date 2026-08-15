@@ -130,7 +130,7 @@ comment line above it: `src_jobs_worker_run_l31` and `src_jobs_worker_run_l88`. 
 - All file paths use **forward slashes**, repo-relative. `meta.root` is the absolute project root with forward slashes (used only to build editor links).
 - `snippet` is optional — a short excerpt (≤ ~40 lines). **Inside every `snippet` string, replace each `</` with `<\/`** (a literal `</script>` would terminate the data block). No trailing commas anywhere.
 
-**5b. Fill the template.** Read `.code-flow/viewer.template.html`. Write `Code_Flows/<functionality_name>.html` as an **exact copy** of that template with the single token `__FLOW_DATA__` replaced by the JSON object from 5a. Change nothing else in the template. (The page self-validates on load: if the JSON is malformed or an edge points at a missing node, it shows a specific error card instead of a blank page — read it and fix the JSON.)
+**5b. Fill the template.** Read `.code-flow/viewer.template.html`. Write `Code_Flows/<functionality_name>.html` as an **exact copy** of that template with two tokens replaced and nothing else changed. `__FLOW_DATA__` becomes the JSON object from 5a. `__FLOW_INDEX__` becomes the `flows` array as it will stand after step 6b — read `Code_Flows/index.json` now, apply this flow's entry to a copy of its `flows` array, and use that; it drives the page's flow switcher. If `index.json` is missing or does not parse, leave `__FLOW_INDEX__` exactly as you found it: the page then hides the switcher and keeps its link to the index, which is the right behavior for a registry that is not there. (The page self-validates on load: if the JSON is malformed or an edge points at a missing node, it shows a specific error card instead of a blank page — read it and fix the JSON.)
 
 **5c. Fallback if the template is missing.** If `.code-flow/viewer.template.html` does not exist (the skill was only partially installed), write this minimal page to `Code_Flows/<functionality_name>.html` instead, then tell the user to reinstall `code-flow` for the full interactive viewer:
 
@@ -199,12 +199,36 @@ every flow mapped before this one.
   the marker there would leave a whole-repository map claiming to be a
   single-feature one.
 
+**6c. The index page.** `index.json` is the data; `Code_Flows/index.html` is how a
+person reads it. Read `.code-flow/index.template.html` and write
+`Code_Flows/index.html` as an **exact copy** of that template with the single token
+`__INDEX_DATA__` replaced by the registry object you just wrote in 6b. Change
+nothing else in the template. Inside every string value, replace each `</` with
+`<\/`, exactly as in step 5a.
+
+Do this **every time you write `index.json`** — here, and in whole-codebase mode's
+pass 1. The two files are one artifact in two forms, and an `index.html` carried
+over from an earlier run advertises a registry that no longer exists.
+
+A flow page's switcher lists the registry as it stood when that page was written,
+so a page written earlier does not know about flows mapped later. `index.html` is
+rebuilt from the registry every run and is always current, which is why every page
+links back to it.
+
+If `.code-flow/index.template.html` does not exist (the skill was only partially
+installed), skip `index.html`, leave any existing one untouched, and tell the user
+to reinstall `code-flow` for the flow index. There is no fallback page here: the
+registry is already readable as `index.json`, and a hand-built substitute would be
+one more file to keep in step with it.
+
 #### 7. Finalize
 
 - Create the `Code_Flows/` directory if it doesn't exist
 - Write `Code_Flows/<functionality_name>.md`, `.html`, and `.json`, plus `index.json`
-- Report the markdown and HTML paths to the user, and mention that the JSON
-  artifacts were updated
+  and `index.html`
+- Report the markdown and HTML paths to the user, name `Code_Flows/index.html` as
+  the page that lists every mapped flow, and mention that the JSON artifacts were
+  updated
 
 ## Whole-Codebase Mode
 
@@ -311,6 +335,10 @@ The `flows` array and the rest of `coverage` belong to pass 2 — preserve whate
 is already there, and preserve every `coverage` value you did not compute. The
 same rule as feature mode applies: if `index.json` exists but does not parse,
 **stop**, report it, and do not overwrite it.
+
+Step 6c applies here too: having written `index.json`, rewrite `Code_Flows/index.html`
+from it. After pass 1 that page shows the census and says plainly that no flows have
+been traced yet — which is what a half-finished map should look like.
 
 `filesScanned` and `functionsCatalogued` describe the whole catalog, including files
 carried forward unchanged from an earlier run — not only what this session re-read.

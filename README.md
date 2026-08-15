@@ -39,7 +39,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — and create or update the shared `Code_Flows/index.json` registry with an entry for this flow. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` / `Code_Flows/quality-report.html` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — create or update the shared `Code_Flows/index.json` registry with an entry for this flow, and rebuild `Code_Flows/index.html` from that registry: the landing page listing every mapped flow, rewritten whenever the registry is. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` / `Code_Flows/quality-report.html` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -88,7 +88,7 @@ Two things this project has **not** verified and therefore does not claim: that 
 
 **If you don't use Copilot in VS Code**, assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
 
-In all three, the assistant writes its output to `Code_Flows/<feature_name>.md`, `Code_Flows/<feature_name>.html`, and `Code_Flows/<feature_name>.json` at the project root, and creates or updates the shared `Code_Flows/index.json` registry.
+In all three, the assistant writes its output to `Code_Flows/<feature_name>.md`, `Code_Flows/<feature_name>.html`, and `Code_Flows/<feature_name>.json` at the project root, creates or updates the shared `Code_Flows/index.json` registry, and rebuilds `Code_Flows/index.html` from it.
 
 ### Whole-codebase mode
 
@@ -219,7 +219,7 @@ flowchart TD
 | ...
 ````
 
-A sibling `Code_Flows/user_login.html` is written at the same time — the interactive version of the same flow, ready to open in any browser. A `Code_Flows/user_login.json` sidecar (the same flow data as plain JSON) is written alongside it, and `Code_Flows/index.json` is created or updated to register the flow.
+A sibling `Code_Flows/user_login.html` is written at the same time — the interactive version of the same flow, ready to open in any browser. A `Code_Flows/user_login.json` sidecar (the same flow data as plain JSON) is written alongside it, and `Code_Flows/index.json` is created or updated to register the flow. `Code_Flows/index.html` is rebuilt from that registry at the same time — start there to browse every flow you have mapped.
 
 ## Install
 

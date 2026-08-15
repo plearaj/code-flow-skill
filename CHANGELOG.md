@@ -37,11 +37,17 @@ reach a registry together.
   current source, corrects `file:line`, and marks survivors `verified`.
 - **`Code_Flows/quality-report.html`** — a self-contained viewer for the quality report,
   sibling to the flow viewer. Opens from a `file://` URL with no network.
+- **`Code_Flows/index.html`** — the page to start from: every mapped flow as a card, the
+  coverage that produced them, and the file census behind it. Rebuilt from `index.json`
+  every time the map writes it, and linked from both other viewers, so a set of flows is
+  navigable as a set instead of as a directory of loose pages. It reports the gap between
+  entry points found and flows traced in words, so a partial map looks partial.
 - **Three-host support** — every command ships for Claude (`.claude/commands/*.md`),
   Gemini (`.gemini/commands/*.toml`) and Copilot (`.github/prompts/*.prompt.md`), saying
   the same things in each host's own register.
 - **A pre-publish release gate** (`npm run release-check`) covering the one thing no test
-  in this repository can: that both HTML scaffolds actually render in a browser.
+  in this repository can: that the HTML scaffolds actually render in a browser, and that
+  the links between them go where they claim.
 
 ### Honesty rules, which are the point of the quality command
 
@@ -56,7 +62,7 @@ reach a registry together.
 
 ### Testing
 
-- **Viewer validation** for both HTML scaffolds — the first tests either has ever had.
+- **Viewer validation** for every HTML scaffold — the first tests any of them has had.
   Each scaffold's decision logic is a pure `validate(raw, TOKEN)` behind sentinel
   comments, lifted out and driven with no DOM, so the suite takes no browser dependency.
 - **Host parity** is enforced by a test rather than by a script re-run by hand.

@@ -1738,12 +1738,13 @@ def test_report_viewer_shows_a_skipped_detector_with_its_reason(repo_root: Path)
 
 
 def test_flow_index_token_cannot_render_as_visible_text(repo_root: Path) -> None:
-    """`__FLOW_INDEX__` is optional, so the common case is that it is never
-    replaced at all — the generator does not fill it today. An unreplaced
-    placeholder must therefore be impossible to see. It is safe only because it
-    sits inside a `<script type="application/json">` block, which browsers never
-    render; anywhere else in the document it would print raw on every flow page.
-    Pinned to that containment rather than to the token merely existing."""
+    """`__FLOW_INDEX__` is optional. The map command fills it, but every host is
+    told to leave it alone when `index.json` is missing or unparseable — so an
+    unreplaced placeholder is a supported outcome, not a bug, and it must be
+    impossible to see. It is safe only because it sits inside a
+    `<script type="application/json">` block, which browsers never render;
+    anywhere else in the document it would print raw on every flow page. Pinned
+    to that containment rather than to the token merely existing."""
     text = _scaffold(repo_root, "viewer.template.html")
     assert text.count("__FLOW_INDEX__") == 1, "the optional index token must appear exactly once"
     holder = re.search(
@@ -1765,3 +1766,56 @@ def test_every_scaffold_offers_a_way_back_to_the_index(repo_root: Path) -> None:
         assert re.search(r'href\s*=\s*"index\.html"', text), (
             f"{name} has no link back to index.html"
         )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_step6_writes_the_index_page(repo_root: Path, host: str, name: str) -> None:
+    """Writing `index.json` and writing `index.html` are one step, not two.
+
+    The scaffold ships to `.code-flow/` whether or not anything fills it, so
+    without this the index page installs and stays inert — which is exactly the
+    state this repository was in before the wiring landed. Scoped to the Step 6
+    region for the usual reason: `index.html` is named in the viewers' back-link
+    prose and in the README, so an unscoped search would pass with the
+    instruction deleted.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _index_instructions_region(text)
+    assert "index.html" in region, (
+        f"{host}/{name} Step 6 never says to write index.html, so the registry "
+        "would be updated with no page rendering it"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_fills_the_index_scaffold(repo_root: Path, host: str, name: str) -> None:
+    """Naming `index.html` is not the same as saying how to build it.
+
+    The page is only self-contained because it is the shipped scaffold with one
+    token substituted. A host that said "write index.html" without naming the
+    template or the token would invite a hand-rolled page — which is how the
+    single-file, no-network guarantee gets lost. Both names are unique to this
+    instruction, so no region scoping is needed.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert ".code-flow/index.template.html" in text, (
+        f"{host}/{name} never tells the assistant to read the installed index scaffold"
+    )
+    assert "__INDEX_DATA__" in text, (
+        f"{host}/{name} never names the token the registry is substituted into"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_fills_the_flow_switcher_token(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The flow viewer carries a second token, and only the map command can fill
+    it. Nothing else in the suite ties the two ends together: the scaffold test
+    above proves the token is safely contained when unreplaced, which is a
+    passing state for a template no host ever fills."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "__FLOW_INDEX__" in text, (
+        f"{host}/{name} never mentions __FLOW_INDEX__, so the flow switcher would "
+        "be dead markup on every generated page"
+    )
