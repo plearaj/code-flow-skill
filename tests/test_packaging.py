@@ -16,6 +16,7 @@ EXPECTED_IN_WHEEL = (
     "code_flow_skill/templates/copilot/code-flow.quality.prompt.md",
     "code_flow_skill/templates/shared/viewer.template.html",
     "code_flow_skill/templates/shared/report.template.html",
+    "code_flow_skill/templates/shared/index.template.html",
 )
 
 

@@ -31,6 +31,7 @@ const selected = tool === "all" ? ["claude", "gemini", "copilot"] : [tool];
 const sharedFiles = [
   ["viewer.template.html", "interactive viewer"],
   ["report.template.html", "quality report viewer"],
+  ["index.template.html", "flow index"],
 ];
 
 function installShared() {

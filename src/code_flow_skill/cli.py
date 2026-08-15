@@ -32,6 +32,7 @@ def _template_path(*parts: str) -> Path:
 _SHARED_FILES = (
     ("viewer.template.html", "interactive viewer"),
     ("report.template.html", "quality report viewer"),
+    ("index.template.html", "flow index"),
 )
 
 

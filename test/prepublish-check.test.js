@@ -40,14 +40,19 @@ test("prepublish check passes once the checklist is acknowledged", () => {
   assert.equal(r.stderr, "", "a passing gate must not write to stderr");
 });
 
-test("prepublish check names both scaffolds and both manual steps", () => {
+test("prepublish check names every scaffold and every manual step", () => {
   const r = run({ CODE_FLOW_RELEASE_CHECKED: "1" });
   // Named individually rather than counted: a checklist that covers one
-  // scaffold and silently drops the other is the exact failure this guards.
+  // scaffold and silently drops another is the exact failure this guards.
   assert.match(r.stdout, /templates\/shared\/viewer\.template\.html/);
   assert.match(r.stdout, /templates\/shared\/report\.template\.html/);
+  assert.match(r.stdout, /templates\/shared\/index\.template\.html/);
   assert.match(r.stdout, /blank\s+page/i, "step 1 must name the failure it looks for");
   assert.match(r.stdout, /error card/i, "step 2 must name the failure it looks for");
+  // The pages are generated separately and joined only by href. Nothing in
+  // either suite loads one page and follows a link to the next, so if the
+  // checklist stops asking a human to walk it, nothing checks it at all.
+  assert.match(r.stdout, /Flows link/i, "step 3 must name the round trip between pages");
 });
 
 test("npm runs the gate on publish, and it is runnable by hand for the PyPI release", () => {

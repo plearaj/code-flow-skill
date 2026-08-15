@@ -16,8 +16,8 @@ Follow these steps exactly:
    - Bullet list of all function names in the flow
    - Function reference table with columns: Function, Description, File (`file:line` format)
 5. **Generate `Code_Flows/<functionality_name>.html`** — an interactive, self-contained page of the same flow (see below).
-6. **Write the machine-readable artifacts.** These are the contract consumed by `code-flow.quality`; they are not optional. Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. If `Code_Flows/index.json` exists but does not parse as JSON, **stop**: do not overwrite it and do not regenerate it. Report the file path and what is wrong with it to the user and let them repair or delete it — rewriting the file would silently discard the registry of every flow mapped before this one. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`: `title` is `meta.feature` from the sidecar's JSON object (step 5), `file` is the sidecar's filename relative to `Code_Flows/` (a bare filename, not a path), `entry` is the `id` of the one node whose `kind` is `entry` (exactly one node has it), and `nodes` is the count of entries in the flow's `nodes` array. The file also carries `meta` (`root`, `generated`, `mode`, `detail`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update. Set `meta.mode` to `"feature"` — **unless the file already has `"mode": "whole-code-base"`, in which case leave `meta.mode` and `meta.detail` exactly as you found them.** Whole-codebase mode reuses this step, and rewriting the marker there would leave a whole-repository map claiming to be a single-feature one.
-7. **Report the markdown and HTML paths** to the user, and mention that the JSON artifacts were updated.
+6. **Write the machine-readable artifacts.** These are the contract consumed by `code-flow.quality`; they are not optional. Write `Code_Flows/<functionality_name>.json` containing exactly the flow-data JSON object used in step 5. Then create or update `Code_Flows/index.json`, adding or replacing this flow's entry in its `flows` array (matched on `slug`) while preserving all other entries — and any `coverage` values you did not compute this run. If `Code_Flows/index.json` exists but does not parse as JSON, **stop**: do not overwrite it and do not regenerate it. Report the file path and what is wrong with it to the user and let them repair or delete it — rewriting the file would silently discard the registry of every flow mapped before this one. Each entry holds `slug`, `title`, `file`, `entry`, and `nodes`: `title` is `meta.feature` from the sidecar's JSON object (step 5), `file` is the sidecar's filename relative to `Code_Flows/` (a bare filename, not a path), `entry` is the `id` of the one node whose `kind` is `entry` (exactly one node has it), and `nodes` is the count of entries in the flow's `nodes` array. The file also carries `meta` (`root`, `generated`, `mode`, `detail`, `schema: 1`) and `coverage.flowsTraced`, set to the length of `flows` after your update. Set `meta.mode` to `"feature"` — **unless the file already has `"mode": "whole-code-base"`, in which case leave `meta.mode` and `meta.detail` exactly as you found them.** Whole-codebase mode reuses this step, and rewriting the marker there would leave a whole-repository map claiming to be a single-feature one. Then write `Code_Flows/index.html` from the registry you just wrote — see **The index page** below. Do that **every time you write `index.json`**: the two are one artifact in two forms, and an `index.html` carried over from an earlier run advertises a registry that no longer exists.
+7. **Report the markdown and HTML paths** to the user, name `Code_Flows/index.html` as the page that lists every mapped flow, and mention that the JSON artifacts were updated.
 
 ### Interactive HTML view
 
@@ -51,7 +51,7 @@ Rules (follow exactly or the page refuses to render):
 - File paths use **forward slashes**, repo-relative; `meta.root` is the absolute root, forward slashes.
 - `snippet` is optional (≤ ~40 lines). **Replace each `</` with `<\/` inside every snippet.** No trailing commas.
 
-**b. Fill the template** — read `.code-flow/viewer.template.html` and write `Code_Flows/<functionality_name>.html` as an exact copy with the single token `__FLOW_DATA__` replaced by the JSON. Change nothing else. The page self-validates and shows a specific error card (not a blank page) if the JSON is malformed or an edge is dangling.
+**b. Fill the template** — read `.code-flow/viewer.template.html` and write `Code_Flows/<functionality_name>.html` as an exact copy with two tokens replaced and nothing else changed. `__FLOW_DATA__` becomes the JSON. `__FLOW_INDEX__` becomes the `flows` array as it will stand after step 6 — read `Code_Flows/index.json` now, apply this flow's entry to a copy of its `flows` array, and use that; it drives the page's flow switcher. If `index.json` is missing or does not parse, leave `__FLOW_INDEX__` exactly as you found it: the page then hides the switcher and keeps its link to the index, which is right for a registry that is not there. The page self-validates and shows a specific error card (not a blank page) if the JSON is malformed or an edge is dangling.
 
 **c. Fallback** — if `.code-flow/viewer.template.html` is missing (the skill was only partially installed), write this minimal page to `Code_Flows/<functionality_name>.html` instead, then tell the user to reinstall `code-flow` for the full interactive viewer:
 
@@ -76,14 +76,23 @@ Rules (follow exactly or the page refuses to render):
 </html>
 ```
 
+### The index page
+
+`index.json` is the data; `Code_Flows/index.html` is how a person reads it. Read `.code-flow/index.template.html` and write `Code_Flows/index.html` as an exact copy with the single token `__INDEX_DATA__` replaced by the registry object you just wrote. Change nothing else. Inside every string value, replace each `</` with `<\/`, exactly as in a snippet.
+
+A flow page's switcher lists the registry as it stood when that page was written, so a page written earlier does not know about flows mapped later. `index.html` is rebuilt from the registry every run and is always current, which is why every page links back to it.
+
+If `.code-flow/index.template.html` is missing (the skill was only partially installed), skip `index.html`, leave any existing one untouched, and tell the user to reinstall `code-flow` for the flow index. There is no fallback page here: the registry is already readable as `index.json`, and a hand-built substitute would be one more file to keep in step with it.
+
 ### Output Location
 
-All four outputs go in `Code_Flows/` at the project root — create that directory if it does not exist. None of them is optional:
+All five outputs go in `Code_Flows/` at the project root — create that directory if it does not exist. None of them is optional:
 
 - `Code_Flows/<functionality_name>.md` — the flow document (step 4)
 - `Code_Flows/<functionality_name>.html` — the interactive page (step 5)
 - `Code_Flows/<functionality_name>.json` — the flow sidecar (step 6)
 - `Code_Flows/index.json` — the shared flow registry, created or updated in place, never rewritten from scratch (step 6)
+- `Code_Flows/index.html` — the flow index, rebuilt from that registry every time it is written (step 6)
 
 ## Whole-codebase mode
 
@@ -185,6 +194,11 @@ The `flows` array and the rest of `coverage` belong to pass 2 — preserve whate
 is already there, and preserve every `coverage` value you did not compute. The
 same rule as feature mode applies: if `index.json` exists but does not parse,
 **stop**, report it, and do not overwrite it.
+
+The index page applies here too: having written `index.json`, rewrite
+`Code_Flows/index.html` from it. After pass 1 that page shows the census and says
+plainly that no flows have been traced yet — which is what a half-finished map
+should look like.
 
 `filesScanned` and `functionsCatalogued` describe the whole catalog, including files
 carried forward unchanged from an earlier run — not only what this session re-read.
