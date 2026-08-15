@@ -1,7 +1,7 @@
 # Design: Phase 4 — the Agent Skills standard
 
 **Date:** 2026-08-08 (amended 2026-08-15 with the Antigravity documentation)
-**Status:** Draft, pending approval. **Open Question 1 is ruled — see below.**
+**Status:** Draft, pending approval. **All three open questions are now ruled — see below.**
 **Target version:** `1.0.0` — see Decision 6, as amended
 **Extends:** [`2026-08-06-dry-kiss-yagni-reporting-design.md`](2026-08-06-dry-kiss-yagni-reporting-design.md)
 
@@ -377,10 +377,25 @@ previous phases did — which is why Open Question 3 exists.
    **What survives is a smaller question about the remnant.** Gemini CLI is still
    supported for Gemini Code Assist Standard and Enterprise licences and paid API-key
    users. Dropping `.gemini/commands/*.toml` strands those users; keeping it means
-   maintaining a template for a host that no longer takes new individual users. The
-   recommendation is to **drop it and say so in the README's upgrade notes**, since the
-   `.agents/skills/` copy still reaches Gemini CLI and only the slash-invocation
-   ergonomics are lost — but the remnant is real and the call is the maintainer's.
+   maintaining a template for a host that no longer takes new individual users.
+
+   ### RULED: keep the TOML, install it only where Gemini CLI is in use
+
+   The recommendation above was to drop it. **Overruled**, and correctly: the remnant is
+   real, and the cost of keeping the template is maintenance we already pay, where the
+   cost of dropping it falls on users who did nothing wrong.
+
+   The condition is the **target's own `.gemini/` directory**. Both Antigravity surfaces
+   keep workspace files under `.agents/` and their globals under `~/.gemini/antigravity/`
+   and `~/.gemini/antigravity-cli/`, so a project-level `.gemini/` is a Gemini CLI signal
+   in a way that `~/.gemini/` is not — a home-directory check would misfire on every
+   Antigravity user.
+
+   Two constraints keep the heuristic honest: `--tool gemini` is an explicit request and
+   always installs, and a skip is never silent — the installer names what it skipped and
+   prints the flag that installs it.
+
+   **Shipped ahead of the rest of this phase**, since it depends on nothing else in it.
 
 3. **Is auto-invocation acceptable at all for `code-flow.map`,** given it edits source
    files to add docstrings? If the answer is no and `disable-model-invocation` turns out
@@ -411,7 +426,25 @@ previous phases did — which is why Open Question 3 exists.
      host's invocation semantics, and this document has now been wrong twice about what
      those semantics are.
 
-   This is a ruling to make, not a fact to look up.
+   ### RULED: accept auto-invocation; ship `code-flow.map` as a skill everywhere
+
+   The recommendation above was the third option. **Overruled**, on the grounds that this
+   is an ecosystem-wide property rather than a defect of this skill: any skill that writes
+   files has it, on every host that auto-activates. Designing around it here would buy a
+   guarantee no neighbouring skill offers, at the cost of the command's default behaviour.
+
+   Worth recording alongside the ruling, so a later reader can weigh it: the edits in
+   question are **additive** — docstrings added to functions that have none — not
+   rewrites or deletions, which is what keeps the accepted risk proportionate.
+
+   **What is kept:** Decision 3's in-skill confirmation, which costs nothing, is
+   host-independent, and does not depend on a frontmatter field any host may or may not
+   honour. `disable-model-invocation` is still set where a host documents it, as a belt
+   alongside those braces, but nothing now depends on its portability.
+
+   **What is dropped:** the opt-in redesign of the docstring step, and the fallback plan
+   of shipping `code-flow.quality` first and withholding the map from hosts that cannot
+   suppress invocation. Both were mitigations for a risk that has now been accepted.
 
 ## Deferred
 
