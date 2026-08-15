@@ -1,6 +1,6 @@
 # Design: Phase 4 — the Agent Skills standard
 
-**Date:** 2026-08-08
+**Date:** 2026-08-08 (amended 2026-08-15 with the Antigravity documentation)
 **Status:** Draft, pending approval. **Open Question 1 is ruled — see below.**
 **Target version:** `1.0.0` — see Decision 6, as amended
 **Extends:** [`2026-08-06-dry-kiss-yagni-reporting-design.md`](2026-08-06-dry-kiss-yagni-reporting-design.md)
@@ -13,6 +13,11 @@ question is marked **Decision**, with the reasoning and the alternative that was
 rejected, so approval is a matter of ratifying or overturning specific calls.
 
 **Three questions at the end genuinely need a human ruling** and are not decided here.
+
+**Amended 2026-08-15.** The Antigravity IDE documentation was supplied after the draft
+was written. It adds a fourth host rather than revising a third, and it does not change
+any decision's outcome — but it removes the escape route two of the open questions were
+relying on. The amendments are marked in place; nothing was silently rewritten.
 
 ## What changed upstream
 
@@ -37,10 +42,21 @@ agent name. See Decision 0 — this is the one part of this phase that should no
 `.agents/skills/` at workspace level and `~/.gemini/skills/` or `~/.agents/skills/`
 for the user. ([Gemini CLI skills](https://geminicli.com/docs/cli/skills/))
 
+**Antigravity is a second Gemini surface, and it is not Gemini CLI.** Google's
+Antigravity IDE implements the same `SKILL.md` standard, discovered from
+`.agents/skills/<skill-folder>/SKILL.md` at workspace level and
+`~/.gemini/antigravity/skills/` for the user — a different global path from Gemini
+CLI's `~/.gemini/skills/`, which is the plainest evidence that these are two hosts
+sharing a vendor rather than one host with two names. Its documented frontmatter is
+smaller than any other host's: `description` (required) and `name` (optional,
+defaulting to the folder name). Nothing else is documented — no `tools`, no `model`,
+and no field for suppressing model invocation.
+([Antigravity skills](https://antigravity.google/docs/ide/skills/))
+
 **So does Claude Code**, which is where the `SKILL.md` format originated, discovered
 from `.claude/skills/`.
 
-The three hosts have converged on one format. This repository still writes three.
+Four hosts have converged on one format. This repository still writes three.
 
 ## The problem this actually solves
 
@@ -55,15 +71,19 @@ That is the case for this phase, and it is a strong one.
 
 The discovery paths overlap usefully:
 
-| Location | Copilot | Gemini | Claude Code |
-|---|---|---|---|
-| `.claude/skills/` | yes | — | yes |
-| `.agents/skills/` | yes | yes | — |
-| `.github/skills/` | yes | — | — |
-| `.gemini/skills/` | — | yes | — |
+| Location | Copilot | Gemini CLI | Antigravity | Claude Code |
+|---|---|---|---|---|
+| `.claude/skills/` | yes | — | — | yes |
+| `.agents/skills/` | yes | yes | yes | — |
+| `.github/skills/` | yes | — | — | — |
+| `.gemini/skills/` | — | yes | — | — |
 
-**Two installed copies of one file cover all three hosts**: `.claude/skills/` and
-`.agents/skills/`. There is no single directory that reaches all three.
+**Two installed copies of one file cover all four hosts**: `.claude/skills/` and
+`.agents/skills/`. There is no single directory that reaches all of them.
+
+Antigravity costs no new install target — it reads the `.agents/skills/` copy this
+plan already writes. What it changes is Decision 3 and both open questions about
+Gemini, because its *invocation* model is the loosest of the four.
 
 ## Decision 0: fix `mode: agent` now, independently of this phase
 
@@ -131,7 +151,15 @@ This is the sharpest difference and the one most likely to surprise a user.
 |---|---|
 | Copilot | auto-matched from the description, **and** `/`-invocable |
 | Gemini CLI | auto-activated via an `activate_skill` tool call, with a confirmation prompt |
+| Antigravity | auto-activated at the agent's discretion; **no documented slash syntax and no documented confirmation** — the docs say only that you "can mention a skill by name if you want to ensure it's used" |
 | Claude Code | auto-matched from the description |
+
+Antigravity is the weakest link, and it is worth being blunt about why. Its skills
+have no documented explicit-invocation syntax at all, so mentioning the skill by
+name is a *hint*, not a gate. It documents no confirmation step of the kind Gemini
+CLI has. And its frontmatter schema is two fields, neither of which suppresses model
+invocation — so `disable-model-invocation` has nowhere to land there even if other
+hosts honour it.
 
 Today, `/code-flow.map` runs **only when a user types it.** As a skill it may run because
 a model decided the description matched what the user was talking about.
@@ -151,9 +179,16 @@ control, and a confirmation dialog for an action the user never asked for is a w
 experience than the action not starting.
 
 **Consequence to disclose:** `disable-model-invocation` is a Copilot-documented field.
-Whether Gemini and Claude Code honour it is **not verified by this document** and must be
-tested against each host before the phase ships. If a host ignores it, the fallback is
-the in-skill confirmation, and the README says which hosts have which guarantee.
+Whether Gemini CLI and Claude Code honour it is **not verified by this document** and must
+be tested against each host before the phase ships. For Antigravity the answer is already
+known and it is no: the field is not in its documented schema. If a host ignores it, the
+fallback is the in-skill confirmation, and the README says which hosts have which
+guarantee.
+
+**On Antigravity the in-skill confirmation is not a fallback, it is the only gate.** That
+is a materially weaker guarantee than this decision was written to provide, and it lands
+on the one command that edits source. Open Question 3 is where it gets resolved; it is
+no longer hypothetical.
 
 ## Decision 4: `$ARGUMENTS` does not survive, and the flags need a new home
 
@@ -284,14 +319,45 @@ previous phases did — which is why Open Question 3 exists.
    of Phase 4 regardless of how many times it is run before then.
 
 2. **Do the Gemini TOML commands survive Phase 4, or does Gemini move to skills only?**
-   Gemini supports both. Keeping both is more surface to maintain; dropping TOML loses
+   Gemini CLI supports both. Keeping both is more surface to maintain; dropping TOML loses
    explicit slash invocation on that host, which Decision 3 argues is worth something.
+
+   **Narrowed by the Antigravity docs.** The question is now specifically about Gemini
+   CLI, because `.gemini/commands/*.toml` is a Gemini CLI mechanism and Antigravity does
+   not read it. Antigravity's own explicit-invocation surface is **Workflows** —
+   markdown, invoked as `/workflow-name`, and **limited to 12,000 characters per file**.
+   Both of our commands are far past that ceiling: the map template is 22,041 characters
+   and quality is 16,083. Splitting a command across chained workflows to fit is possible
+   — workflows can call other workflows — but it would mean maintaining a fourth
+   decomposition of text this project already struggles to keep in agreement across
+   three. **So on Antigravity there is no viable explicit-invocation home for these
+   commands, and skills are the only option.** Whatever is decided for Gemini CLI, it
+   cannot be generalised to "Gemini".
+   ([Antigravity workflows](https://antigravity.google/docs/ide/workflows/))
 
 3. **Is auto-invocation acceptable at all for `code-flow.map`,** given it edits source
    files to add docstrings? If the answer is no and `disable-model-invocation` turns out
    not to be portable, the honest conclusion is that `code-flow.map` should not be a skill
    on hosts that cannot suppress model invocation — and Phase 4 ships skills for
    `code-flow.quality`, which only writes reports, first.
+
+   **Sharpened by the Antigravity docs, and now the load-bearing question of this phase.**
+   Question 2 establishes that Antigravity has no explicit-invocation route for a command
+   this size, and Decision 3 establishes that Antigravity documents no way to suppress
+   model invocation. Those two together mean there is no configuration in which
+   `code-flow.map` is both available on Antigravity and unable to start on its own. The
+   choice is therefore not "which field do we set" but which of these we accept:
+
+   - ship `code-flow.map` as a skill everywhere and rely on an in-skill confirmation that
+     the model is free to skip, on the host where nothing else constrains it;
+   - ship `code-flow.map` as a skill only on hosts that can suppress model invocation, and
+     leave Antigravity with `code-flow.quality` alone;
+   - make the docstring edit opt-in rather than default, which would shrink the blast
+     radius enough that auto-invocation stops being the problem — the largest change of
+     the three, and the only one that fixes the underlying hazard instead of routing
+     around it.
+
+   This is a ruling to make, not a fact to look up.
 
 ## Deferred
 
