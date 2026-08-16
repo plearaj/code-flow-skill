@@ -3,7 +3,8 @@
 `templates/shared/code-flow-map/SKILL.md` and
 `templates/shared/code-flow-quality/SKILL.md` are the open-standard form of the
 two commands, copied unchanged into every directory a host discovers skills
-from. Two things have to hold, and reading the files will tell you neither.
+from. Three things have to hold, and reading the files will tell you none of
+them.
 
 **The name must be valid, because an invalid one does not warn.** Of the five
 hosts that read these directories, only Copilot documents a rule — "Only
@@ -27,6 +28,12 @@ than better. The body is therefore a pure function of the Gemini template's
 prompt, and ``test_skill_body_is_derived_from_the_gemini_template`` is what holds
 it there. Edit the Gemini template and regenerate; never edit a body by hand.
 
+**The description must agree across all four files that carry it.** It is the
+one part of a skill every host reads before deciding the skill is relevant, and
+it is the one part that is genuinely hand-copied four times — the derivation
+above starts below it. ``test_description_is_identical_in_the_skill_and_all_three_host_templates``
+is what keeps the four copies one sentence rather than four.
+
 Frontmatter is parsed here by hand rather than with PyYAML. The two files this
 reads have flat `key: value` frontmatter and no other shape is legal in them, and
 this repository ships zero dependencies including dev ones — a YAML parser is a
@@ -48,6 +55,25 @@ import pytest
 SKILL_TEMPLATES = (
     ("code-flow-map", "code-flow.map.toml"),
     ("code-flow-quality", "code-flow.quality.toml"),
+)
+
+# Every file that carries a command's `description`, keyed by the skill it
+# belongs to: the skill itself plus the three host templates that shipped before
+# it. Four hand-maintained copies of one sentence, which is three more than any
+# other string in this repository has.
+DESCRIPTION_SOURCES = (
+    (
+        "code-flow-map",
+        "claude/code-flow.map.md",
+        "copilot/code-flow.map.prompt.md",
+        "gemini/code-flow.map.toml",
+    ),
+    (
+        "code-flow-quality",
+        "claude/code-flow.quality.md",
+        "copilot/code-flow.quality.prompt.md",
+        "gemini/code-flow.quality.toml",
+    ),
 )
 
 # Where both bodies begin, in every host. Same marker `tests/test_host_parity.py`
@@ -168,6 +194,65 @@ def test_skill_declares_a_description_within_the_cap(
     )
 
 
+@pytest.mark.parametrize(
+    "skill_dir,claude_rel,copilot_rel,gemini_rel", DESCRIPTION_SOURCES
+)
+def test_description_is_identical_in_the_skill_and_all_three_host_templates(
+    repo_root: Path,
+    skill_dir: str,
+    claude_rel: str,
+    copilot_rel: str,
+    gemini_rel: str,
+) -> None:
+    """`description` was the least-covered field this phase shipped, and the
+    reason is structural rather than accidental.
+
+    It is the fourth hand-written copy of one sentence. The other three
+    predate it, and nothing compares them either: `tests/test_host_parity.py`
+    diffs bodies from `_BODY_START` onward, and
+    ``test_skill_body_is_derived_from_the_gemini_template`` slices from the same
+    marker. `description` sits above it in all four files, so every one of those
+    tests reads past it. What was left was the test above — non-empty, and under
+    a 1024-character cap no plausible edit approaches. Mutating this file's
+    description to the single character ``x`` left the whole suite green.
+
+    That matters because `description` is not decoration: it is the only text
+    every host has when deciding whether this skill is what the user meant. Four
+    copies drifting apart means the same command answers to four different
+    descriptions depending on which host a user is sitting in front of.
+
+    Compares all four against each other rather than against a literal pinned
+    here, so the sentence stays editable in one place — but only in all four at
+    once. The non-empty assertion is not redundant with the test above: four
+    empty strings are equal to each other, and this test would otherwise pass on
+    a file that had lost the field entirely.
+    """
+    templates = repo_root / "templates"
+    described = {
+        f"shared/{skill_dir}/SKILL.md": _frontmatter(
+            _skill_path(repo_root, skill_dir).read_text(encoding="utf-8")
+        ).get("description", ""),
+        claude_rel: _frontmatter(
+            (templates / claude_rel).read_text(encoding="utf-8")
+        ).get("description", ""),
+        copilot_rel: _frontmatter(
+            (templates / copilot_rel).read_text(encoding="utf-8")
+        ).get("description", ""),
+        gemini_rel: tomllib.loads(
+            (templates / gemini_rel).read_text(encoding="utf-8")
+        ).get("description", ""),
+    }
+    distinct = set(described.values())
+    assert len(distinct) == 1, (
+        f"{skill_dir}: `description` differs across the four files that carry it. "
+        f"Every host must describe this command in the same words:\n"
+        + "\n".join(f"  templates/{name}: {value!r}" for name, value in described.items())
+    )
+    assert distinct.pop(), (
+        f"{skill_dir}: every copy of `description` is empty or missing"
+    )
+
+
 @pytest.mark.parametrize("skill_dir,gemini_name", SKILL_TEMPLATES)
 def test_skill_disables_model_invocation(
     repo_root: Path, skill_dir: str, gemini_name: str
@@ -221,14 +306,14 @@ def test_skill_disables_implicit_invocation_on_codex(
 
 
 @pytest.mark.parametrize(
-    "skill_dir,gemini_name,flags",
+    "skill_dir,flags",
     (
-        ("code-flow-map", "code-flow.map.toml", ("--whole-code-base", "--detail")),
-        ("code-flow-quality", "code-flow.quality.toml", ("--read-code",)),
+        ("code-flow-map", ("--whole-code-base", "--detail")),
+        ("code-flow-quality", ("--read-code",)),
     ),
 )
 def test_skill_advertises_its_flags_in_the_argument_hint(
-    repo_root: Path, skill_dir: str, gemini_name: str, flags: tuple[str, ...]
+    repo_root: Path, skill_dir: str, flags: tuple[str, ...]
 ) -> None:
     """Decision 4: `$ARGUMENTS` does not survive, so `argument-hint` is the only
     place a host shows the user what this skill accepts. A skill whose flags are
