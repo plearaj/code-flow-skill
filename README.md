@@ -80,7 +80,7 @@ CLI](#--tool-all-and-gemini-cli) for when its templates install.
 
 The installer writes an invocable prompt file to `.github/prompts/code-flow.map.prompt.md`.
 
-Prompt files — `.github/prompts/*.prompt.md` with `mode: agent` frontmatter, which is what this one is — are a **VS Code** Copilot Chat feature. In VS Code, open Copilot Chat and select the prompt from the Prompts picker, or try:
+Prompt files — `.github/prompts/*.prompt.md` with `agent: agent` frontmatter, which is what this one is — are a **VS Code** Copilot Chat feature. In VS Code, open Copilot Chat and select the prompt from the Prompts picker, or try:
 
 ```text
 /code-flow.map user login
