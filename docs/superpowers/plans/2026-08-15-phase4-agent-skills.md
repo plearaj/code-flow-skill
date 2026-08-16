@@ -49,7 +49,7 @@ Five hosts read `.agents/skills/` or `.claude/skills/`. Verified against each ho
 
 | Host | Reads | Documented name rule | Explicit invocation |
 |---|---|---|---|
-| Claude Code | `.claude/skills/`, `.agents/skills/` | none stated; the **directory name** is the command and `name` is only a display label | `/code-flow-map` |
+| Claude Code | `.claude/skills/` **only** | none stated; the **directory name** is the command and `name` is only a display label | `/code-flow-map` |
 | GitHub Copilot | `.github/skills/`, `.claude/skills/`, `.agents/skills/` | lowercase, digits, hyphens; **no dots**; must match the directory; **invalid names silently fail to load** | `/code-flow-map` |
 | Antigravity CLI | `.agents/skills/` | none stated; `name` optional, defaults to the folder | `/code-flow-map` |
 | Antigravity IDE | `.agents/skills/` | none stated; `name` optional, defaults to the folder | mention it by name |
@@ -60,9 +60,13 @@ Five hosts read `.agents/skills/` or `.claude/skills/`. Verified against each ho
 **Why hyphens, given that four of the five hosts document no restriction.** The spec's Decision 2 said `code-flow.map` is "therefore an invalid skill name". That is too broad — it is invalid on Copilot, and undocumented-but-apparently-fine on the rest, which is why other projects ship dotted names to some hosts and dashed names to others. Two things make one hyphenated name the right call here anyway:
 
 1. **Copilot reads `.claude/skills/` too.** A per-host split that put `code-flow.map/` in `.claude/skills/` would not be seen only by Claude Code — every Copilot user reading that same directory gets a skill that silently does not load, with nothing to search for. A split only helps where the hosts' directories are disjoint, and these two are not.
-2. **The dotted name is already taken, by us.** Decision 6 keeps `.claude/commands/code-flow.map.md` shipping, and that file already produces `/code-flow.map` on Claude Code. A skill directory of the same name would be a second thing claiming one command on one host. The hyphen is what lets both forms coexist, which is the entire point of shipping additively.
+2. **The dotted name is already taken, by us — and a dotted skill would silently win it.** Decision 6 keeps `.claude/commands/code-flow.map.md` shipping, and that file already produces `/code-flow.map` on Claude Code. Claude Code's documentation settles what a same-named skill would do to it: *"with both `.claude/commands/deploy.md` and `.claude/skills/deploy/SKILL.md`, `/deploy` runs the skill."* So a dotted skill directory would not merely collide with the command we deliberately keep — it would **shadow it**, and the additive-release promise would quietly become a replacement on the one host with the largest existing user base. The hyphen is what lets both forms coexist, which is the entire point of shipping additively.
 
 So this is not "dots are illegal"; it is "the strictest consumer of a shared directory governs it, and the dotted name is spoken for." Keep that reasoning with the constraint — it is what a later reader needs when a sixth host arrives.
+
+**One asymmetry to keep straight, because an earlier draft of this plan got it backwards.** Claude Code reads `.claude/skills/` and **not** `.agents/skills/` — its documented locations are enterprise settings, `~/.claude/skills/`, `.claude/skills/`, and plugin directories, with no `.agents/` among them. Copilot reads both. That is why `.claude/skills/` is not redundant and why the installer writes two copies of `SKILL.md`.
+
+**The cost of those two copies, disclosed rather than solved:** a Copilot user installing with `--tool all` gets the same skill in `.claude/skills/` *and* `.agents/skills/`, both of which Copilot scans. Its documentation states the discovery list but says nothing about precedence or de-duplication when one name appears twice, so whether that surfaces as one skill or two is **unknown to this repository and untestable in it**. Task 5 discloses it in the README and adds it to the manual pre-publish pass, which is the only place it can actually be observed.
 
 ## Ruled: invocation stays with the user wherever a host allows it
 
@@ -683,7 +687,7 @@ git commit -m "feat: add both commands in the Agent Skills format"
 
 Where each copy goes, and why it is not simply "both, always":
 
-- **`.agents/skills/` installs regardless of `--tool`.** Copilot, Antigravity CLI, Antigravity IDE, OpenAI Codex and the legacy Gemini CLI all discover skills there — every supported host except Claude Code, and Claude Code reads it too. That makes it tool-agnostic in exactly the sense `.code-flow/` already is, so it follows the same rule. It is also the whole of Codex support: Codex has no `--tool` value and needs none.
+- **`.agents/skills/` installs regardless of `--tool`.** Copilot, Antigravity CLI, Antigravity IDE, OpenAI Codex and the legacy Gemini CLI all discover skills there — every supported host **except** Claude Code, which reads `.claude/skills/` and not `.agents/`. That makes it tool-agnostic in exactly the sense `.code-flow/` already is, so it follows the same rule. It is also the whole of Codex support: Codex has no `--tool` value and needs none.
 - **`.claude/skills/` rides on the `claude` selection.** Claude Code is its only consumer that no other path serves. Installing it unconditionally would put a `.claude/` directory into a `--tool gemini` install, breaking a promise `test_tool_selection_installs_only_that_tool` already holds us to and surprising a user who named a different host.
 
 This refines the spec's "copy each skill to `.claude/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`", which does not say what `--tool` does to that. Under `--tool all` the outcome is the same two copies the spec describes.
@@ -1135,6 +1139,16 @@ Two invocation forms now exist for the same two commands, with different names a
 - Consumes: the installed paths from Task 3.
 - Produces: nothing.
 
+- [ ] **Step 0: Correct a factual error Task 3 committed**
+
+Task 3 added this sentence to the README's "Files written" section, and it is wrong:
+
+> `.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host reads.
+
+Claude Code does **not** read `.agents/skills/`. Its documented skill locations are enterprise managed settings, `~/.claude/skills/`, `.claude/skills/`, and plugin directories — there is no `.agents/` among them. Copilot, both Antigravity surfaces, Codex and the legacy Gemini CLI do read it; Claude Code is the exception, which is exactly why `.claude/skills/` is installed separately rather than being redundant.
+
+Replace `every supported host reads` with `every supported host except Claude Code reads`. Leave the rest of that paragraph alone — the following sentence, "`.claude/skills/` is the one directory only Claude Code reads", is already correct and is what makes the corrected version read sensibly.
+
 - [ ] **Step 1: Add the invocation section to the README**
 
 Insert a new `## Skills and commands` section immediately before `## CLI options`:
@@ -1167,8 +1181,8 @@ invoke them yourself. Not every host implements it:
 
 | Host | Skill directory it reads | Can the assistant start the skill unasked? |
 |---|---|---|
-| Claude Code | `.claude/skills/`, `.agents/skills/` | No |
-| GitHub Copilot | `.claude/skills/`, `.agents/skills/` | No |
+| Claude Code | `.claude/skills/` | No |
+| GitHub Copilot | `.github/skills/`, `.claude/skills/`, `.agents/skills/` | No |
 | Antigravity CLI | `.agents/skills/` | **Yes** — the field is not in its schema |
 | Antigravity IDE | `.agents/skills/` | **Yes** — the field is not in its schema |
 | OpenAI Codex | `.agents/skills/` | No — set in `agents/openai.yaml`, which ships beside each skill |
