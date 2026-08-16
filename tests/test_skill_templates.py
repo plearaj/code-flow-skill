@@ -97,6 +97,22 @@ def _skill_path(repo_root: Path, skill_dir: str) -> Path:
     return repo_root / "templates" / "shared" / skill_dir / "SKILL.md"
 
 
+def _head(repo_root: Path, skill_dir: str) -> str:
+    """Return everything above the first step — the hand-written part.
+
+    Every contract on a head has to be scoped this way. The body is generated
+    prose about analyzing code, and it is long: it discusses confirming things,
+    not writing things, and what a command does and does not do. An unscoped
+    search for a head rule is therefore satisfiable by body text that has
+    nothing to do with the rule, which is how a head contract goes vacuous
+    without anyone noticing. Slicing first makes that impossible rather than
+    unlikely.
+    """
+    text = _skill_path(repo_root, skill_dir).read_text(encoding="utf-8")
+    assert _BODY_START in text, f"{skill_dir}/SKILL.md has no `{_BODY_START}` body"
+    return text[: text.index(_BODY_START)]
+
+
 def _frontmatter(text: str) -> dict[str, str]:
     """Parse the leading `---` block into a flat dict.
 
@@ -234,10 +250,22 @@ def test_skill_body_is_derived_from_the_gemini_template(
     way the two stop agreeing and somebody has to say which one is right.
 
     This test is also why `SKILL.md` is absent from the three-host
-    parametrizations in `tests/test_template_contracts.py`. Every content
-    contract that holds for the Gemini body holds for this one by construction,
-    so re-asserting forty of them against a byte-identical string would be
-    duplication that reads as coverage.
+    parametrizations in `tests/test_template_contracts.py` — but that reasoning
+    covers the body only. Every content contract that holds for the Gemini *body*
+    holds for this one by construction, so re-asserting forty of them against a
+    byte-identical string would be duplication that reads as coverage.
+
+    It does not extend one line above `_BODY_START`. The head is hand-written,
+    this test never reads it, and any contract living up there is uncovered
+    unless something in this module asserts it directly. That is not
+    hypothetical: the quality command's "never edits source code" rule sits
+    *above* the marker in the Gemini template too, so
+    `test_quality_template_never_writes_source` — parametrized over the three
+    host templates — never saw this file, and deleting the paragraph from
+    `templates/shared/code-flow-quality/SKILL.md` left the whole suite green.
+    `test_map_skill_confirms_before_it_writes` and
+    `test_quality_skill_never_writes_source` are the head's coverage. Anything
+    added to a head in future needs the same treatment.
     """
     text = _skill_path(repo_root, skill_dir).read_text(encoding="utf-8")
     expected = derive_skill_body(repo_root / "templates" / "gemini" / gemini_name)
@@ -276,9 +304,41 @@ def test_map_skill_confirms_before_it_writes(repo_root: Path) -> None:
     deleting"), so an unscoped search would stay green with this paragraph
     deleted outright.
     """
-    text = _skill_path(repo_root, "code-flow-map").read_text(encoding="utf-8")
-    head = text[: text.index(_BODY_START)]
-    assert "wait for the user to confirm" in head, (
+    assert "wait for the user to confirm" in _head(repo_root, "code-flow-map"), (
         "code-flow-map/SKILL.md does not tell the skill to confirm its target "
         "before writing anything"
+    )
+
+
+def test_quality_skill_never_writes_source(repo_root: Path) -> None:
+    """The quality command's one safety rule, asserted where it actually ships.
+
+    `tests/test_template_contracts.py::test_quality_template_never_writes_source`
+    holds this rule for the three host templates and is parametrized over them,
+    so it never reads this file. And `derive_skill_body` slices from
+    `_BODY_START` onward, while the rule sits *above* that marker in the Gemini
+    template — line 9, in the preamble. So the sentence lands in the
+    hand-written head, where neither the three-host test nor the derivation test
+    reaches it. Deleting the paragraph from
+    `templates/shared/code-flow-quality/SKILL.md` left the full suite at 285
+    passed; this test is what closes that.
+
+    Scoped to the head via `_head` rather than searched over the whole file. On
+    today's file an unscoped search would pass or fail identically, because the
+    body never uses this phrasing — but that is a fact about the current Gemini
+    prose, not a property of the contract. The rule has to be in the preamble to
+    do its job: a host that reads the head and stops still has to learn this
+    command does not touch source. A version of the sentence that had drifted
+    down into step 4 would satisfy an unscoped search while failing at exactly
+    the moment it matters.
+
+    The phrasing is pinned to the same regex the three-host test uses, so the
+    four renderings say this in the same words and a reader comparing them is
+    not left wondering whether a reworded one still means it.
+    """
+    head = _head(repo_root, "code-flow-quality")
+    assert re.search(r"never edits source code", head, re.IGNORECASE), (
+        "code-flow-quality/SKILL.md does not state, above its first step, that "
+        "it never edits source code — the rule is absent, or it has drifted out "
+        "of the preamble into the generated body"
     )
