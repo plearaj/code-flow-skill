@@ -343,19 +343,25 @@ code-flow-skill --tool gemini
 |------|---------|------|
 | Claude Code | `/code-flow.map` | `.claude/commands/code-flow.map.md` |
 | Claude Code | `/code-flow.quality` | `.claude/commands/code-flow.quality.md` |
+| Claude Code | `/code-flow-map` | `.claude/skills/code-flow-map/SKILL.md` |
+| Claude Code | `/code-flow-quality` | `.claude/skills/code-flow-quality/SKILL.md` |
 | Gemini CLI | `/code-flow.map` | `.gemini/commands/code-flow.map.toml` |
 | Gemini CLI | `/code-flow.quality` | `.gemini/commands/code-flow.quality.toml` |
 | GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-map` | `.agents/skills/code-flow-map/SKILL.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-quality` | `.agents/skills/code-flow-quality/SKILL.md` |
+| Codex | — | `.agents/skills/code-flow-map/agents/openai.yaml` (invocation policy) |
+| Codex | — | `.agents/skills/code-flow-quality/agents/openai.yaml` (invocation policy) |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 
-Every path this installer can write is listed above. The two `.gemini/` rows are the
-exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
-CLI](#--tool-all-and-gemini-cli).
-
 The `.code-flow/viewer.template.html`, `.code-flow/report.template.html` and `.code-flow/index.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
+
+`.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host reads. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
+
+**OpenAI Codex has no `--tool` value and does not need one.** It discovers repository skills from `.agents/skills/`, which every install writes.
 
 ## Packages
 
