@@ -36,12 +36,33 @@ git checkout -b feature/phase4-agent-skills master
 - **Zero dependencies, including dev.** `package.json` has no `devDependencies` key and must not gain one. The Python dev group is exactly `pytest>=8.0`. Do not reach for PyYAML to parse frontmatter — Task 2 hand-parses it in nine lines.
 - **Templates are LF-only on disk.** `tests/test_template_contracts.py::test_shipped_templates_have_no_crlf` walks `templates/` recursively and reads bytes. On Windows, `Path.write_text()` translates `\n` to `\r\n` silently. **Every step in this plan that writes a template file writes bytes**, never text. This has broken the repository twice.
 - **The version stays `1.0.0`** in `package.json` and `pyproject.toml`. Decision 6 as amended holds 1.0.0 until this phase ships, so the skills go out *inside* the first public release. The spec's "What Phase 4 ships" list still says `1.1.0`; that bullet predates the Open Question 1 ruling further down the same document and is stale. `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` already pins this — do not touch it.
-- **Skill names are `code-flow-map` and `code-flow-quality`.** Lowercase letters, numbers and hyphens only, 64 characters maximum, and the `name` field must equal the parent directory name. Verified 2026-08-15 against VS Code's agent-skills documentation, which is explicit: *"Do not use slashes, colons, dots, or namespace prefixes"*, and *"Names with invalid characters cause the skill to silently fail to load."* This is why the existing `code-flow.map` name cannot carry across.
+- **Skill names are `code-flow-map` and `code-flow-quality`** — lowercase letters, numbers and hyphens only, 64 characters maximum, `name` equal to the parent directory name. **This is one host's rule, not the format's**, and the spec's Decision 2 overstated it. See "Why hyphens" below before you decide it is arbitrary.
 - **Both `SKILL.md` files carry `disable-model-invocation: true`.** See "One call to confirm" below before you write it.
 - **Nothing is removed.** `.claude/commands/`, `.gemini/commands/` and `.github/prompts/` all keep shipping. `tests/test_host_parity.py`'s Claude↔Gemini divergence check keeps its current job and its `BASELINE_MAP = 27` / `BASELINE_QUALITY = 0` constants — those templates still exist, so they still need it.
 - **The HTML scaffolds stay at `.code-flow/`.** Decision 5: they are read at run time and written into `Code_Flows/`; bundling a thousand-line file as a skill resource would load it into context for nothing.
 - **No `git add -A`.** Stage the files each step names.
 - **Every task ends with a mutation proof.** Break the rule the new test guards, watch the test fail, restore. A contract test that still passes with its rule deleted is worse than no test, and this repository has shipped one before.
+
+## The hosts, and why hyphens
+
+Five hosts read `.agents/skills/` or `.claude/skills/`. Verified against each host's own documentation on 2026-08-15/16, not inferred from one another:
+
+| Host | Reads | Documented name rule | Explicit invocation |
+|---|---|---|---|
+| Claude Code | `.claude/skills/`, `.agents/skills/` | none stated; the **directory name** is the command and `name` is only a display label | `/code-flow-map` |
+| GitHub Copilot | `.github/skills/`, `.claude/skills/`, `.agents/skills/` | lowercase, digits, hyphens; **no dots**; must match the directory; **invalid names silently fail to load** | `/code-flow-map` |
+| Antigravity CLI | `.agents/skills/` | none stated; `name` optional, defaults to the folder | `/code-flow-map` |
+| Antigravity IDE | `.agents/skills/` | none stated; `name` optional, defaults to the folder | mention it by name |
+| OpenAI Codex | `.agents/skills/` (`$CWD` and `$REPO_ROOT`) | none stated; `name` and `description` both required | `$code-flow-map`, or `/skills` |
+
+**Codex needs no new install target.** Its repository-scope discovery paths are `"$CWD/.agents/skills"` and `"$REPO_ROOT/.agents/skills"` — the directory Task 3 already writes regardless of `--tool`. Nothing in Tasks 1-4 changes for it; it appears in Task 5's documentation and nowhere else.
+
+**Why hyphens, given that four of the five hosts document no restriction.** The spec's Decision 2 said `code-flow.map` is "therefore an invalid skill name". That is too broad — it is invalid on Copilot, and undocumented-but-apparently-fine on the rest, which is why other projects ship dotted names to some hosts and dashed names to others. Two things make one hyphenated name the right call here anyway:
+
+1. **Copilot reads `.claude/skills/` too.** A per-host split that put `code-flow.map/` in `.claude/skills/` would not be seen only by Claude Code — every Copilot user reading that same directory gets a skill that silently does not load, with nothing to search for. A split only helps where the hosts' directories are disjoint, and these two are not.
+2. **The dotted name is already taken, by us.** Decision 6 keeps `.claude/commands/code-flow.map.md` shipping, and that file already produces `/code-flow.map` on Claude Code. A skill directory of the same name would be a second thing claiming one command on one host. The hyphen is what lets both forms coexist, which is the entire point of shipping additively.
+
+So this is not "dots are illegal"; it is "the strictest consumer of a shared directory governs it, and the dotted name is spoken for." Keep that reasoning with the constraint — it is what a later reader needs when a sixth host arrives.
 
 ## One call to confirm before Task 2
 
@@ -201,14 +222,20 @@ Create `tests/test_skill_templates.py`:
 two commands, copied unchanged into every directory a host discovers skills
 from. Two things have to hold, and reading the files will tell you neither.
 
-**The name must be valid, because an invalid one does not warn.** VS Code's
-agent-skills documentation: "Only lowercase letters, numbers, and hyphens are
-allowed... Do not use slashes, colons, dots, or namespace prefixes", "Maximum 64
-characters", "Must match the parent directory name", and — the sentence that
-makes this a test rather than a review item — "Names with invalid characters
-cause the skill to silently fail to load." A user would see the skill simply not
-exist, with nothing to search for. That is why `code-flow.map` could not carry
-its own name across into this format.
+**The name must be valid, because an invalid one does not warn.** Of the five
+hosts that read these directories, only Copilot documents a rule — "Only
+lowercase letters, numbers, and hyphens are allowed... Do not use slashes,
+colons, dots, or namespace prefixes", "Maximum 64 characters", "Must match the
+parent directory name", and the sentence that makes this a test rather than a
+review item: "Names with invalid characters cause the skill to silently fail to
+load." Claude Code, both Antigravity surfaces and Codex state no restriction.
+
+The strictest one still governs, because Copilot reads `.claude/skills/`
+alongside `.agents/skills/` — there is no directory here that only a permissive
+host sees, so there is no name that can be laxer in one place. A user on the
+strict host would see the skill simply not exist, with nothing to search for.
+The dotted name is separately unavailable: `.claude/commands/code-flow.map.md`
+still ships and already answers to `/code-flow.map`.
 
 **The body must stay derived, not hand-maintained.** Phase 4 ships additively, so
 the three host templates still exist; a fourth hand-written copy of the same
@@ -351,8 +378,9 @@ def test_skill_disables_model_invocation(
     because a conversation drifted near its description.
 
     It is a belt, not the trousers: neither Antigravity surface documents the
-    field, so on those hosts the in-skill confirmation is the only gate. That
-    asymmetry is disclosed in the README rather than papered over.
+    field, and Codex suppresses implicit invocation through its own `openai.yaml`
+    metadata instead. On those three hosts the in-skill confirmation is the only
+    gate. That asymmetry is disclosed in the README rather than papered over.
     """
     fields = _frontmatter(_skill_path(repo_root, skill_dir).read_text(encoding="utf-8"))
     assert fields.get("disable-model-invocation") == "true", (
@@ -587,7 +615,7 @@ git commit -m "feat: add both commands in the Agent Skills format"
 
 Where each copy goes, and why it is not simply "both, always":
 
-- **`.agents/skills/` installs regardless of `--tool`.** Copilot, Antigravity CLI, Antigravity IDE and the legacy Gemini CLI all discover skills there — four of the five hosts. That makes it tool-agnostic in exactly the sense `.code-flow/` already is, so it follows the same rule.
+- **`.agents/skills/` installs regardless of `--tool`.** Copilot, Antigravity CLI, Antigravity IDE, OpenAI Codex and the legacy Gemini CLI all discover skills there — every supported host except Claude Code, and Claude Code reads it too. That makes it tool-agnostic in exactly the sense `.code-flow/` already is, so it follows the same rule. It is also the whole of Codex support: Codex has no `--tool` value and needs none.
 - **`.claude/skills/` rides on the `claude` selection.** Claude Code is its only consumer that no other path serves. Installing it unconditionally would put a `.claude/` directory into a `--tool gemini` install, breaking a promise `test_tool_selection_installs_only_that_tool` already holds us to and surprising a user who named a different host.
 
 This refines the spec's "copy each skill to `.claude/skills/<name>/SKILL.md` and `.agents/skills/<name>/SKILL.md`", which does not say what `--tool` does to that. Under `--tool all` the outcome is the same two copies the spec describes.
@@ -728,12 +756,15 @@ Add after the `toolMap` definition and before the `for (const name of selected)`
 // host discovers skills from.
 //
 // `.agents/skills/` is the open standard's shared location — Copilot, both
-// Antigravity surfaces and the legacy Gemini CLI all read it — so it installs
-// regardless of --tool, the way the .code-flow/ scaffolds do. `.claude/skills/`
-// has exactly one consumer no other path serves, Claude Code, so it rides on
-// that selection instead; a `--tool gemini` install must still leave no
-// `.claude/` behind. This list and the one in src/code_flow_skill/cli.py must
-// stay in step; the installed-file-set tests in both languages hold them there.
+// Antigravity surfaces, OpenAI Codex and the legacy Gemini CLI all read it — so
+// it installs regardless of --tool, the way the .code-flow/ scaffolds do. It is
+// also the entirety of Codex support: Codex discovers repository skills from
+// $CWD/.agents/skills and $REPO_ROOT/.agents/skills and has no --tool value of
+// its own. `.claude/skills/` has exactly one consumer no other path serves,
+// Claude Code, so it rides on that selection instead; a `--tool gemini` install
+// must still leave no `.claude/` behind. This list and the one in
+// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests in
+// both languages hold them there.
 const skillNames = ["code-flow-map", "code-flow-quality"];
 
 function installSkills(root) {
@@ -767,12 +798,15 @@ Add after `_TOOL_LABELS`:
 # discovers skills from.
 #
 # `.agents/skills/` is the open standard's shared location — Copilot, both
-# Antigravity surfaces and the legacy Gemini CLI all read it — so it installs
-# regardless of --tool, the way the .code-flow/ scaffolds do. `.claude/skills/`
-# has exactly one consumer no other path serves, Claude Code, so it rides on that
-# selection instead; a `--tool gemini` install must still leave no `.claude/`
-# behind. This table and the one in bin/install.js must stay in step; the
-# installed-file-set tests in both languages hold them there.
+# Antigravity surfaces, OpenAI Codex and the legacy Gemini CLI all read it — so
+# it installs regardless of --tool, the way the .code-flow/ scaffolds do. It is
+# also the entirety of Codex support: Codex discovers repository skills from
+# $CWD/.agents/skills and $REPO_ROOT/.agents/skills and has no --tool value of
+# its own. `.claude/skills/` has exactly one consumer no other path serves,
+# Claude Code, so it rides on that selection instead; a `--tool gemini` install
+# must still leave no `.claude/` behind. This table and the one in
+# bin/install.js must stay in step; the installed-file-set tests in both
+# languages hold them there.
 _SKILL_NAMES = ("code-flow-map", "code-flow-quality")
 
 
@@ -827,15 +861,17 @@ In `README.md`, the `## Files written` table gains four rows and the paragraph u
 | Gemini CLI | `/code-flow.quality` | `.gemini/commands/code-flow.quality.toml` |
 | GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
-| Copilot, Antigravity, Gemini CLI | `/code-flow-map` | `.agents/skills/code-flow-map/SKILL.md` |
-| Copilot, Antigravity, Gemini CLI | `/code-flow-quality` | `.agents/skills/code-flow-quality/SKILL.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-map` | `.agents/skills/code-flow-map/SKILL.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-quality` | `.agents/skills/code-flow-quality/SKILL.md` |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 
 The `.code-flow/viewer.template.html`, `.code-flow/report.template.html` and `.code-flow/index.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
 
-`.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location four of the five supported hosts read. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
+`.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host reads. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
+
+**OpenAI Codex has no `--tool` value and does not need one.** It discovers repository skills from `.agents/skills/`, which every install writes.
 ```
 
 - [ ] **Step 8: Run the full Python suite**
@@ -998,12 +1034,19 @@ has always had, and as an [Agent Skill](https://code.visualstudio.com/docs/agent
 under `.agents/skills/` (and `.claude/skills/` for Claude Code). Nothing was
 removed. If `/code-flow.map` works for you today, it still works.
 
+**This is also how OpenAI Codex is supported.** Codex reads repository skills from
+`.agents/skills/`, which every install writes, so it needs no `--tool` value of
+its own. There is no Codex-specific command file and there does not need to be.
+
 The two forms differ in three ways worth knowing before you pick one.
 
-**The names differ, and they had to.** A skill is invoked by its directory name,
-and skill names allow lowercase letters, numbers and hyphens only — no dots. So
-the skill form is `/code-flow-map` and `/code-flow-quality`, with hyphens, where
-the command form is `/code-flow.map` and `/code-flow.quality`, with dots.
+**The names differ, and they had to.** The skill form is `/code-flow-map` and
+`/code-flow-quality`, with hyphens; the command form keeps `/code-flow.map` and
+`/code-flow.quality`, with dots. Only Copilot documents a character rule for skill
+names — no dots, and an invalid name silently fails to load — but Copilot reads
+the same `.claude/skills/` directory Claude Code does, so there is no directory
+where a laxer name would be safe. The dot is also spoken for: on Claude Code
+`/code-flow.map` already belongs to the command file, which still ships.
 
 **Who can start them differs by host.** Both skills set
 `disable-model-invocation: true`, which asks the host to run them only when you
@@ -1015,7 +1058,11 @@ invoke them yourself. Not every host implements it:
 | GitHub Copilot | `.claude/skills/`, `.agents/skills/` | No |
 | Antigravity CLI | `.agents/skills/` | **Yes** — the field is not in its schema |
 | Antigravity IDE | `.agents/skills/` | **Yes** — the field is not in its schema |
+| OpenAI Codex | `.agents/skills/` | **Yes** — it suppresses implicit invocation through its own `openai.yaml` metadata, not this field |
 | Gemini CLI (legacy) | `.agents/skills/` | Yes, with a confirmation prompt |
+
+On Codex, explicit invocation is `$code-flow-map` or the `/skills` menu rather
+than a slash command.
 
 On the hosts in the "Yes" rows, `code-flow-map` can begin because the conversation
 drifted near what it does, rather than because you asked. That matters more for
@@ -1051,12 +1098,16 @@ In `CHANGELOG.md`, inside the `### Added` list of `## [1.0.0]`, insert after the
 ```markdown
 - **Both commands as Agent Skills** — one canonical `SKILL.md` per command,
   installed unchanged to `.agents/skills/` (read by Copilot, both Antigravity
-  surfaces and Gemini CLI) and `.claude/skills/` (Claude Code). They are named
-  `/code-flow-map` and `/code-flow-quality`, with hyphens: skill names allow no
-  dots, and an invalid name fails to load without saying so. The commands and
-  prompt files are unchanged and still ship — this is additive, and the format is
-  verified from four hosts' documentation rather than from running it, which is
-  why both forms go out together.
+  surfaces, OpenAI Codex and Gemini CLI) and `.claude/skills/` (Claude Code).
+  They are named `/code-flow-map` and `/code-flow-quality`, with hyphens, because
+  Copilot allows no dot in a skill name and fails to load an invalid one without
+  saying so — and it reads the same directories the permissive hosts do. The
+  commands and prompt files are unchanged and still ship: this is additive, and
+  the format is verified from five hosts' documentation rather than from running
+  it, which is why both forms go out together.
+- **OpenAI Codex support**, which is the above and nothing else. Codex discovers
+  repository skills from `.agents/skills/`, so every install already reaches it.
+  There is no `--tool codex`, because there is no Codex-specific file to install.
 - **Copilot prompt files declare `agent: agent`**, not the undocumented `mode:`
   key they carried through development. `mode` is not a documented prompt-file
   property, and the parity test that was supposed to guard the frontmatter was
