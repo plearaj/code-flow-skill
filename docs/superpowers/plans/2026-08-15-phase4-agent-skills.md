@@ -37,7 +37,7 @@ git checkout -b feature/phase4-agent-skills master
 - **Templates are LF-only on disk.** `tests/test_template_contracts.py::test_shipped_templates_have_no_crlf` walks `templates/` recursively and reads bytes. On Windows, `Path.write_text()` translates `\n` to `\r\n` silently. **Every step in this plan that writes a template file writes bytes**, never text. This has broken the repository twice.
 - **The version stays `1.0.0`** in `package.json` and `pyproject.toml`. Decision 6 as amended holds 1.0.0 until this phase ships, so the skills go out *inside* the first public release. The spec's "What Phase 4 ships" list still says `1.1.0`; that bullet predates the Open Question 1 ruling further down the same document and is stale. `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` already pins this — do not touch it.
 - **Skill names are `code-flow-map` and `code-flow-quality`** — lowercase letters, numbers and hyphens only, 64 characters maximum, `name` equal to the parent directory name. **This is one host's rule, not the format's**, and the spec's Decision 2 overstated it. See "Why hyphens" below before you decide it is arbitrary.
-- **Both `SKILL.md` files carry `disable-model-invocation: true`.** See "One call to confirm" below before you write it.
+- **Both `SKILL.md` files carry `disable-model-invocation: true`, and both skills ship an `agents/openai.yaml` setting `policy.allow_implicit_invocation: false`.** Two mechanisms for one rule, because no single field reaches every host. See "Ruled: invocation stays with the user" below.
 - **Nothing is removed.** `.claude/commands/`, `.gemini/commands/` and `.github/prompts/` all keep shipping. `tests/test_host_parity.py`'s Claude↔Gemini divergence check keeps its current job and its `BASELINE_MAP = 27` / `BASELINE_QUALITY = 0` constants — those templates still exist, so they still need it.
 - **The HTML scaffolds stay at `.code-flow/`.** Decision 5: they are read at run time and written into `Code_Flows/`; bundling a thousand-line file as a skill resource would load it into context for nothing.
 - **No `git add -A`.** Stage the files each step names.
@@ -64,17 +64,24 @@ Five hosts read `.agents/skills/` or `.claude/skills/`. Verified against each ho
 
 So this is not "dots are illegal"; it is "the strictest consumer of a shared directory governs it, and the dotted name is spoken for." Keep that reasoning with the constraint — it is what a later reader needs when a sixth host arrives.
 
-## One call to confirm before Task 2
+## Ruled: invocation stays with the user wherever a host allows it
 
-The spec's Decision 3 ruling says to keep `disable-model-invocation: true` "where a host documents it, as a belt alongside those braces". That is what this plan implements. It means:
+**Ruling, 2026-08-16: "leave the auto invocation to the user where possible."** These skills run when the user asks for them, on every host that provides a way to say so. Where a host provides none, the skill's own first-step confirmation is the gate.
 
-| Host | Can the model start the skill on its own? |
-|---|---|
-| Claude Code | No — the field is documented and honoured |
-| Copilot | No — the field is documented and honoured |
-| Antigravity CLI / IDE | **Yes** — the field is not in their two-key schema |
+"Where possible" is not one mechanism — it is three, and each host takes a different one. Implement all of them:
 
-If instead the intent of "automatic invocation should be fine to have on" was that the model *should* be free to start these skills everywhere, then the field comes out of both files and Task 2 Step 3's frontmatter loses one line, Task 2's `test_skill_disables_model_invocation` is deleted, and Task 5's README table flips. Everything else in this plan is unchanged. **Flag this to your human partner before Task 2 and take their answer.** Do not guess: it is the difference between a file-writing skill that can only be typed and one that can start itself.
+| Host | Mechanism | Can the model start the skill on its own? |
+|---|---|---|
+| Claude Code | `disable-model-invocation: true` in `SKILL.md` frontmatter | No |
+| GitHub Copilot | the same frontmatter field | No |
+| OpenAI Codex | `policy.allow_implicit_invocation: false` in a sibling `agents/openai.yaml` | No |
+| Antigravity CLI / IDE | none documented — `description` and `name` are the whole schema | **Yes** |
+
+Codex is the one this ruling adds. Its documentation is explicit that the two halves come apart the way this project wants them to: *"When `false`, Codex won't implicitly invoke the skill based on user prompt; explicit `$skill` invocation still works."* That is exactly `disable-model-invocation`'s semantics under a different name, so leaving it out would forfeit a guarantee the host is offering for free.
+
+**This is not in tension with the earlier ruling on Open Question 3.** That one accepted auto-invocation as an ecosystem property and dropped the two mitigations that would have changed the command's behaviour — the opt-in docstring redesign, and withholding the map from hosts that cannot suppress invocation. Neither comes back. What this ruling does is take every suppression a host already offers. Antigravity remains a host where the model may start `code-flow-map` unasked, and Phase 4 still ships there.
+
+**Consequence for the tasks:** Task 2 writes two `agents/openai.yaml` files as well as the two `SKILL.md` files, Task 3 installs them to `.agents/skills/` only, and Tasks 4 and 5 carry them through packaging and docs. They are **not** installed under `.claude/skills/` — Codex does not read that path, and the two hosts that do already honour the frontmatter field.
 
 ## File structure
 
@@ -84,6 +91,8 @@ If instead the intent of "automatic invocation should be fine to have on" was th
 |---|---|
 | `templates/shared/code-flow-map/SKILL.md` | The map command in the Agent Skills format. Frontmatter + preamble hand-written; body derived. |
 | `templates/shared/code-flow-quality/SKILL.md` | The quality command, same shape. |
+| `templates/shared/code-flow-map/agents/openai.yaml` | Codex's equivalent of `disable-model-invocation`. Four lines; nothing else belongs in it. |
+| `templates/shared/code-flow-quality/agents/openai.yaml` | The same, for the quality skill. |
 | `tests/test_skill_templates.py` | Everything true of a `SKILL.md` that reading it will not tell you: name validity, frontmatter contract, and that the body is still derived rather than drifted. |
 
 **Modified:**
@@ -378,13 +387,46 @@ def test_skill_disables_model_invocation(
     because a conversation drifted near its description.
 
     It is a belt, not the trousers: neither Antigravity surface documents the
-    field, and Codex suppresses implicit invocation through its own `openai.yaml`
-    metadata instead. On those three hosts the in-skill confirmation is the only
-    gate. That asymmetry is disclosed in the README rather than papered over.
+    field, so there the in-skill confirmation is the only gate. Codex has its own
+    mechanism, asserted by the next test. That asymmetry is disclosed in the
+    README rather than papered over.
     """
     fields = _frontmatter(_skill_path(repo_root, skill_dir).read_text(encoding="utf-8"))
     assert fields.get("disable-model-invocation") == "true", (
         f"{skill_dir}/SKILL.md does not set `disable-model-invocation: true`"
+    )
+
+
+@pytest.mark.parametrize("skill_dir,gemini_name", SKILL_TEMPLATES)
+def test_skill_disables_implicit_invocation_on_codex(
+    repo_root: Path, skill_dir: str, gemini_name: str
+) -> None:
+    """The same rule as the test above, for the one host that spells it
+    differently. Codex ignores `disable-model-invocation` and reads
+    `policy.allow_implicit_invocation` from a sibling `agents/openai.yaml`
+    instead — "When `false`, Codex won't implicitly invoke the skill based on
+    user prompt; explicit `$skill` invocation still works."
+
+    Parsed as text rather than with a YAML library on purpose: this repository
+    has no dependencies, including dev dependencies, and `pyyaml` is not worth
+    acquiring for four lines. The assertion is deliberately strict about the
+    nesting — a top-level `allow_implicit_invocation: false` outside the
+    `policy:` block is a file Codex reads and ignores, which is the failure this
+    test exists to catch and the one a looser substring search would miss.
+    """
+    path = repo_root / "templates" / "shared" / skill_dir / "agents" / "openai.yaml"
+    assert path.is_file(), f"{skill_dir} has no agents/openai.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert re.search(r"^policy:\s*$", text, re.MULTILINE), (
+        f"{skill_dir}/agents/openai.yaml has no top-level `policy:` block"
+    )
+    assert re.search(
+        r"^policy:\s*\n(?:[ \t]+.*\n)*?[ \t]+allow_implicit_invocation:\s*false\s*$",
+        text,
+        re.MULTILINE,
+    ), (
+        f"{skill_dir}/agents/openai.yaml does not set "
+        f"`allow_implicit_invocation: false` inside its `policy:` block"
     )
 
 
@@ -541,6 +583,30 @@ Follow these steps exactly.
 
 ```
 
+- [ ] **Step 3b: Write Codex's invocation policy**
+
+Two files, four lines each. Create `templates/shared/code-flow-map/agents/openai.yaml`:
+
+```yaml
+# Codex reads implicit-invocation policy from here, not from SKILL.md's
+# `disable-model-invocation`. Same rule, different host, different spelling.
+policy:
+  allow_implicit_invocation: false
+```
+
+And `templates/shared/code-flow-quality/agents/openai.yaml`, byte-identical except for the skill it sits beside — the comment and the policy are the same, because the rule is:
+
+```yaml
+# Codex reads implicit-invocation policy from here, not from SKILL.md's
+# `disable-model-invocation`. Same rule, different host, different spelling.
+policy:
+  allow_implicit_invocation: false
+```
+
+Resist the temptation to fill in the `interface:` block the Codex documentation also shows (`display_name`, `icon_small`, `brand_color`, and so on). Every one of those fields duplicates something `SKILL.md` already carries, on exactly one host, and would be a fifth place for the name and description to drift. Four lines is the whole file.
+
+Both files must end with a single trailing newline and use LF endings — `test_shipped_templates_have_no_crlf` walks everything under `templates/`, including these.
+
 - [ ] **Step 4: Generate both files**
 
 Run from the repository root. Set `SCRATCH` on its own line first — a `VAR=x cmd "$VAR"` prefix does not expand for the command's own arguments:
@@ -591,9 +657,9 @@ Expected: 13 passed.
 uv run --group dev pytest -v
 ```
 
-Expected: all pass, including `test_shipped_templates_have_no_crlf`, which now walks two more files.
+Expected: all pass, including `test_shipped_templates_have_no_crlf`, which now walks four more files.
 
-- [ ] **Step 7: Mutation proof, four ways**
+- [ ] **Step 7: Mutation proof, six ways**
 
 Each of these must fail, and each must be restored before the next:
 
@@ -601,13 +667,15 @@ Each of these must fail, and each must be restored before the next:
 2. Change one word inside the body of `templates/shared/code-flow-quality/SKILL.md`. Expected: `test_skill_body_is_derived_from_the_gemini_template` FAILS.
 3. Delete the whole "### Before you write anything" paragraph from the map skill. Expected: `test_map_skill_confirms_before_it_writes` FAILS. If it passes, the assertion is matching body prose — fix the scoping before continuing.
 4. Delete the `disable-model-invocation: true` line from either file. Expected: `test_skill_disables_model_invocation` FAILS.
+5. Change `allow_implicit_invocation: false` to `true` in either `agents/openai.yaml`. Expected: `test_skill_disables_implicit_invocation_on_codex` FAILS.
+6. Un-nest the setting: replace the whole of either `agents/openai.yaml` with a bare `allow_implicit_invocation: false` at the top level, no `policy:` line. Expected: `test_skill_disables_implicit_invocation_on_codex` FAILS on the `policy:` assertion. **This is the one to watch.** It is a file Codex reads and silently ignores, and a substring search for `allow_implicit_invocation: false` would pass on it — if this mutation goes green, the test is checking that the words are present rather than that the setting is in effect.
 
 Restore each file with the Step 4 generator (for 1, 2 and 4, which touch generated or frontmatter content, regenerate rather than hand-editing back) and re-run the suite green.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add templates/shared/code-flow-map/SKILL.md templates/shared/code-flow-quality/SKILL.md tests/test_skill_templates.py
+git add templates/shared/code-flow-map/ templates/shared/code-flow-quality/ tests/test_skill_templates.py
 git commit -m "feat: add both commands in the Agent Skills format"
 ```
 
@@ -631,16 +699,18 @@ This refines the spec's "copy each skill to `.claude/skills/<name>/SKILL.md` and
 
 **Interfaces:**
 - Consumes: `templates/shared/code-flow-map/SKILL.md` and `templates/shared/code-flow-quality/SKILL.md` from Task 2.
-- Produces: four new entries in `EXPECTED_ALL` / `EXPECTED_ALL` (Python and Node), which Task 4 reads.
+- Produces: six new entries in `EXPECTED_ALL` (Python and Node), which Task 4 reads.
 
 - [ ] **Step 1: Extend both expected-file lists**
 
-In `tests/test_installer_python.py`, `EXPECTED_ALL` becomes (note `.agents` sorts before `.claude`):
+In `tests/test_installer_python.py`, `EXPECTED_ALL` becomes. Two orderings to get right, both plain byte-order sorts rather than anything clever: `.agents` sorts before `.claude`, and within a skill directory `SKILL.md` sorts before `agents/openai.yaml` because `S` (0x53) precedes `a` (0x61). The list is compared against `sorted(...)` output, so a wrong guess here is a test failure with a readable diff, not a silent pass:
 
 ```python
 EXPECTED_ALL = [
     ".agents/skills/code-flow-map/SKILL.md",
+    ".agents/skills/code-flow-map/agents/openai.yaml",
     ".agents/skills/code-flow-quality/SKILL.md",
+    ".agents/skills/code-flow-quality/agents/openai.yaml",
     ".claude/commands/code-flow.map.md",
     ".claude/commands/code-flow.quality.md",
     ".claude/skills/code-flow-map/SKILL.md",
@@ -767,13 +837,23 @@ Add after the `toolMap` definition and before the `for (const name of selected)`
 // both languages hold them there.
 const skillNames = ["code-flow-map", "code-flow-quality"];
 
-function installSkills(root) {
+// What one installed skill is made of, per destination. SKILL.md goes to every
+// discovery root. `agents/openai.yaml` carries the implicit-invocation policy
+// for Codex alone, and Codex reads only `.agents/skills/`, so shipping it under
+// `.claude/skills/` would be a file no host there reads — Claude Code and
+// Copilot both take that policy from SKILL.md's frontmatter instead.
+const SKILL_FILES = ["SKILL.md"];
+const AGENTS_SKILL_FILES = ["SKILL.md", "agents/openai.yaml"];
+
+function installSkills(root, files) {
   for (const name of skillNames) {
-    const src = path.join(pkgRoot, "templates", "shared", name, "SKILL.md");
-    const dst = path.join(target, root, "skills", name, "SKILL.md");
-    fs.mkdirSync(path.dirname(dst), { recursive: true });
-    fs.copyFileSync(src, dst);
-    console.log(`Installed skill: ${dst}`);
+    for (const rel of files) {
+      const src = path.join(pkgRoot, "templates", "shared", name, ...rel.split("/"));
+      const dst = path.join(target, root, "skills", name, ...rel.split("/"));
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+      console.log(`Installed skill file: ${dst}`);
+    }
   }
 }
 ```
@@ -782,9 +862,9 @@ Then, between the end of the `for (const name of selected)` loop and the `instal
 
 ```js
 if (selected.includes("claude")) {
-  installSkills(".claude");
+  installSkills(".claude", SKILL_FILES);
 }
-installSkills(".agents");
+installSkills(".agents", AGENTS_SKILL_FILES);
 
 installShared();
 ```
@@ -809,8 +889,16 @@ Add after `_TOOL_LABELS`:
 # languages hold them there.
 _SKILL_NAMES = ("code-flow-map", "code-flow-quality")
 
+# What one installed skill is made of, per destination. SKILL.md goes to every
+# discovery root. `agents/openai.yaml` carries the implicit-invocation policy for
+# Codex alone, and Codex reads only `.agents/skills/`, so shipping it under
+# `.claude/skills/` would be a file no host there reads — Claude Code and Copilot
+# both take that policy from SKILL.md's frontmatter instead.
+_SKILL_FILES = ("SKILL.md",)
+_AGENTS_SKILL_FILES = ("SKILL.md", "agents/openai.yaml")
 
-def _install_skills(target: Path, root: str) -> None:
+
+def _install_skills(target: Path, root: str, files: tuple[str, ...]) -> None:
     """Copy both skills into one discovery root.
 
     A plain copy, deliberately: ``shutil.copyfile`` preserves bytes, where a
@@ -818,18 +906,22 @@ def _install_skills(target: Path, root: str) -> None:
     and silently corrupt every shipped template.
     """
     for name in _SKILL_NAMES:
-        out = target / root / "skills" / name / "SKILL.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(_template_path("shared", name, "SKILL.md"), out)
-        print(f"Installed skill: {out}")
+        for rel in files:
+            parts = rel.split("/")
+            out = target.joinpath(root, "skills", name, *parts)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_template_path("shared", name, *parts), out)
+            print(f"Installed skill file: {out}")
 ```
+
+`_template_path` is already variadic (`*parts`), so the nested `agents/openai.yaml` needs no change to it.
 
 In `main()`, between the tool loop and `_install_shared(target)`:
 
 ```python
     if "claude" in selected:
-        _install_skills(target, ".claude")
-    _install_skills(target, ".agents")
+        _install_skills(target, ".claude", _SKILL_FILES)
+    _install_skills(target, ".agents", _AGENTS_SKILL_FILES)
 
     _install_shared(target)
 ```
@@ -863,6 +955,8 @@ In `README.md`, the `## Files written` table gains four rows and the paragraph u
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
 | Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-map` | `.agents/skills/code-flow-map/SKILL.md` |
 | Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-quality` | `.agents/skills/code-flow-quality/SKILL.md` |
+| Codex | — | `.agents/skills/code-flow-map/agents/openai.yaml` (invocation policy) |
+| Codex | — | `.agents/skills/code-flow-quality/agents/openai.yaml` (invocation policy) |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
@@ -887,19 +981,20 @@ Expected: all pass.
 Not a test — a check that the thing works outside a fixture. Substitute your own scratch directory:
 
 ```bash
-rm -rf "$LOCALAPPDATA/Temp/claude/wire" && mkdir -p "$LOCALAPPDATA/Temp/claude/wire/js" "$LOCALAPPDATA/Temp/claude/wire/py" && node bin/install.js --target "$LOCALAPPDATA/Temp/claude/wire/js" --tool claude && uv run python -m code_flow_skill.cli --target "$LOCALAPPDATA/Temp/claude/wire/py" --tool copilot && find "$LOCALAPPDATA/Temp/claude/wire" -name SKILL.md | sort
+rm -rf "$LOCALAPPDATA/Temp/claude/wire" && mkdir -p "$LOCALAPPDATA/Temp/claude/wire/js" "$LOCALAPPDATA/Temp/claude/wire/py" && node bin/install.js --target "$LOCALAPPDATA/Temp/claude/wire/js" --tool claude && uv run python -m code_flow_skill.cli --target "$LOCALAPPDATA/Temp/claude/wire/py" --tool copilot && find "$LOCALAPPDATA/Temp/claude/wire" -name SKILL.md -o -name openai.yaml | sort
 ```
 
-Expected: the Node run (`--tool claude`) prints four `Installed skill:` lines and the Python run (`--tool copilot`) prints two, and `find` lists **six** `SKILL.md` files — `js/.claude/skills/` ×2, `js/.agents/skills/` ×2, `py/.agents/skills/` ×2. No `py/.claude/` directory exists, which is the point of the copilot run.
+Expected: `find` lists **ten** files — six `SKILL.md` (`js/.claude/skills/` ×2, `js/.agents/skills/` ×2, `py/.agents/skills/` ×2) and four `openai.yaml`, all four under an `.agents/` path. **No `openai.yaml` appears under `js/.claude/skills/`** — that is the placement rule, and it is the half of this step worth actually reading the output for. No `py/.claude/` directory exists at all, which is the point of the copilot run.
 
-- [ ] **Step 10: Mutation proof, four ways**
+- [ ] **Step 10: Mutation proof, five ways**
 
 Each must fail; restore between each:
 
-1. In `bin/install.js`, change `installSkills(".agents");` to run only when `selected.includes("gemini")`. Expected: `npm test` fails "agent skills install regardless of tool".
-2. In `bin/install.js`, make `installSkills(".claude")` unconditional. Expected: `npm test` fails "claude skills ride on the claude selection" *and* "tool selection installs only that tool".
-3. In `src/code_flow_skill/cli.py`, delete the `_install_skills(target, ".agents")` call. Expected: pytest fails `test_agent_skills_install_regardless_of_tool` and `test_tool_all_installs_exactly_the_expected_file_set`.
-4. Delete one `.agents/` row from the README table. Expected: pytest fails `test_readme_files_written_table_lists_exactly_the_installed_set`.
+1. In `bin/install.js`, change `installSkills(".agents", AGENTS_SKILL_FILES);` to run only when `selected.includes("gemini")`. Expected: `npm test` fails "agent skills install regardless of tool".
+2. In `bin/install.js`, make `installSkills(".claude", SKILL_FILES)` unconditional. Expected: `npm test` fails "claude skills ride on the claude selection" *and* "tool selection installs only that tool".
+3. In `src/code_flow_skill/cli.py`, delete the `_install_skills(target, ".agents", _AGENTS_SKILL_FILES)` call. Expected: pytest fails `test_agent_skills_install_regardless_of_tool` and `test_tool_all_installs_exactly_the_expected_file_set`.
+4. In `src/code_flow_skill/cli.py`, pass `_SKILL_FILES` instead of `_AGENTS_SKILL_FILES` to the `.agents` call — the mutation that drops Codex's policy file while leaving every skill in place. Expected: pytest fails `test_tool_all_installs_exactly_the_expected_file_set` on two missing rows. If it passes, `EXPECTED_ALL` never gained them.
+5. Delete one `.agents/` row from the README table. Expected: pytest fails `test_readme_files_written_table_lists_exactly_the_installed_set`.
 
 - [ ] **Step 11: Commit**
 
@@ -923,17 +1018,21 @@ The installer is a copy, not a transform. Task 3 proved the files land; this pro
 
 - [ ] **Step 1: Extend the Python byte-identity mapping**
 
-In `tests/test_installer_python.py`, add four entries to the `installed_to_source` dict inside `test_installed_files_are_byte_identical_to_their_templates` — both installed copies of each skill map to the one template:
+In `tests/test_installer_python.py`, add six entries to the `installed_to_source` dict inside `test_installed_files_are_byte_identical_to_their_templates` — both installed copies of each skill map to the one template, and each Codex policy file maps to its own:
 
 ```python
         tmp_path / ".claude" / "skills" / "code-flow-map" / "SKILL.md":
             repo_root / "templates" / "shared" / "code-flow-map" / "SKILL.md",
         tmp_path / ".agents" / "skills" / "code-flow-map" / "SKILL.md":
             repo_root / "templates" / "shared" / "code-flow-map" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-map" / "agents" / "openai.yaml":
+            repo_root / "templates" / "shared" / "code-flow-map" / "agents" / "openai.yaml",
         tmp_path / ".claude" / "skills" / "code-flow-quality" / "SKILL.md":
             repo_root / "templates" / "shared" / "code-flow-quality" / "SKILL.md",
         tmp_path / ".agents" / "skills" / "code-flow-quality" / "SKILL.md":
             repo_root / "templates" / "shared" / "code-flow-quality" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-quality" / "agents" / "openai.yaml":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "agents" / "openai.yaml",
 ```
 
 That test already calls `(tmp_path / ".gemini").mkdir()` before installing, so `--tool all` takes the Gemini branch and every path in the mapping exists. Leave that line in place.
@@ -962,20 +1061,34 @@ test("installed skills are byte-identical to their template", () => {
         `${root}/skills/${name}/SKILL.md is not byte-identical to its template`,
       );
     }
+
+    // Codex's policy file, which exists under .agents/ only.
+    assert.deepEqual(
+      fs.readFileSync(path.join(target, ".agents", "skills", name, "agents", "openai.yaml")),
+      fs.readFileSync(path.join(repoRoot, "templates", "shared", name, "agents", "openai.yaml")),
+      `.agents/skills/${name}/agents/openai.yaml is not byte-identical to its template`,
+    );
+    assert.ok(
+      !fs.existsSync(path.join(target, ".claude", "skills", name, "agents")),
+      `${name}'s Codex policy file must not be installed under .claude/skills/, ` +
+        `which Codex never reads`,
+    );
   }
 });
 ```
 
 - [ ] **Step 3: Extend the wheel manifest test**
 
-In `tests/test_packaging.py`, `EXPECTED_IN_WHEEL` gains two entries:
+In `tests/test_packaging.py`, `EXPECTED_IN_WHEEL` gains four entries:
 
 ```python
     "code_flow_skill/templates/shared/code-flow-map/SKILL.md",
+    "code_flow_skill/templates/shared/code-flow-map/agents/openai.yaml",
     "code_flow_skill/templates/shared/code-flow-quality/SKILL.md",
+    "code_flow_skill/templates/shared/code-flow-quality/agents/openai.yaml",
 ```
 
-No change is needed to `pyproject.toml` or `package.json`: hatchling's `force-include` of `"templates"` and npm's `files: ["templates"]` are both recursive. This test is what proves that rather than assuming it.
+No change is needed to `pyproject.toml` or `package.json`: hatchling's `force-include` of `"templates"` and npm's `files: ["templates"]` are both recursive. This test is what proves that rather than assuming it — and the `agents/openai.yaml` rows make it prove recursion two levels deep, which is new with this phase. Before it, nothing under `templates/` was nested at all.
 
 - [ ] **Step 4: Run everything**
 
@@ -994,7 +1107,7 @@ Expected: all pass. `test_wheel_contains_templates` shells out to `uv build`, so
 1. In `src/code_flow_skill/cli.py`, change `_install_skills` to read and re-write the file as text instead of `shutil.copyfile`:
 
    ```python
-           out.write_text(_template_path("shared", name, "SKILL.md").read_text(encoding="utf-8"), encoding="utf-8")
+           out.write_text(_template_path("shared", name, *parts).read_text(encoding="utf-8"), encoding="utf-8")
    ```
 
    Expected on Windows: `test_installed_files_are_byte_identical_to_their_templates` FAILS on line endings. This is the real historical bug, reproduced. Restore `shutil.copyfile`.
@@ -1058,11 +1171,17 @@ invoke them yourself. Not every host implements it:
 | GitHub Copilot | `.claude/skills/`, `.agents/skills/` | No |
 | Antigravity CLI | `.agents/skills/` | **Yes** — the field is not in its schema |
 | Antigravity IDE | `.agents/skills/` | **Yes** — the field is not in its schema |
-| OpenAI Codex | `.agents/skills/` | **Yes** — it suppresses implicit invocation through its own `openai.yaml` metadata, not this field |
+| OpenAI Codex | `.agents/skills/` | No — set in `agents/openai.yaml`, which ships beside each skill |
 | Gemini CLI (legacy) | `.agents/skills/` | Yes, with a confirmation prompt |
 
-On Codex, explicit invocation is `$code-flow-map` or the `/skills` menu rather
-than a slash command.
+Codex reads that policy from its own metadata file rather than from `SKILL.md`,
+so both files ship. On Codex, explicit invocation is `$code-flow-map` or the
+`/skills` menu rather than a slash command.
+
+On Antigravity there is no such setting to make. Both skills open by confirming
+what they are about to do before writing anything, which is the only gate
+available there — and the reason that paragraph is in the skill body rather than
+in frontmatter.
 
 On the hosts in the "Yes" rows, `code-flow-map` can begin because the conversation
 drifted near what it does, rather than because you asked. That matters more for
@@ -1105,9 +1224,18 @@ In `CHANGELOG.md`, inside the `### Added` list of `## [1.0.0]`, insert after the
   commands and prompt files are unchanged and still ship: this is additive, and
   the format is verified from five hosts' documentation rather than from running
   it, which is why both forms go out together.
-- **OpenAI Codex support**, which is the above and nothing else. Codex discovers
-  repository skills from `.agents/skills/`, so every install already reaches it.
-  There is no `--tool codex`, because there is no Codex-specific file to install.
+- **OpenAI Codex support**, at the cost of one four-line file per skill. Codex
+  discovers repository skills from `.agents/skills/`, so every install already
+  reaches it, and there is no `--tool codex` because there is no Codex-specific
+  command to install. The one thing it does need of its own is
+  `agents/openai.yaml`, which is where it reads the invocation policy the other
+  hosts take from `SKILL.md` frontmatter.
+- **Neither skill starts itself, on every host that offers a way to say so** —
+  `disable-model-invocation: true` for Claude Code and Copilot,
+  `policy.allow_implicit_invocation: false` for Codex. Explicit invocation is
+  unaffected everywhere. Both Antigravity surfaces document no such setting, so
+  there the skills' own confirm-before-writing step is the only gate; the README
+  says which host is which rather than implying a guarantee that does not hold.
 - **Copilot prompt files declare `agent: agent`**, not the undocumented `mode:`
   key they carried through development. `mode` is not a documented prompt-file
   property, and the parity test that was supposed to guard the frontmatter was
