@@ -345,6 +345,13 @@ invoke them yourself. Not every host implements it:
 | OpenAI Codex | `.agents/skills/` | No — set in `agents/openai.yaml`, which ships beside each skill |
 | Gemini CLI (legacy) | `.agents/skills/` | Yes, with a confirmation prompt |
 
+**On Copilot, the same skill lands in two directories it both scans.** `--tool
+all` writes `code-flow-map` to both `.claude/skills/` and `.agents/skills/`;
+Copilot's docs list both as read locations but say nothing about precedence or
+de-duplication when a name appears in both, so whether you see it once or
+twice there is unverified here. `--tool copilot` writes only `.agents/skills/`,
+which sidesteps the question if Copilot is the only host you use.
+
 Codex reads that policy from its own metadata file rather than from `SKILL.md`,
 so both files ship. On Codex, explicit invocation is `$code-flow-map` or the
 `/skills` menu rather than a slash command.
