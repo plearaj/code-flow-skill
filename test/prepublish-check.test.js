@@ -53,6 +53,8 @@ test("prepublish check names every scaffold and every manual step", () => {
   // either suite loads one page and follows a link to the next, so if the
   // checklist stops asking a human to walk it, nothing checks it at all.
   assert.match(r.stdout, /Flows link/i, "step 3 must name the round trip between pages");
+  assert.match(r.stdout, /slash menu/i, "checklist does not cover skill loading");
+  assert.match(r.stdout, /rather than\s+twice/i, "checklist does not cover duplicate registration");
 });
 
 test("npm runs the gate on publish, and it is runnable by hand for the PyPI release", () => {

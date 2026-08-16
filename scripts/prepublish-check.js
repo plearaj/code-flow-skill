@@ -46,8 +46,15 @@ test here would still pass.
      are plain links between separately generated files — nothing in either
      suite follows one.
 
-Do this for ALL THREE files. A change to any scaffold's rendering re-opens
-the gap, and the suites will not tell you.
+  4. Install into a scratch project with --tool all and open one host. Confirm
+     /code-flow-map appears in its slash menu, and that Copilot — which reads
+     both .claude/skills/ and .agents/skills/ — lists it once rather than
+     twice. An invalid or duplicated skill name does not warn; the skill just
+     silently does not load, or loads twice. No test here can see either.
+
+Do this for ALL THREE files, and do step 4 for at least one host. A change to
+any scaffold's rendering — or to a skill's name or frontmatter — re-opens the
+gap, and the suites will not tell you.
 `;
 
 console.log(CHECKLIST);

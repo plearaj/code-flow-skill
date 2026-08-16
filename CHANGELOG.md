@@ -42,6 +42,31 @@ reach a registry together.
   every time the map writes it, and linked from both other viewers, so a set of flows is
   navigable as a set instead of as a directory of loose pages. It reports the gap between
   entry points found and flows traced in words, so a partial map looks partial.
+- **Both commands as Agent Skills** — one canonical `SKILL.md` per command,
+  installed unchanged to `.agents/skills/` (read by Copilot, both Antigravity
+  surfaces, OpenAI Codex and Gemini CLI) and `.claude/skills/` (Claude Code).
+  They are named `/code-flow-map` and `/code-flow-quality`, with hyphens, because
+  Copilot allows no dot in a skill name and fails to load an invalid one without
+  saying so — and it reads the same directories the permissive hosts do. The
+  commands and prompt files are unchanged and still ship: this is additive, and
+  the format is verified from five hosts' documentation rather than from running
+  it, which is why both forms go out together.
+- **OpenAI Codex support**, at the cost of one four-line file per skill. Codex
+  discovers repository skills from `.agents/skills/`, so every install already
+  reaches it, and there is no `--tool codex` because there is no Codex-specific
+  command to install. The one thing it does need of its own is
+  `agents/openai.yaml`, which is where it reads the invocation policy the other
+  hosts take from `SKILL.md` frontmatter.
+- **Neither skill starts itself, on every host that offers a way to say so** —
+  `disable-model-invocation: true` for Claude Code and Copilot,
+  `policy.allow_implicit_invocation: false` for Codex. Explicit invocation is
+  unaffected everywhere. Both Antigravity surfaces document no such setting, so
+  there the skills' own confirm-before-writing step is the only gate; the README
+  says which host is which rather than implying a guarantee that does not hold.
+- **Copilot prompt files declare `agent: agent`**, not the undocumented `mode:`
+  key they carried through development. `mode` is not a documented prompt-file
+  property, and the parity test that was supposed to guard the frontmatter was
+  asserting the wrong key.
 - **Three-host support** — every command ships for Claude (`.claude/commands/*.md`),
   Gemini (`.gemini/commands/*.toml`) and Copilot (`.github/prompts/*.prompt.md`), saying
   the same things in each host's own register.
