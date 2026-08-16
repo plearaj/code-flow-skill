@@ -209,3 +209,37 @@ test("the claude selection installs both skill roots", () => {
     }
   }
 });
+
+test("installed skills are byte-identical to their template", () => {
+  const target = tempTarget();
+  // .gemini/ makes `--tool all` take the Gemini branch, so the install under
+  // test is the full one rather than the reduced set.
+  fs.mkdirSync(path.join(target, ".gemini"), { recursive: true });
+  runInstaller(target, "all");
+
+  for (const name of ["code-flow-map", "code-flow-quality"]) {
+    const source = fs.readFileSync(
+      path.join(repoRoot, "templates", "shared", name, "SKILL.md"),
+    );
+    for (const root of [".claude", ".agents"]) {
+      const installed = fs.readFileSync(path.join(target, root, "skills", name, "SKILL.md"));
+      assert.deepEqual(
+        installed,
+        source,
+        `${root}/skills/${name}/SKILL.md is not byte-identical to its template`,
+      );
+    }
+
+    // Codex's policy file, which exists under .agents/ only.
+    assert.deepEqual(
+      fs.readFileSync(path.join(target, ".agents", "skills", name, "agents", "openai.yaml")),
+      fs.readFileSync(path.join(repoRoot, "templates", "shared", name, "agents", "openai.yaml")),
+      `.agents/skills/${name}/agents/openai.yaml is not byte-identical to its template`,
+    );
+    assert.ok(
+      !fs.existsSync(path.join(target, ".claude", "skills", name, "agents")),
+      `${name}'s Codex policy file must not be installed under .claude/skills/, ` +
+        `which Codex never reads`,
+    );
+  }
+});

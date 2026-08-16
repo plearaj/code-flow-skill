@@ -210,6 +210,18 @@ def test_installed_files_are_byte_identical_to_their_templates(
             repo_root / "templates" / "gemini" / "code-flow.quality.toml",
         tmp_path / ".github" / "prompts" / "code-flow.quality.prompt.md":
             repo_root / "templates" / "copilot" / "code-flow.quality.prompt.md",
+        tmp_path / ".claude" / "skills" / "code-flow-map" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-map" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-map" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-map" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-map" / "agents" / "openai.yaml":
+            repo_root / "templates" / "shared" / "code-flow-map" / "agents" / "openai.yaml",
+        tmp_path / ".claude" / "skills" / "code-flow-quality" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-quality" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-quality" / "agents" / "openai.yaml":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "agents" / "openai.yaml",
     }
 
     for installed, source in installed_to_source.items():
