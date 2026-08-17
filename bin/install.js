@@ -40,6 +40,18 @@ function geminiIsInUse(dir) {
   return fs.existsSync(path.join(dir, ".gemini"));
 }
 
+// Every value --tool accepts. Not the same thing as `toolMap` below: a host
+// can be selectable without having files of its own. Copilot, Codex and
+// Antigravity read `.agents/skills/` and nothing this installer writes
+// elsewhere, so they appear here and not there.
+const VALID_TOOLS = ["claude", "copilot", "codex", "antigravity", "gemini"];
+
+// The hosts that read `.agents/skills/`. Claude Code is deliberately absent:
+// its documented skill locations are `~/.claude/skills/`, `.claude/skills/`
+// and plugin directories, with no `.agents/` among them, so a Claude-only
+// install that wrote there would leave four files nothing reads.
+const AGENTS_HOSTS = ["copilot", "codex", "antigravity", "gemini"];
+
 // `--tool gemini` is an explicit request and always installs. A heuristic must
 // never overrule someone who said exactly what they wanted.
 const explicit = tool !== "all";
@@ -48,9 +60,16 @@ let selected;
 if (explicit) {
   selected = [tool];
 } else if (geminiIsInUse(target)) {
-  selected = ["claude", "copilot", "codex", "antigravity", "gemini"];
+  // Every valid tool. Derived from VALID_TOOLS rather than hand-typed: codex
+  // and antigravity own no files of their own (see toolMap below), so a
+  // second hardcoded list here would be a literal that nothing observable —
+  // not the installed files, not stdout — could distinguish from
+  // `["claude", "copilot"]`. Deriving from VALID_TOOLS closes that gap by
+  // construction instead of relying on an assertion to catch it.
+  selected = [...VALID_TOOLS];
 } else {
-  selected = ["claude", "copilot", "codex", "antigravity"];
+  // Every valid tool except gemini, for the same reason.
+  selected = VALID_TOOLS.filter((name) => name !== "gemini");
   skippedGemini = true;
 }
 
@@ -108,18 +127,6 @@ function installSkills(root, files) {
     }
   }
 }
-
-// Every value --tool accepts. Not the same thing as `toolMap` below: a host
-// can be selectable without having files of its own. Copilot, Codex and
-// Antigravity read `.agents/skills/` and nothing this installer writes
-// elsewhere, so they appear here and not there.
-const VALID_TOOLS = ["claude", "copilot", "codex", "antigravity", "gemini"];
-
-// The hosts that read `.agents/skills/`. Claude Code is deliberately absent:
-// its documented skill locations are `~/.claude/skills/`, `.claude/skills/`
-// and plugin directories, with no `.agents/` among them, so a Claude-only
-// install that wrote there would leave four files nothing reads.
-const AGENTS_HOSTS = ["copilot", "codex", "antigravity", "gemini"];
 
 // Each host installs one file per command. This list and the one in
 // src/code_flow_skill/cli.py must stay in step; the installed-file-set tests

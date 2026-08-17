@@ -192,9 +192,17 @@ def main() -> None:
     if args.tool != "all":
         selected = [args.tool]
     elif _gemini_is_in_use(target):
-        selected = ["claude", "copilot", "codex", "antigravity", "gemini"]
+        # Every valid tool. Derived from _VALID_TOOLS rather than hand-typed:
+        # codex and antigravity own no files of their own (see _TOOL_FILES
+        # above), so a second hardcoded list here would be a literal that
+        # nothing observable — not the installed files, not stdout — could
+        # distinguish from ["claude", "copilot"]. Deriving from _VALID_TOOLS
+        # closes that gap by construction instead of relying on an assertion
+        # to catch it.
+        selected = list(_VALID_TOOLS)
     else:
-        selected = ["claude", "copilot", "codex", "antigravity"]
+        # Every valid tool except gemini, for the same reason.
+        selected = [name for name in _VALID_TOOLS if name != "gemini"]
         skipped_gemini = True
 
     for name in selected:
