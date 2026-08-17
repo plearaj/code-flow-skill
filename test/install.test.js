@@ -24,26 +24,43 @@ export function tempTarget() {
 // Every path this installer can write — nothing missing, nothing extra. Both
 // installers (this one and src/code_flow_skill/cli.py) are asserted against the
 // same literal list, which is what keeps them in lockstep.
-const EXPECTED_ALL = [
-  ".agents/skills/code-flow-map/SKILL.md",
-  ".agents/skills/code-flow-map/agents/openai.yaml",
-  ".agents/skills/code-flow-quality/SKILL.md",
-  ".agents/skills/code-flow-quality/agents/openai.yaml",
+const SHARED = [
+  ".code-flow/index.template.html",
+  ".code-flow/report.template.html",
+  ".code-flow/viewer.template.html",
+];
+const CLAUDE = [
   ".claude/commands/code-flow.map.md",
   ".claude/commands/code-flow.quality.md",
   ".claude/skills/code-flow-map/SKILL.md",
   ".claude/skills/code-flow-quality/SKILL.md",
-  ".code-flow/index.template.html",
-  ".code-flow/report.template.html",
-  ".code-flow/viewer.template.html",
+];
+const AGENTS = [
+  ".agents/skills/code-flow-map/SKILL.md",
+  ".agents/skills/code-flow-map/agents/openai.yaml",
+  ".agents/skills/code-flow-quality/SKILL.md",
+  ".agents/skills/code-flow-quality/agents/openai.yaml",
+];
+const GEMINI = [
   ".gemini/commands/code-flow.map.toml",
   ".gemini/commands/code-flow.quality.toml",
+];
+const COPILOT = [
   ".github/prompts/code-flow.map.prompt.md",
   ".github/prompts/code-flow.quality.prompt.md",
 ];
 
-// What `--tool all` produces in a project with no sign of Gemini CLI, which is
-// now the common case: everything above except the two TOML commands.
+// One row per --tool value. This is the contract the two installers are held
+// to, and the identical table lives in tests/test_installer_python.py.
+const EXPECTED_BY_TOOL = {
+  claude: [...CLAUDE, ...SHARED].sort(),
+  copilot: [...AGENTS, ...COPILOT, ...SHARED].sort(),
+  codex: [...AGENTS, ...SHARED].sort(),
+  antigravity: [...AGENTS, ...SHARED].sort(),
+  gemini: [...AGENTS, ...GEMINI, ...SHARED].sort(),
+};
+
+const EXPECTED_ALL = [...CLAUDE, ...AGENTS, ...GEMINI, ...COPILOT, ...SHARED].sort();
 const EXPECTED_WITHOUT_GEMINI = EXPECTED_ALL.filter((p) => !p.startsWith(".gemini/"));
 
 // Hand-rolled walk rather than readdirSync({ recursive: true }): that option
@@ -179,7 +196,11 @@ test("selecting one tool installs both of its commands and neither of another's"
   assert.ok(!fs.existsSync(path.join(target, ".gemini")));
 });
 
-test("agent skills install regardless of tool", () => {
+test("agent skills install for a host that reads them", () => {
+  // `.agents/skills/` is the open standard's shared location — Copilot, both
+  // Antigravity surfaces, Codex and the legacy Gemini CLI all read it.
+  // Copilot reads it in addition to its own prompt files, so selecting it
+  // must still install `.agents/skills/` alongside them.
   const target = tempTarget();
   runInstaller(target, "copilot");
   for (const name of ["code-flow-map", "code-flow-quality"]) {
@@ -197,17 +218,19 @@ test("claude skills ride on the claude selection", () => {
   assert.ok(!fs.existsSync(path.join(target, ".claude")));
 });
 
-test("the claude selection installs both skill roots", () => {
+test("the claude selection installs only the claude skill root", () => {
+  // Claude Code does not read `.agents/skills/` — its documented skill
+  // locations are `~/.claude/skills/`, `.claude/skills/` and plugin
+  // directories — so `--tool claude` must not write it.
   const target = tempTarget();
   runInstaller(target, "claude");
-  for (const root of [".claude", ".agents"]) {
-    for (const name of ["code-flow-map", "code-flow-quality"]) {
-      assert.ok(
-        fs.existsSync(path.join(target, root, "skills", name, "SKILL.md")),
-        `${root}/skills/${name}/SKILL.md was not installed`,
-      );
-    }
+  for (const name of ["code-flow-map", "code-flow-quality"]) {
+    assert.ok(
+      fs.existsSync(path.join(target, ".claude", "skills", name, "SKILL.md")),
+      `.claude/skills/${name}/SKILL.md was not installed`,
+    );
   }
+  assert.ok(!fs.existsSync(path.join(target, ".agents")));
 });
 
 test("installed skills are byte-identical to their template", () => {
@@ -243,3 +266,11 @@ test("installed skills are byte-identical to their template", () => {
     );
   }
 });
+
+for (const tool of Object.keys(EXPECTED_BY_TOOL).sort()) {
+  test(`--tool ${tool} installs exactly its own set`, () => {
+    const target = tempTarget();
+    runInstaller(target, tool);
+    assert.deepEqual(installedPaths(target), EXPECTED_BY_TOOL[tool]);
+  });
+}
