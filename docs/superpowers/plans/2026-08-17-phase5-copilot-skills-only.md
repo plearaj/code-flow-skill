@@ -409,12 +409,16 @@ what your host reads — and **GitHub Copilot is two hosts**, not one:
 And replace the paragraph beginning "If a row shows no command form" with:
 
 ```markdown
-If a row shows only one form, that host reads only one file. **VS Code Copilot
-Chat reads the prompt file** at `.github/prompts/`, where Agent Skills are still
-an experimental feature; **the Copilot CLI reads the skill** at `.agents/skills/`,
-where VS Code's documentation says prompt files are not used at all. Both were
-observed working on 2026-08-17. Both forms read and write the same `Code_Flows/`
-artifacts, so a flow mapped by one is readable by the other.
+If a row shows only one form, that host reads only one file. Both forms read and
+write the same `Code_Flows/` artifacts, so a flow mapped by one is readable by the
+other.
+
+**GitHub Copilot is two surfaces.** VS Code Copilot Chat lists the prompt file and
+not the skill — Agent Skills there are still an
+[experimental feature](https://code.visualstudio.com/docs/agent-customization/agent-skills).
+The Copilot CLI lists **both**, so you will see `/code-flow.map` and `/code-flow-map`
+side by side: two commands doing the same job, one from each form, not a duplicate.
+Observed 2026-08-17 on VS Code 1.132.0 with Copilot Chat 0.35.3, and Copilot CLI 1.0.10.
 ```
 
 - [ ] **Step 3: Retire the unverified caveat, because it is now verified**
@@ -432,12 +436,11 @@ prompt-file convention, and Copilot Chat does expose it as a `/`-command. That i
 observation on one machine, not a guarantee for every version — if the slash form
 doesn't appear for you, use the Prompts picker.
 
-**In the Copilot CLI, use the skill instead:** `/code-flow-map`. The CLI is an Agent
-Host, and [VS Code's documentation](https://code.visualstudio.com/docs/copilot/customization/prompt-files)
-says agents on the Agent Host do not use prompt files. Skills in VS Code Chat are the
-mirror image — an [experimental feature](https://code.visualstudio.com/docs/agent-customization/agent-skills)
-added in 1.108 — so at present each Copilot surface has exactly one working form, and
-this package installs both.
+**The Copilot CLI lists both forms**, so `/code-flow.map` and `/code-flow-map` appear
+side by side there. They are two commands doing the same job — one from the prompt file,
+one from the skill — not a duplicate entry. Either should work; this package installs
+both because VS Code Chat has only the first and Codex, Antigravity and Gemini CLI have
+only the second.
 ```
 
 Leave the paragraph beginning "**If you don't use Copilot in VS Code**" exactly as it is. It covers github.com, JetBrains and Visual Studio, none of which were tested, and its advice is unchanged.

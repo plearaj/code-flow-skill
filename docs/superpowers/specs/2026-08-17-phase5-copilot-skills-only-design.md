@@ -42,20 +42,30 @@ copilot`, then opened both Copilot surfaces.
 | Surface | Versions | `/code-flow.map` (prompt file) | `/code-flow-map` (skill) |
 |---|---|---|---|
 | VS Code Copilot Chat | VS Code 1.132.0, Copilot Chat 0.35.3 | **appeared, and ran correctly** | did not appear |
-| Copilot CLI | 1.0.10 | not tested | **appeared** |
+| Copilot CLI | 1.0.10 | **appeared** (execution not tested) | **appeared** (execution not tested) |
 
 The VS Code run executed the map command's step 1 as written — surveyed the project,
 proposed five candidate flows, and asked which to trace — so the prompt file is not
 merely listed there, it works.
 
-**The two forms serve two different Copilot surfaces.** Agent Skills in VS Code are
-an *experimental* feature added in 1.108 (December 2025); the target machine is on
-1.132 with no skill-related settings configured, and the skill did not surface.
-Meanwhile VS Code's own documentation says agents on the Agent Host do not use prompt
-files — which is the CLI, where the skill did surface. Neither form is redundant:
-**deleting the prompt files would have removed the only working integration for VS
-Code Copilot Chat users**, which is the surface this project's own README spends the
-most words on.
+**Corrected 2026-08-17, same day.** A first revision of this table recorded the CLI's
+prompt-file row as "not tested" and then argued from VS Code's documentation that the
+CLI would not read prompt files at all, because *"agents running on the Agent Host
+don't use prompt files"*. Checking the CLI's actual list showed **both** forms present.
+Whatever that sentence means, it does not mean the Copilot CLI ignores
+`.github/prompts/`. The claim is struck; only the observation stands.
+
+**Deleting the prompt files was still wrong, for a reason the correction does not
+touch:** VS Code Copilot Chat lists the prompt file and not the skill, and that is the
+surface this project's README spends the most words on. Agent Skills in VS Code are an
+*experimental* feature added in 1.108 (December 2025); the test machine runs 1.132 with
+no skill settings configured, and the skill did not appear there.
+
+**What the two forms are for, stated only as far as the evidence goes:** the prompt
+file is the only form observed on VS Code Chat, and the skill is the only form that
+reaches Codex, Antigravity and Gemini CLI, none of which read `.github/prompts/`. On
+the Copilot CLI both are listed and neither was run, so which one a CLI user should
+prefer is **not established here** — and no sentence in the README should imply it is.
 
 ### A second thing the same test settled
 
@@ -104,18 +114,23 @@ host whose vendor documentation says the mechanism is going away.
 **Decision: keep `templates/copilot/`. Both forms ship, because both are load-bearing,
 and the README says which Copilot surface needs which.**
 
-Copilot is not one host. It is at least two, and they read different files:
+Copilot is not one host. It is at least two, and they do not read the same set:
 
-| Surface | Reads | Invoke as |
+| Surface | Lists the prompt file | Lists the skill |
 |---|---|---|
-| VS Code Copilot Chat | `.github/prompts/*.prompt.md` | `/code-flow.map` |
-| Copilot CLI / Agent Host | `.agents/skills/<name>/SKILL.md` | `/code-flow-map` |
+| VS Code Copilot Chat | yes — `/code-flow.map` | no |
+| Copilot CLI | yes — `/code-flow.map` | yes — `/code-flow-map` |
 
-That is the whole answer to the question that started this phase — *why does Copilot use
-dots when everything else uses hyphens?* It does not. **VS Code Chat uses dots because it
-reads the prompt file; the Copilot CLI uses hyphens because it reads the skill.** Neither
-name is wrong and neither is removable; the README was simply presenting one host where
-there are two.
+That answers the question that started this phase — *why does Copilot use dots when
+everything else uses hyphens?* Because on the surface the README was describing, the
+dotted prompt file is the only thing there. **The dot is not an inconsistency; it is VS
+Code Chat's only form.** The hyphen is what the skill-reading hosts see. The README was
+presenting one Copilot where there are two.
+
+It also explains the four entries a Copilot CLI user sees. `code-flow-map` is not listed
+twice — `/code-flow.map` and `/code-flow-map` are two different commands doing the same
+job, one from each form, exactly as on Claude Code. There is nothing to de-duplicate,
+which is worth writing down because it looked like a bug and was investigated as one.
 
 This also retires a caveat rather than adding one. The README has said since 1.0 that it
 does not claim Copilot Chat exposes a dotted filename as a `/`-command. It does, on VS
