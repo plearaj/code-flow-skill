@@ -1,10 +1,12 @@
-# Phase 5 Implementation Plan — `--tool` learns every host
+# Phase 5 Implementation Plan — per-host `--tool`, a bundled page, and user themes
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give `--tool` a value per supported host, and stop installing `.agents/skills/` into projects where nothing reads it.
+**Goal:** Give `--tool` a value per supported host; let a user theme every generated page; and add one self-contained bundled page they can hand to someone, with a flag choosing whether the loose pages come too.
 
 **Architecture:** Both installers already copy from two sources — a per-host `toolMap`/`_TOOL_FILES` table and a shared skill installer. This phase splits host *selection* from host *files*, so a host can be selectable without having a table entry of its own — which is what Codex and Antigravity are. `.agents/skills/` stops being unconditional and installs when the selection contains a host that reads it.
+
+**The HTML half** leans on what the scaffolds already are. All three drive every colour through ~25 CSS custom properties in a `:root{}` block with a `[data-theme="light"]{}` override, so a user theme is those same properties with different values, inlined through a new `__THEME_CSS__` token. The bundle is a fourth scaffold composed from the three existing ones, rebuilt from the JSON artifacts on every run exactly as `index.html` already is — never patched in place.
 
 **Scope note:** an earlier revision of this plan also deleted the Copilot prompt files. That was overturned by direct observation before any of it was written — see the spec's Decision 1. `templates/copilot/` stays, and so does every test parametrized over it.
 
@@ -42,20 +44,34 @@ This table is Task 1's contract, and Task 2 documents it.
 
 ## File structure
 
-**Nothing is created or deleted.** No template changes at all — this phase is installer logic and documentation.
+**Nothing is deleted.** `templates/copilot/` stays, and so does every test parametrized over it.
+
+**Created:**
+
+| Path | Responsibility |
+|---|---|
+| `templates/shared/theme.css` | Every custom property at its current default, commented out, in both a `:root` and a `[data-theme="light"]` block. A menu the user opts into. |
+| `templates/shared/bundle.template.html` | One self-contained page carrying the index, every flow and the quality report. Two tokens: `__BUNDLE_DATA__`, `__THEME_CSS__`. |
+| `tests/test_theme.py` | The theme token's position and the shipped file's shape — the parts of theming that are checkable without rendering anything. |
 
 **Modified:**
 
 | Path | Change |
 |---|---|
-| `bin/install.js` | tool selection split from tool files; `.agents/skills/` conditional (Task 1) |
-| `src/code_flow_skill/cli.py` | the same, in Python (Task 1) |
-| `tests/test_installer_python.py` | `EXPECTED_BY_TOOL` and the matrix test (Task 1) |
-| `test/install.test.js` | the same, in Node (Task 1) |
-| `README.md` | the two Copilot surfaces, the new `--tool` values, and the retired caveat (Task 2) |
-| `CHANGELOG.md` | `1.1.0` entry (Task 2) |
-| `package.json`, `pyproject.toml` | version `1.1.0` (Task 2) |
-| `tests/test_packaging.py` | version test re-pointed (Task 2) |
+| `bin/install.js` | tool selection split from tool files, `.agents/skills/` conditional (Task 1); two new shared files (Tasks 2, 3) |
+| `src/code_flow_skill/cli.py` | the same, in Python |
+| `tests/test_installer_python.py` | `EXPECTED_BY_TOOL` and the matrix test (Task 1); `_SHARED` grows twice (Tasks 2, 3) |
+| `test/install.test.js` | the same, in Node |
+| `templates/shared/{viewer,report,index}.template.html` | `__THEME_CSS__` after the light-palette block (Task 2) |
+| `test/viewer-validation.test.js` | the bundle scaffold's `validate()` cases (Task 3) |
+| `templates/{claude,gemini,copilot}/*` ×6 | `--output` and the theme rule, in each host's register (Task 4) |
+| `templates/shared/code-flow-*/SKILL.md` | regenerated from Gemini, not hand-edited (Task 4) |
+| `tests/test_template_contracts.py` | `--output`, JSON-always, and theme-inlining contracts (Task 4) |
+| `tests/test_packaging.py` | two new wheel paths (Tasks 2, 3); version test re-pointed (Task 5) |
+| `README.md` | Copilot's two surfaces, the new `--tool` values, `--output`, theming (Task 5) |
+| `CHANGELOG.md` | `1.1.0` entry (Task 5) |
+| `package.json`, `pyproject.toml` | version `1.1.0` (Task 5) |
+| `scripts/prepublish-check.js`, `test/prepublish-check.test.js` | a fourth scaffold to open by hand (Task 5) |
 
 ---
 
@@ -364,7 +380,454 @@ git commit -m "feat: give --tool a value per host, and install .agents/skills on
 
 ---
 
-### Task 2: Docs, and the version
+### Task 2: `.code-flow/theme.css` and the `__THEME_CSS__` token
+
+Theming first, because the bundle scaffold in Task 3 needs the same token and it is cheaper to build it in than to retrofit it.
+
+**Files:**
+- Create: `templates/shared/theme.css`
+- Modify: `templates/shared/viewer.template.html`, `report.template.html`, `index.template.html`
+- Modify: `bin/install.js`, `src/code_flow_skill/cli.py`
+- Modify: `tests/test_installer_python.py`, `test/install.test.js`, `tests/test_packaging.py`
+- Create: `tests/test_theme.py`
+
+**Interfaces:**
+- Consumes: `_SHARED` / `SHARED` from Task 1 — the theme file is a fourth shared path and goes in those lists, so every `EXPECTED_BY_TOOL` row picks it up automatically.
+- Produces: the `__THEME_CSS__` token contract, which Task 3's bundle scaffold and Task 4's generator prose both rely on.
+
+- [ ] **Step 1: Write the token contract test first**
+
+Create `tests/test_theme.py`:
+
+```python
+"""The theme token, and the file that fills it.
+
+Theming is the one feature in this project with no failure signal: a user's CSS
+is inlined verbatim into a generated page, nothing validates it, and a page that
+renders wrong looks exactly like a page that renders right until someone opens
+it. These tests cover the parts that *are* checkable — that the token exists,
+that it sits where later declarations win, and that the shipped file cannot
+silently break the light/dark toggle.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+THEMED_SCAFFOLDS = (
+    "viewer.template.html",
+    "report.template.html",
+    "index.template.html",
+)
+
+
+@pytest.mark.parametrize("name", THEMED_SCAFFOLDS)
+def test_scaffold_carries_the_theme_token(repo_root: Path, name: str) -> None:
+    text = (repo_root / "templates" / "shared" / name).read_text(encoding="utf-8")
+    assert text.count("__THEME_CSS__") == 1, (
+        f"{name} must carry exactly one __THEME_CSS__ token"
+    )
+
+
+@pytest.mark.parametrize("name", THEMED_SCAFFOLDS)
+def test_theme_token_comes_after_both_palettes(repo_root: Path, name: str) -> None:
+    """The token must sit after the `[data-theme="light"]` block.
+
+    `:root` and `[data-theme="light"]` have equal CSS specificity, so whichever
+    is declared last wins. A token placed before the light block would let the
+    built-in light palette override the user's colours in light mode only —
+    a theme that works until you press the toggle, which is worse than one that
+    does not work at all.
+    """
+    text = (repo_root / "templates" / "shared" / name).read_text(encoding="utf-8")
+    root = text.index(":root{")
+    light = text.index('[data-theme="light"]{')
+    token = text.index("__THEME_CSS__")
+    assert root < light < token, (
+        f"{name}: __THEME_CSS__ must come after both the :root and "
+        f'[data-theme="light"] blocks, so user declarations win in both modes'
+    )
+
+
+def test_shipped_theme_declares_both_palettes(repo_root: Path) -> None:
+    """The shipped file must show both blocks, not just `:root`.
+
+    A user who edits a `:root`-only file gets their colours in dark mode and
+    their colours in light mode — the toggle appears dead. Shipping both blocks
+    pre-filled makes the working shape the default shape.
+    """
+    css = (repo_root / "templates" / "shared" / "theme.css").read_text(encoding="utf-8")
+    assert re.search(r"^:root\s*\{", css, re.MULTILINE), "theme.css has no :root block"
+    assert re.search(r'^\[data-theme="light"\]\s*\{', css, re.MULTILINE), (
+        "theme.css has no [data-theme=\"light\"] block, so editing it would "
+        "break the light/dark toggle"
+    )
+
+
+def test_shipped_theme_is_inert(repo_root: Path) -> None:
+    """Every declaration in the shipped file must be commented out.
+
+    The installer overwrites `.code-flow/` templates on every run. If the shipped
+    theme carried live declarations, a re-install would be indistinguishable from
+    a theme edit, and anyone who had customised their copy would silently lose it
+    on upgrade. Shipped inert, the file is a documented menu; the user opts in by
+    uncommenting.
+    """
+    css = (repo_root / "templates" / "shared" / "theme.css").read_text(encoding="utf-8")
+    live = [
+        line
+        for line in css.splitlines()
+        if re.match(r"\s*--[a-z-]+\s*:", line) and not line.lstrip().startswith("/*")
+    ]
+    assert not live, f"theme.css ships live declarations: {live[:3]}"
+```
+
+- [ ] **Step 2: Run it and watch every test fail**
+
+Run: `uv run --group dev pytest tests/test_theme.py -v`
+
+Expected: 8 failures — three `__THEME_CSS__` counts of 0, three index lookups raising `ValueError: substring not found`, and two `FileNotFoundError` for the missing `theme.css`.
+
+- [ ] **Step 3: Write `templates/shared/theme.css`**
+
+Every declaration commented out, both blocks present, every custom property the scaffolds define listed at its current default. Derive the list and the values from `templates/shared/viewer.template.html` — read its `:root{}` and `[data-theme="light"]{}` blocks and transcribe them. Do not invent property names or values; the file is a menu of what actually exists.
+
+Head the file with:
+
+```css
+/* Code Flow — your theme.
+ *
+ * Uncomment a line and change its value. Everything here is inlined into every
+ * generated page after the built-in styles, so your declarations win.
+ *
+ * Keep both blocks. `:root` is the dark palette and `[data-theme="light"]` is the
+ * light one; they have equal CSS specificity, so setting only `:root` would apply
+ * your colours in light mode too and make the theme toggle look broken.
+ *
+ * This file is overwritten when you re-run the installer. Keep a copy of your
+ * edits somewhere else, or version it.
+ */
+```
+
+That last paragraph is a real caveat and must be in the shipped file: `.code-flow/` templates are overwritten on every install, so a customised `theme.css` is lost on upgrade. Say so where the user will read it rather than only in the README.
+
+- [ ] **Step 4: Add the token to all three scaffolds**
+
+In each of `viewer.template.html`, `report.template.html` and `index.template.html`, insert on its own line immediately after the closing brace of the `[data-theme="light"]{...}` block:
+
+```
+__THEME_CSS__
+```
+
+It sits inside the existing `<style>` element — do not add a second one. Nothing else in any scaffold changes.
+
+- [ ] **Step 5: Install it**
+
+In `bin/install.js`, add to `sharedFiles`:
+
+```js
+  ["theme.css", "your theme"],
+```
+
+In `src/code_flow_skill/cli.py`, add to `_SHARED_FILES`:
+
+```python
+    ("theme.css", "your theme"),
+```
+
+In `tests/test_installer_python.py` add `".code-flow/theme.css"` to `_SHARED`, and in `test/install.test.js` add it to `SHARED`. Every `EXPECTED_BY_TOOL` row picks it up from there — that is why Task 1 composed those lists rather than writing them out per row.
+
+In `tests/test_packaging.py`, add to `EXPECTED_IN_WHEEL`:
+
+```python
+    "code_flow_skill/templates/shared/theme.css",
+```
+
+- [ ] **Step 6: Run both suites**
+
+```bash
+uv run --group dev pytest -q
+```
+
+```bash
+npm test
+```
+
+Expected: green. Python gains 8 from `tests/test_theme.py`; the per-tool rows now expect one more shared file each.
+
+- [ ] **Step 7: Mutation proof, four ways**
+
+1. Move `__THEME_CSS__` in `viewer.template.html` to just before the `[data-theme="light"]` block. Expected: `test_theme_token_comes_after_both_palettes` FAILS for viewer. **This is the one that matters** — it is the difference between a theme that works and one that dies on the toggle, and it is invisible to every other check.
+2. Delete the `[data-theme="light"]` block from `templates/shared/theme.css`. Expected: `test_shipped_theme_declares_both_palettes` FAILS.
+3. Uncomment one declaration in `theme.css`. Expected: `test_shipped_theme_is_inert` FAILS naming that property.
+4. Add a second `__THEME_CSS__` to `index.template.html`. Expected: `test_scaffold_carries_the_theme_token` FAILS on the count. (A doubled token would inline the user's CSS twice — harmless visually, but it means a generator that replaced only the first occurrence would leave a literal `__THEME_CSS__` in the page.)
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add templates/shared/theme.css templates/shared/*.template.html bin/install.js src/code_flow_skill/cli.py tests/ test/
+git commit -m "feat: ship an editable theme.css and inline it through a __THEME_CSS__ token"
+```
+
+---
+
+### Task 3: The bundle scaffold
+
+**Files:**
+- Create: `templates/shared/bundle.template.html`
+- Modify: `bin/install.js`, `src/code_flow_skill/cli.py`
+- Modify: `tests/test_installer_python.py`, `test/install.test.js`, `tests/test_packaging.py`
+- Modify: `test/viewer-validation.test.js`
+
+**Interfaces:**
+- Consumes: `__THEME_CSS__` from Task 2, and `_SHARED` / `SHARED`.
+- Produces: `.code-flow/bundle.template.html` carrying `__BUNDLE_DATA__`, which Task 4's generator prose fills.
+
+- [ ] **Step 1: Write the validator test first**
+
+The three existing scaffolds each mark a pure `validate(raw, TOKEN)` between `/* ==== validate:start ==== */` and `/* ==== validate:end ==== */`, which `test/viewer-validation.test.js` lifts with `new Function` and drives with no DOM. The bundle gets the same treatment.
+
+Append to `test/viewer-validation.test.js`, following the shape the existing scaffold cases use in that file:
+
+```js
+const bundleValidate = liftValidator("bundle.template.html");
+
+test("bundle validator rejects the unreplaced token", () => {
+  // Written as a concatenation so a naive string replace over this file cannot
+  // rewrite the check itself — the same guard the other three scaffolds use.
+  const TOKEN = "__BUNDLE" + "_DATA__";
+  const r = bundleValidate(TOKEN, TOKEN);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /not been generated|placeholder/i);
+});
+
+test("bundle validator rejects malformed JSON", () => {
+  const r = bundleValidate("{not json", "__BUNDLE" + "_DATA__");
+  assert.equal(r.ok, false);
+});
+
+test("bundle validator requires an index and a flows array", () => {
+  const TOKEN = "__BUNDLE" + "_DATA__";
+  assert.equal(bundleValidate('{"flows":[]}', TOKEN).ok, false, "missing index");
+  assert.equal(bundleValidate('{"index":{}}', TOKEN).ok, false, "missing flows");
+});
+
+test("bundle validator accepts a report-less bundle", () => {
+  // `report` is optional: a project that has never run /code-flow.quality has
+  // no quality-report.json, and that is not an error.
+  const TOKEN = "__BUNDLE" + "_DATA__";
+  const data = '{"index":{"flows":[]},"flows":[]}';
+  assert.equal(bundleValidate(data, TOKEN).ok, true);
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+Run: `npm test`
+
+Expected: FAIL — `liftValidator` cannot read `templates/shared/bundle.template.html`.
+
+- [ ] **Step 3: Build the scaffold**
+
+`templates/shared/bundle.template.html` is one self-contained page that does what the three existing scaffolds do between them. Build it by composing them rather than writing new rendering code — the graph rendering, the report rendering and the card listing are all working code that has been through review.
+
+Requirements, all load-bearing:
+
+- **Exactly two tokens**: `__BUNDLE_DATA__` and `__THEME_CSS__`. No `__FLOW_DATA__`, no `__INDEX_DATA__`, no `__REPORT_DATA__` — the bundle carries everything in one object.
+- **`__BUNDLE_DATA__` shape**: `{ "index": <the index.json object>, "flows": [<each slug.json object>], "report": <the quality-report.json object, or null> }`.
+- **`__THEME_CSS__` after the `[data-theme="light"]` block**, exactly as Task 2 placed it in the other three. `tests/test_theme.py` does not cover this file — add `"bundle.template.html"` to its `THEMED_SCAFFOLDS` tuple so it does.
+- **A `validate(raw, TOKEN)` between the two sentinel comments**, pure, no DOM, returning `{ok: true}` or `{ok: false, error: "..."}`. It must reject the unreplaced token, unparseable JSON, and an object missing `index` or `flows`. It must accept a missing or null `report`.
+- **Never a blank screen.** On any validation failure the page renders the error card, exactly as the other three do.
+- **Landing view is the index.** Opening the file shows the flow listing; selecting a flow shows that flow's graph; the report, when present, is reachable from the landing view. No network, no build step, opens from `file://`.
+- **Self-contained.** No external stylesheet, script, font or image.
+
+- [ ] **Step 4: Run the validator tests**
+
+```bash
+npm test
+```
+
+Expected: the four bundle validator tests pass. If `bundle validator accepts a report-less bundle` fails, the validator is requiring `report` — fix the validator, not the test.
+
+- [ ] **Step 5: Install it**
+
+Add `["bundle.template.html", "bundled viewer"]` to `sharedFiles` in `bin/install.js` and `("bundle.template.html", "bundled viewer")` to `_SHARED_FILES` in `src/code_flow_skill/cli.py`. Add `".code-flow/bundle.template.html"` to `_SHARED` / `SHARED`, and `"code_flow_skill/templates/shared/bundle.template.html"` to `EXPECTED_IN_WHEEL`.
+
+Add `"bundle.template.html"` to `THEMED_SCAFFOLDS` in `tests/test_theme.py`.
+
+- [ ] **Step 6: Run both suites**
+
+```bash
+uv run --group dev pytest -q
+```
+
+```bash
+npm test
+```
+
+Expected: green, with two more `tests/test_theme.py` cases (token present, token positioned) and one more shared file in every `EXPECTED_BY_TOOL` row.
+
+- [ ] **Step 7: Mutation proof, three ways**
+
+1. Change the bundle validator to accept the unreplaced token. Expected: `bundle validator rejects the unreplaced token` FAILS.
+2. Make the validator require `report`. Expected: `bundle validator accepts a report-less bundle` FAILS. This is the mutation guarding the case a user hits on day one, before they have ever run the quality command.
+3. Remove `__THEME_CSS__` from the bundle scaffold. Expected: `test_scaffold_carries_the_theme_token` FAILS for `bundle.template.html`.
+
+- [ ] **Step 8: Render it once, by hand**
+
+No test in this repository renders anything. Build a bundle from this repository's own `Code_Flows/` artifacts, open it in a browser, and confirm the landing view lists the flows, a flow opens its graph, and the report is reachable. Record what you saw in your report.
+
+If `Code_Flows/` here is empty or stale, say so and skip rather than fabricating data — but say so loudly, because it means the scaffold ships unrendered.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add templates/shared/bundle.template.html bin/install.js src/code_flow_skill/cli.py tests/ test/
+git commit -m "feat: add the bundled single-file viewer scaffold"
+```
+
+---
+
+### Task 4: `--output`, written into every host
+
+This is the parity-tax task. The same two rules — the `--output` flag and the theme inlining — must be stated in six hand-maintained templates and stay in agreement. `tests/test_host_parity.py` catches Claude/Gemini divergence; nothing compares Copilot's wording to either, so Copilot is where drift will hide.
+
+**Files:**
+- Modify: `templates/claude/code-flow.map.md`, `templates/claude/code-flow.quality.md`
+- Modify: `templates/gemini/code-flow.map.toml`, `templates/gemini/code-flow.quality.toml`
+- Modify: `templates/copilot/code-flow.map.prompt.md`, `templates/copilot/code-flow.quality.prompt.md`
+- Regenerate: `templates/shared/code-flow-map/SKILL.md`, `templates/shared/code-flow-quality/SKILL.md`
+- Modify: `tests/test_template_contracts.py`
+
+**Interfaces:**
+- Consumes: `__BUNDLE_DATA__` and `__THEME_CSS__` from Tasks 2 and 3.
+- Produces: nothing later tasks read.
+
+- [ ] **Step 1: Write the contract tests first**
+
+Append to `tests/test_template_contracts.py`:
+
+```python
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_the_output_flag(repo_root: Path, host: str, name: str) -> None:
+    """`--output` is parsed in step 1 with the other flags, so it must be stated
+    there — not only in whatever section describes the bundle.
+
+    Scoped to step 1's own region for the same reason
+    `test_map_template_documents_the_mode_flags` is: unscoped, the token would
+    be satisfied by the bundle section further down, and deleting the flag from
+    the place it is actually read would leave the assertion green.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _STEP1_START, _STEP1_END)
+    assert "files|bundle|both" in region, f"{host}/{name} step 1 never mentions --output"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES + QUALITY_TEMPLATES)
+def test_template_always_writes_the_json_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`--output bundle` suppresses pages, never data.
+
+    `/code-flow.quality` reads `index.json`, `inventory.json` and the per-flow
+    sidecars; a mode that skipped them would break it silently, and nothing else
+    in this repository couples the two commands tightly enough to notice.
+    Keyed on the literal clause every host must carry.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "never suppresses the JSON" in text, (
+        f"{host}/{name} does not state that --output never suppresses the JSON artifacts"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES + QUALITY_TEMPLATES)
+def test_template_inlines_the_theme(repo_root: Path, host: str, name: str) -> None:
+    """Every page-writing step must fill `__THEME_CSS__`, and must not fail when
+    `.code-flow/theme.css` is absent — an absent theme is the default state, not
+    an error."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "__THEME_CSS__" in text, f"{host}/{name} never fills the theme token"
+    assert re.search(r"theme\.css.{0,200}(does not exist|is absent|missing)", text, re.S), (
+        f"{host}/{name} does not say what to do when theme.css is absent"
+    )
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+Run: `uv run --group dev pytest tests/test_template_contracts.py -k "output_flag or json_artifacts or inlines_the_theme" -v`
+
+Expected: 14 failures — 3 hosts × 1 map-only test, plus 6 hosts-and-commands × 2.
+
+- [ ] **Step 3: Write the rules into Claude's map template**
+
+In `templates/claude/code-flow.map.md`, extend step 1's flag-parsing paragraph with:
+
+```
+`--output files|bundle|both` chooses which HTML gets written, default `files`. `files` writes `index.html`, one page per flow, and the quality report page, exactly as before. `both` adds `Code_Flows/code-flow.html`, a single self-contained page carrying every flow. `bundle` writes that page and no other HTML. If its value is not one of those three, say what you read, use `files`, and carry on. **`--output` never suppresses the JSON artifacts** — `index.json`, `<functionality_name>.json` and `inventory.json` are written in every mode, because `/code-flow.quality` reads them and a run that skipped them would break it silently.
+```
+
+Then add a new step after 6c:
+
+```
+**6d. The bundle.** If `--output` is `bundle` or `both`, read `.code-flow/bundle.template.html` and write `Code_Flows/code-flow.html` as an **exact copy** with two tokens replaced. `__BUNDLE_DATA__` becomes `{"index": <the object you just wrote to index.json>, "flows": [<the full JSON object for every flow in the registry, read back from its sidecar>], "report": <the object in Code_Flows/quality-report.json if that file exists and parses, otherwise null>}`. `__THEME_CSS__` becomes the contents of `.code-flow/theme.css`, or an empty string if that file does not exist or cannot be read — an absent theme is the normal case and is never an error. Inside every string value, replace each `</` with `<\/`, exactly as in step 5a.
+
+Rebuild it from the sidecars every time, never by editing an existing bundle: the JSON is the data and this page is one rendering of it, so a bundle is always current by construction. If a sidecar is missing or does not parse, leave that flow out, and say which and why in your step 7 report.
+
+If `.code-flow/bundle.template.html` does not exist, say so and skip the bundle. There is no fallback page here.
+```
+
+And in step 7, add `Code_Flows/code-flow.html` to the reported paths when it was written.
+
+The same theme rule must also reach 5b and 6c, which write the other pages. Add to each: `__THEME_CSS__` becomes the contents of `.code-flow/theme.css`, or an empty string if that file does not exist or cannot be read.
+
+- [ ] **Step 4: Mirror it into Gemini, then Copilot**
+
+Apply the identical text to `templates/gemini/code-flow.map.toml`, respecting the two documented divergences the parity baseline expects: no Claude-only tool names, and plain three-backtick fences inside the TOML `'''` string.
+
+Then write the Copilot equivalent in `templates/copilot/code-flow.map.prompt.md` in its own numbered-list register, and add the theme rule to all three quality templates — they write `quality-report.html` and must fill `__THEME_CSS__` too.
+
+- [ ] **Step 5: Check parity before regenerating**
+
+```bash
+uv run --group dev pytest tests/test_host_parity.py -v
+```
+
+Expected: `BASELINE_MAP` still 27 and `BASELINE_QUALITY` still 0. **If the map baseline moved, you introduced divergence** — fix the templates, never the constant. The constant is pinned by its own test for exactly this reason.
+
+- [ ] **Step 6: Regenerate both `SKILL.md` bodies**
+
+The skill bodies are derived from the Gemini templates, not hand-edited. Re-run the Step 4 generator from Phase 4's plan (`docs/superpowers/plans/2026-08-15-phase4-agent-skills.md`, Task 2 Step 4) so both `templates/shared/code-flow-*/SKILL.md` pick up the new prose, then confirm `tests/test_skill_templates.py::test_skill_body_is_derived_from_the_gemini_template` passes. Write bytes, not text — `Path.write_text()` translates `\n` to `\r\n` on Windows.
+
+- [ ] **Step 7: Run both suites**
+
+```bash
+uv run --group dev pytest -q
+```
+
+```bash
+npm test
+```
+
+Expected: green, including the 14 new contract assertions and the unchanged parity baselines.
+
+- [ ] **Step 8: Mutation proof, three ways**
+
+1. Delete the `--output` sentence from `templates/copilot/code-flow.map.prompt.md` step 1 only. Expected: `test_map_template_documents_the_output_flag` FAILS for copilot alone. This is the drift that has no other guard — Copilot's wording is compared to nothing.
+2. Delete the "never suppresses the JSON" clause from `templates/claude/code-flow.quality.md`. Expected: `test_template_always_writes_the_json_artifacts` FAILS for that host.
+3. Delete the theme fallback sentence from `templates/gemini/code-flow.map.toml`. Expected: `test_template_inlines_the_theme` FAILS for gemini, and `test_skill_body_is_derived_from_the_gemini_template` FAILS too, since the skill body no longer matches its source.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add templates/ tests/test_template_contracts.py
+git commit -m "feat: add --output files|bundle|both and theme inlining to every host"
+```
+
+---
+
+### Task 5: Docs, and the version
 
 The documentation change is the larger half of this task, and it is not the `--tool` values. It is that **Copilot is two surfaces reading two different files**, which this project did not know until 2026-08-17 and which explains the naming inconsistency the README has been apologising for since 1.0.
 
@@ -479,6 +942,65 @@ sidesteps the question entirely.
 
 The rest of that paragraph is unchanged and still correct: `--tool all` does put the skill in both directories Copilot scans, and Copilot's docs still say nothing about precedence.
 
+- [ ] **Step 5b: Document `--output` and theming in the README**
+
+The CHANGELOG records these in Step 6, but a user reads the README. Add a `## Output and appearance` section immediately after `## Interactive HTML view`:
+
+```markdown
+## Output and appearance
+
+### One file you can send someone
+
+By default `/code-flow.map` writes what it always has: `Code_Flows/index.html`, one page
+per flow, and `quality-report.html`. Add `--output both` and it also writes
+**`Code_Flows/code-flow.html`** — a single self-contained page carrying the index, every
+mapped flow and the quality report. One file, no server, opens from `file://`. Use
+`--output bundle` to write that page and no other HTML.
+
+```text
+/code-flow.map --output both
+```
+
+The bundle is rebuilt from `Code_Flows/`'s JSON artifacts every run, so it is never
+stale — and **no `--output` mode ever skips those artifacts**, because `/code-flow.quality`
+reads them.
+
+It carries every flow, so it grows with your map. On a large repository that is a large
+file, which is why `files` is still the default.
+
+### Your own colours
+
+The installer writes `.code-flow/theme.css` listing every colour the pages use as a CSS
+custom property, at its current default, commented out. Uncomment what you want to change:
+
+```css
+:root {
+  --accent: #7c5cff;
+}
+[data-theme="light"] {
+  --accent: #5b3fd6;
+}
+```
+
+Your declarations are inlined into every generated page after the built-in styles, so they
+win. Leave the file alone and nothing changes.
+
+**Keep both blocks.** `:root` is the dark palette and `[data-theme="light"]` is the light
+one, and they have equal CSS specificity — set only `:root` and your colours apply in both
+modes, making the theme toggle look broken.
+
+**Re-running the installer overwrites `.code-flow/theme.css`**, along with the other
+templates in that directory. Keep your edits in version control or a copy elsewhere.
+```
+
+Then, in the `## Files written` table, add the two new shared rows so
+`test_readme_files_written_table_lists_exactly_the_installed_set` passes:
+
+```markdown
+| _All tools_ | — | `.code-flow/bundle.template.html` (bundled viewer scaffold) |
+| _All tools_ | — | `.code-flow/theme.css` (your colours; edit to taste) |
+```
+
 - [ ] **Step 6: Write the CHANGELOG entry**
 
 At the top of `CHANGELOG.md`, immediately below the intro paragraph and above `## [1.0.0]`:
@@ -498,6 +1020,22 @@ At the top of `CHANGELOG.md`, immediately below the intro paragraph and above `#
   `.claude/skills/` and not `.agents/`, so those four files were never opened by anything
   in a Claude-only project. Re-running the installer does not remove an `.agents/skills/`
   directory an earlier version created.
+
+### Added — output and appearance
+
+- **`--output files|bundle|both` on `/code-flow.map`**, default `files`. `both` adds
+  `Code_Flows/code-flow.html`, one self-contained page carrying the index, every mapped
+  flow and the quality report — the file to send someone. `bundle` writes that page and
+  no other HTML. **No mode suppresses the JSON artifacts**, which `/code-flow.quality`
+  reads. The bundle is rebuilt from those artifacts on every run, so it is never stale.
+- **`.code-flow/theme.css`** — every colour the pages use, as CSS custom properties at
+  their current defaults, commented out. Uncomment and edit; your values are inlined into
+  every generated page after the built-in styles. Absent or untouched, nothing changes.
+  Keep both the `:root` and `[data-theme="light"]` blocks or the light/dark toggle will
+  appear broken, which is why the shipped file has both. **The installer overwrites this
+  file**, so version your edits or keep a copy.
+- A bundle carries every flow, so it grows with your map. On a large repository it is a
+  large file; the loose pages stay small, which is why `files` is still the default.
 
 ### Documentation — and one thing this project got wrong
 
@@ -544,7 +1082,20 @@ node scripts/prepublish-check.js
 
 Read checklist item 4. It tells the maintainer to pick a host and confirm the skill is listed, and names the per-host invocation forms. **It currently implies one Copilot.** Amend the Copilot clause so it names both surfaces and says which form to expect on each — a maintainer who checks VS Code Chat for `/code-flow-map` will find nothing and wrongly conclude the release is broken, which is precisely the confusion this phase exists to clear up.
 
-Then add `assert.match(r.stdout, /Copilot CLI/i, "checklist does not distinguish the two Copilot surfaces");` to the checklist test in `test/prepublish-check.test.js`, run `npm test`, and mutation-prove it by deleting the clause.
+**Then fix the count.** The checklist says "Do this for ALL THREE files" and `SCAFFOLDS` lists three. There are now four — `bundle.template.html` joins them, and it is the one that most needs opening, because it does what all three others do in a single document and nothing in either suite renders it. Add it to `SCAFFOLDS`, change the closing line to say four, and add a line to item 1 telling the maintainer to open a generated bundle and walk it: landing view lists the flows, a flow opens its graph, the report is reachable.
+
+**And add the theme to the same pass.** Uncomment one property in `.code-flow/theme.css`, regenerate any page, and confirm the colour changed in both light and dark. That is the only check that will ever exist for theming — a user's CSS is inlined verbatim and nothing validates it.
+
+Then add these to the checklist test in `test/prepublish-check.test.js`:
+
+```js
+  assert.match(r.stdout, /Copilot CLI/i, "checklist does not distinguish the two Copilot surfaces");
+  assert.match(r.stdout, /bundle\.template\.html/, "checklist does not name the bundle scaffold");
+  assert.match(r.stdout, /theme\.css/, "checklist does not cover a themed render");
+  assert.match(r.stdout, /ALL FOUR/i, "checklist still says three scaffolds");
+```
+
+Run `npm test`, then mutation-prove each by deleting the clause it names and confirming the matching assertion fails.
 
 - [ ] **Step 10: Commit**
 
@@ -559,7 +1110,8 @@ git commit -m "docs: document the two Copilot surfaces and the per-host --tool, 
 
 **Nothing here is release-blocked.** The gate that governed the previous revision of this plan — confirming the skill works on Copilot before deleting the prompt files — was run, and it is what overturned that plan. Nothing is being removed now, so no host can end up with less than it has today.
 
-Two things are worth doing anyway before publishing `1.1.0`:
+Three things must happen before publishing `1.1.0`, and two of them are new:
 
-- **Re-run the manual browser pass.** `scripts/prepublish-check.js` items 1–3 cover the three HTML scaffolds, which no test in this repository renders. They are unchanged by this phase, but the gate does not track that and the checklist is cheap.
+- **The manual browser pass now covers four scaffolds, not three.** `bundle.template.html` is the one to spend time on: it does what all three others do in a single document, and nothing in either suite renders it. Walk a real generated bundle — landing view lists the flows, a flow opens its graph, the report is reachable, the switcher works.
+- **Render one themed page.** Uncomment a property in `.code-flow/theme.css`, regenerate, and confirm the colour changed in **both** light and dark. A user's CSS is inlined verbatim and nothing validates it, so this is the only check theming will ever get. Getting this wrong looks like a broken toggle, not like an error.
 - **Install into a real project with `--tool claude` and confirm no `.agents/` appears.** It is the one behaviour this phase takes away, and the tests assert it in a temp directory rather than in a project that already has one.

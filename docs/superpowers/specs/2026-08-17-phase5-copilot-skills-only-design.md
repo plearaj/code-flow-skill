@@ -1,4 +1,4 @@
-# Design: Phase 5 — `--tool` learns every host (and Copilot keeps both forms)
+# Design: Phase 5 — per-host `--tool`, a bundled page, and user themes
 
 **Date:** 2026-08-17
 **Status:** Amended 2026-08-17. **Decision 1 was overturned by direct observation before implementation — see below.**
@@ -229,6 +229,75 @@ The removal it governs is now deferred with an observable trigger: when Agent Sk
 experimental status in VS Code and a default Copilot Chat install reads `.agents/skills/`,
 re-run the same test and the prompt files become redundant for real.
 
+## Decision 4: one bundled page, and the user picks whether to keep the loose ones
+
+**Decision: a new `--output files|bundle|both` flag on `/code-flow.map`, default `files`.**
+
+| `--output` | `Code_Flows/` gets |
+|---|---|
+| `files` (default) | exactly what it gets today: `index.html`, one `<slug>.html` per flow, `quality-report.html` |
+| `both` | the above **plus** `Code_Flows/code-flow.html` |
+| `bundle` | `Code_Flows/code-flow.html` **only** — no `index.html`, no per-flow pages |
+
+**The JSON artifacts are written in every mode, without exception.** `index.json`,
+`<slug>.json`, `inventory.json` and `quality-report.json` are the contract
+`/code-flow.quality` consumes and the data every rendering is built from. `--output
+bundle` suppresses *pages*, never data. A mode that skipped the JSON would silently
+break the quality command, which is the one coupling in this project that nothing else
+guards.
+
+**The bundle is rebuilt from the JSON artifacts on every run**, exactly as `index.html`
+already is. It is never incrementally patched. That is what makes it safe for an
+assistant to write: the operation is "read every `<slug>.json`, read `index.json`, read
+`quality-report.json` if it exists, render one page", not "open the existing bundle and
+splice a flow into it". It also retires the switcher-staleness limitation the flow pages
+carry today, where a page written earlier does not know about flows mapped later — a
+bundle has every flow by construction.
+
+**Default stays `files`** so no existing user's output changes shape without asking.
+
+**Rejected: bundle-only as the default.** It is the better artifact for showing someone,
+which is the reason this exists, but it is a breaking change to documented output and the
+loose pages are better for everything else — you cannot send someone a single flow out of
+a bundle.
+
+**Consequence to disclose:** the bundle carries every flow, so a repository with many
+mapped flows produces a large file. The three scaffolds are already 107 KB of chrome
+before any data. The README must say this rather than letting someone discover it at
+50 flows.
+
+## Decision 5: `.code-flow/theme.css`, inlined through a token
+
+**Decision: the installer ships `.code-flow/theme.css`, and every scaffold gains a
+`__THEME_CSS__` token that the generator replaces with that file's contents.**
+
+This costs less than it looks like it should, because the scaffolds were already built
+for it. All three drive every colour through CSS custom properties — around 25 of them,
+`--bg`, `--accent`, `--edge`, `--node-entry` and the rest — declared in a `:root{}` block
+and overridden in a `[data-theme="light"]{}` block. A custom theme is those same
+properties with different values. Nothing needs restructuring.
+
+The token sits immediately after the `[data-theme="light"]` block in each scaffold, so
+user declarations come last and win.
+
+**The shipped `theme.css` must contain both blocks, not just `:root`.** `:root` and
+`[data-theme="light"]` have equal CSS specificity, so a user file that sets only `:root`
+would override the light palette too and break the light/dark toggle — the page would
+render their colours in both modes and the button would appear dead. Shipping a file with
+both blocks pre-filled at their current defaults makes the right thing the obvious thing,
+and makes the failure hard to reach by accident.
+
+**Absent, empty, or unreadable `theme.css` renders exactly what is rendered today.** The
+token becomes an empty string and no error is reported. A theming feature that can break
+a page it was not asked to change is worse than no theming feature.
+
+**Rejected: colours in `index.json`.** It limits the user to keys we chose, and puts
+presentation into a data file `/code-flow.quality` also reads.
+
+**Not tested, and worth stating plainly:** that any of this *looks* right. No test here
+renders a page. A user theme is arbitrary CSS inlined into a document, and the manual
+browser pass is the only thing that will ever see the result.
+
 ## What Phase 5 ships
 
 Nothing is deleted. `templates/copilot/` stays, both files, and every test parametrized
@@ -238,6 +307,16 @@ over it stays with it.
   values, and `.agents/skills/` conditional on the selection containing a host that
   reads it
 - `EXPECTED_BY_TOOL` in both test suites — one row per `--tool` value, the new contract
+- `templates/shared/bundle.template.html`, a fourth scaffold, installed to
+  `.code-flow/bundle.template.html`, carrying `__BUNDLE_DATA__` and `__THEME_CSS__`
+- `templates/shared/theme.css`, installed to `.code-flow/theme.css`, holding every custom
+  property at its current default in both a `:root` and a `[data-theme="light"]` block
+- `__THEME_CSS__` added to `viewer.template.html`, `report.template.html` and
+  `index.template.html`, immediately after their `[data-theme="light"]` block
+- The `--output files|bundle|both` flag, and the theme-inlining rule, written into the
+  map and quality instructions for **every host**: `templates/claude/` ×2,
+  `templates/gemini/` ×2, `templates/copilot/` ×2, and the two `SKILL.md` bodies derived
+  from Gemini
 - README: the per-host table gains the **two Copilot surfaces** as separate rows, the
   Usage section explains which surface reads which file, `## CLI options` documents the
   new tool values, and the "not verified" caveat about the dotted prompt file becomes a
@@ -252,6 +331,15 @@ over it stays with it.
 both languages, against the same expected-path lists that already hold the two installers
 in lockstep. A row that installs the wrong set is the defect this phase can most easily
 introduce.
+
+**The bundle's data contract.** `__BUNDLE_DATA__` must carry the registry, every flow,
+and the quality report when one exists — asserted against the scaffold the same way the
+existing tokens are, and the bundle scaffold gets a `validate()` behind sentinel comments
+like its three siblings, lifted and driven with no DOM by `test/viewer-validation.test.js`.
+
+**`--output` and the theme rule in every host.** Contract tests over the existing
+`MAP_TEMPLATES` and `QUALITY_TEMPLATES` parametrizations, scoped to the region that states
+the rule, so a host that drops one fails rather than drifting.
 
 **Now observed rather than disclosed:** that `/code-flow.map` works in VS Code Copilot
 Chat, that `/code-flow-map` works in the Copilot CLI, and that
@@ -275,3 +363,16 @@ of it.
 - **The deferred removal has no scheduled re-check.** Decision 1 names an observable
   trigger but nothing prompts anyone to look for it. It will be noticed when someone next
   installs into a Copilot project, or not at all.
+- **This phase pays the parity tax six times over.** `--output` and the theme rule are
+  prose, and prose must be written into six hand-maintained host templates and stay in
+  agreement. `tests/test_host_parity.py` catches Claude/Gemini divergence and the derived
+  `SKILL.md` bodies inherit Gemini's, but nothing compares Copilot's wording to either.
+  This is the largest single prose change since Phase 3a and the most likely place for a
+  host to quietly say something different.
+- **A fourth scaffold is a fourth thing no test renders.** The bundle does what all three
+  existing pages do, in one document, and the manual browser pass is the only check that
+  it works. `scripts/prepublish-check.js` must grow to cover it, and the checklist's
+  "ALL THREE files" wording becomes wrong the moment this lands.
+- **A user theme is arbitrary CSS inlined into a generated page.** Nothing validates it.
+  A malformed `theme.css` produces a broken-looking page with no error, and the failure
+  surfaces only to whoever opens it.
