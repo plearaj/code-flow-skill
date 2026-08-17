@@ -1866,3 +1866,45 @@ def test_template_inlines_the_theme(repo_root: Path, host: str, name: str) -> No
     assert re.search(r"theme\.css.{0,200}(does not exist|is absent|missing)", text, re.S), (
         f"{host}/{name} does not say what to do when theme.css is absent"
     )
+
+
+# Marks the start of step 6d, "The bundle" — the step that writes
+# `Code_Flows/code-flow.html` — in every host (Claude/Gemini:
+# "**6d. The bundle.**"; Copilot: the "### The bundle" heading).
+_BUNDLE_START = re.compile(r"\*\*6d\. The bundle\.\*\*|^### The bundle\s*$", re.MULTILINE)
+
+# Marks the start of the *next* section after step 6d, in every host
+# (Claude/Gemini: "#### 7. Finalize"; Copilot: "### Output Location"). Used as
+# the end boundary so the region cannot run past 6d into unrelated text.
+_BUNDLE_END = re.compile(r"\n(?:#### 7\.|### Output Location)")
+
+
+def _bundle_region(text: str) -> str:
+    return _section_region(text, _BUNDLE_START, _BUNDLE_END)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_inlines_the_theme_in_the_bundle_step(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`test_template_inlines_the_theme` above is a whole-file check, and the
+    theme-fallback sentence is independently restated three times in every map
+    template — 5b, 6c, and 6d. That makes the whole-file check satisfiable by
+    5b's or 6c's copy alone: deleting the sentence from 6d specifically — the
+    bundle step, this task's own newest and least-reviewed addition — leaves
+    the whole-file assertion green, so an unthemed bundle page could ship with
+    no test failure to flag it.
+
+    This companion assertion scopes to the 6d/bundle region specifically, the
+    same way `test_map_template_documents_the_output_flag` scopes to step 1,
+    so the bundle step's own copy of the rule has its own guard.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _bundle_region(text)
+    assert "__THEME_CSS__" in region, (
+        f"{host}/{name} step 6d (the bundle) never fills the theme token"
+    )
+    assert re.search(r"theme\.css.{0,200}(does not exist|is absent|missing)", region, re.S), (
+        f"{host}/{name} step 6d (the bundle) does not say what to do when "
+        f"theme.css is absent"
+    )
