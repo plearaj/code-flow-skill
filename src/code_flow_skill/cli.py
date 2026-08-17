@@ -91,6 +91,36 @@ def _install_tool(target: Path, name: str) -> None:
         print(f"Installed {_TOOL_LABELS[name]} template: {out}")
 
 
+def _gemini_is_in_use(target: Path) -> bool:
+    """Whether this project shows a sign of Gemini CLI.
+
+    Gemini CLI stopped serving free, Pro, Ultra and individual Code Assist users
+    on 2026-06-18. Its successor, Antigravity, does not read ``.gemini/commands/``
+    at all — it reads the same skill paths the other hosts do. The TOML commands
+    still matter to Gemini Code Assist Standard/Enterprise licence holders and to
+    paid API-key users, so they still ship; installing them into every project
+    would just leave a dead directory in the overwhelming majority of them.
+
+    The signal is the *target's own* ``.gemini/`` directory. Both Antigravity
+    surfaces keep their workspace files under ``.agents/``, and their globals
+    under ``~/.gemini/antigravity/`` and ``~/.gemini/antigravity-cli/`` — so a
+    project-level ``.gemini/`` is specific to Gemini CLI in a way that
+    ``~/.gemini/`` is emphatically not. Checking the home directory would
+    misfire on every Antigravity user.
+    """
+    return (target / ".gemini").exists()
+
+
+_SKIPPED_GEMINI_NOTICE = """
+Skipped the Gemini CLI templates: no .gemini/ directory in {target}.
+Gemini CLI was retired for individual users on 2026-06-18, and Antigravity
+reads the same skill paths as the other hosts. If you use Gemini CLI on a
+Code Assist Standard or Enterprise licence, install them with:
+
+  code-flow-skill --tool gemini
+"""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Install Code Flow skill templates")
     parser.add_argument("--target", default=".", help="Project directory to update")
@@ -103,10 +133,25 @@ def main() -> None:
     args = parser.parse_args()
 
     target = Path(args.target).resolve()
-    selected = ["claude", "gemini", "copilot"] if args.tool == "all" else [args.tool]
+
+    # `--tool gemini` is an explicit request and always installs. A heuristic
+    # must never overrule someone who said exactly what they wanted.
+    skipped_gemini = False
+    if args.tool != "all":
+        selected = [args.tool]
+    elif _gemini_is_in_use(target):
+        selected = ["claude", "gemini", "copilot"]
+    else:
+        selected = ["claude", "copilot"]
+        skipped_gemini = True
 
     for name in selected:
         _install_tool(target, name)
+
+    if skipped_gemini:
+        # Say what was skipped and how to get it. A silent omission would look
+        # identical to a broken install to anyone who does use Gemini CLI.
+        print(_SKIPPED_GEMINI_NOTICE.format(target=target))
 
     _install_shared(target)
 

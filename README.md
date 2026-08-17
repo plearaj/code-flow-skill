@@ -24,7 +24,7 @@ The command was renamed and the Copilot integration changed. After upgrading:
 
 Everything 1.0 adds is listed in [CHANGELOG.md](CHANGELOG.md).
 
-A portable **Code Flow** skill for AI coding assistants — Claude Code, Gemini CLI, and GitHub Copilot. Installs a `/code-flow.map` command that asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
+A portable **Code Flow** skill for AI coding assistants — Claude Code, GitHub Copilot, and Gemini CLI ([which Google retired for individual users on 2026-06-18](#--tool-all-and-gemini-cli) — its templates now install only where Gemini CLI is actually in use). Installs a `/code-flow.map` command that asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
 
 ## What the skill does
 
@@ -68,7 +68,9 @@ After installing (see below), invoke from inside your project:
 /code-flow.map user login
 ```
 
-**Gemini CLI**
+**Gemini CLI** — retired for individual users on 2026-06-18, still supported on Gemini
+Code Assist Standard/Enterprise licences and paid API keys. See [`--tool all` and Gemini
+CLI](#--tool-all-and-gemini-cli) for when its templates install.
 
 ```text
 /code-flow.map password reset
@@ -278,7 +280,7 @@ mkdir -p .claude/commands
 cp /path/to/code-flow-skill/templates/claude/code-flow.map.md .claude/commands/code-flow.map.md
 cp /path/to/code-flow-skill/templates/claude/code-flow.quality.md .claude/commands/code-flow.quality.md
 
-# Gemini CLI
+# Gemini CLI — only if you actually use it; see the note on --tool all above
 mkdir -p .gemini/commands
 cp /path/to/code-flow-skill/templates/gemini/code-flow.map.toml .gemini/commands/code-flow.map.toml
 cp /path/to/code-flow-skill/templates/gemini/code-flow.quality.toml .gemini/commands/code-flow.quality.toml
@@ -311,6 +313,30 @@ code-flow-skill [--target PATH] [--tool claude|gemini|copilot|all]
 
 Defaults: `--tool all`, `--target .`.
 
+### `--tool all` and Gemini CLI
+
+`--tool all` installs the Claude and Copilot templates unconditionally, and the Gemini
+CLI templates **only if your project already has a `.gemini/` directory.**
+
+Gemini CLI stopped serving free, Google AI Pro and Ultra, and individual Gemini Code
+Assist users on **2026-06-18**; its successor, Antigravity, does not read
+`.gemini/commands/` at all. The TOML commands still ship, because Gemini Code Assist
+**Standard and Enterprise** licences and paid API keys keep Gemini CLI — but writing
+them into every project would leave a dead directory in most of them.
+
+The check looks at your project, not your home directory. Both Antigravity surfaces
+keep workspace files under `.agents/` and their global files under
+`~/.gemini/antigravity/` and `~/.gemini/antigravity-cli/`, so a *project-level*
+`.gemini/` is a Gemini CLI signal in a way that `~/.gemini/` is not.
+
+When the templates are skipped the installer says so and prints the flag that installs
+them anyway. `--tool gemini` is an explicit request and always installs, regardless of
+what is or is not in your project:
+
+```bash
+code-flow-skill --tool gemini
+```
+
 ## Files written
 
 | Tool | Command | Path |
@@ -324,6 +350,10 @@ Defaults: `--tool all`, `--target .`.
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
+
+Every path this installer can write is listed above. The two `.gemini/` rows are the
+exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
+CLI](#--tool-all-and-gemini-cli).
 
 The `.code-flow/viewer.template.html`, `.code-flow/report.template.html` and `.code-flow/index.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
 

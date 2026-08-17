@@ -45,6 +45,12 @@ reach a registry together.
 - **Three-host support** — every command ships for Claude (`.claude/commands/*.md`),
   Gemini (`.gemini/commands/*.toml`) and Copilot (`.github/prompts/*.prompt.md`), saying
   the same things in each host's own register.
+- **`--tool all` installs the Gemini CLI templates only where Gemini CLI is in use** —
+  detected from a project-level `.gemini/` directory. Google retired Gemini CLI for free,
+  Pro, Ultra and individual Code Assist users on 2026-06-18, and its successor does not
+  read `.gemini/commands/`; the templates still ship for Code Assist Standard/Enterprise
+  licences and paid API keys. When they are skipped the installer says so and prints the
+  flag that installs them anyway, and `--tool gemini` always installs regardless.
 - **A pre-publish release gate** (`npm run release-check`) covering the one thing no test
   in this repository can: that the HTML scaffolds actually render in a browser, and that
   the links between them go where they claim.
