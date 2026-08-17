@@ -1,0 +1,84 @@
+/* Code Flow — your theme.
+ *
+ * Uncomment a line and change its value. Everything here is inlined into every
+ * generated page after the built-in styles, so your declarations win.
+ *
+ * Keep both blocks. `:root` is the dark palette and `[data-theme="light"]` is the
+ * light one; they have equal CSS specificity, so setting only `:root` would apply
+ * your colours in light mode too and make the theme toggle look broken.
+ *
+ * This file is overwritten when you re-run the installer. Keep a copy of your
+ * edits somewhere else, or version it.
+ */
+:root{
+  /* --bg:#161826; */
+  /* --bg-2:#1b1d2c; */
+  /* --panel:#232532; */
+  /* --raise:#2b2d3b; */
+  /* --code:#14161f; */
+  /* --border:#3f424d; */
+  /* --border-strong:#595d6c; */
+  /* --text:#e9e9ed; */
+  /* --dim:#9397ab; */
+  /* --faint:#75798c; */
+  /* --accent:#9184d9; */
+  /* --accent-soft:#b5abfc; */
+  /* --accent-dim:#5d5294; */
+  /* --err:#d98a95; */
+  /* --ok:#b5abfc; */
+  /* --grid:#1e2130; */
+  /* --edge:#75798c; */
+  /* --edge-soft:#454956; */
+  /* --node-entry:#2b2741; */
+  /* --node-entry-s:#5d5294; */
+  /* --node-entry-a:#b5abfc; */
+  /* --node-step:#232532; */
+  /* --node-step-s:#3f424d; */
+  /* --node-step-a:#9397ab; */
+  /* --node-ext:#262a60; */
+  /* --node-ext-s:#4c5397; */
+  /* --node-ext-a:#a7a1db; */
+  /* --node-io:#292b31; */
+  /* --node-io-s:#595d6c; */
+  /* --node-io-a:#cfd3e5; */
+  /* --lane:rgba(233,233,237,.02); */
+  /* --lane-line:rgba(233,233,237,.06); */
+  /* --shadow:0 0 0 1px #3f424d, 0 6px 18px rgba(0,0,0,.55); */
+  /* --glow:0 0 0 1px rgba(145,132,217,.4), 0 6px 24px rgba(145,132,217,.14); */
+}
+[data-theme="light"]{
+  /* --bg:#f3f5fe; */
+  /* --bg-2:#e4e7f5; */
+  /* --panel:#fbfbff; */
+  /* --raise:#eceffb; */
+  /* --code:#eef0fa; */
+  /* --border:#cfd3e5; */
+  /* --border-strong:#b2b6ca; */
+  /* --text:#292b31; */
+  /* --dim:#595d6c; */
+  /* --faint:#75798c; */
+  /* --accent:#5d5294; */
+  /* --accent-soft:#796cbf; */
+  /* --accent-dim:#b5abfc; */
+  /* --err:#8d3f4a; */
+  /* --ok:#5d5294; */
+  /* --grid:#e4e7f5; */
+  /* --edge:#75798c; */
+  /* --edge-soft:#b2b6ca; */
+  /* --node-entry:#e7e5fe; */
+  /* --node-entry-s:#b5abfc; */
+  /* --node-entry-a:#5d5294; */
+  /* --node-step:#eceffb; */
+  /* --node-step-s:#cfd3e5; */
+  /* --node-step-a:#75798c; */
+  /* --node-ext:#e3e5f6; */
+  /* --node-ext-s:#9690c9; */
+  /* --node-ext-a:#423a6a; */
+  /* --node-io:#e9ebf6; */
+  /* --node-io-s:#b2b6ca; */
+  /* --node-io-a:#3f424d; */
+  /* --lane:rgba(41,43,49,.025); */
+  /* --lane-line:rgba(41,43,49,.07); */
+  /* --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08); */
+  /* --glow:0 0 0 1px rgba(93,82,148,.35), 0 6px 20px rgba(93,82,148,.12); */
+}

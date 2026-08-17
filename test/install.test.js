@@ -27,6 +27,7 @@ export function tempTarget() {
 const SHARED = [
   ".code-flow/index.template.html",
   ".code-flow/report.template.html",
+  ".code-flow/theme.css",
   ".code-flow/viewer.template.html",
 ];
 const CLAUDE = [

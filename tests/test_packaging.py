@@ -17,6 +17,7 @@ EXPECTED_IN_WHEEL = (
     "code_flow_skill/templates/shared/viewer.template.html",
     "code_flow_skill/templates/shared/report.template.html",
     "code_flow_skill/templates/shared/index.template.html",
+    "code_flow_skill/templates/shared/theme.css",
     "code_flow_skill/templates/shared/code-flow-map/SKILL.md",
     "code_flow_skill/templates/shared/code-flow-map/agents/openai.yaml",
     "code_flow_skill/templates/shared/code-flow-quality/SKILL.md",

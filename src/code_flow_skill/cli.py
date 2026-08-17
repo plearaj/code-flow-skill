@@ -33,6 +33,7 @@ _SHARED_FILES = (
     ("viewer.template.html", "interactive viewer"),
     ("report.template.html", "quality report viewer"),
     ("index.template.html", "flow index"),
+    ("theme.css", "your theme"),
 )
 
 

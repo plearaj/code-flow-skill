@@ -13,6 +13,7 @@ import pytest
 _SHARED = [
     ".code-flow/index.template.html",
     ".code-flow/report.template.html",
+    ".code-flow/theme.css",
     ".code-flow/viewer.template.html",
 ]
 _CLAUDE = [
