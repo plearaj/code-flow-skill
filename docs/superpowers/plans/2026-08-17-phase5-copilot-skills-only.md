@@ -17,7 +17,7 @@
 ## Global Constraints
 
 - **Zero dependencies, including dev.** No `devDependencies` key in `package.json`; the Python dev group stays exactly `pytest>=8.0`.
-- **The version becomes `1.1.0`** in `package.json` and `pyproject.toml`, in Task 2 and nowhere else. `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` currently pins `1.0.0` and is re-pointed in the same task — until then, leave both manifests alone.
+- **The version becomes `1.1.0`** in `package.json` and `pyproject.toml`, in Task 5 and nowhere else. `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` currently pins `1.0.0` and is re-pointed in the same task — until then, leave both manifests alone.
 - **Every file under `templates/` must use bare LF line endings, never CRLF.** Windows text-mode round-trips have corrupted this repo's templates twice. `tests/test_template_contracts.py::test_shipped_templates_have_no_crlf` checks at the byte level.
 - **The two installers must stay in lockstep.** Anything added to `bin/install.js` gets its equivalent in `src/code_flow_skill/cli.py`, including the explanatory comment. The installed-file-set tests in both languages are what holds them there.
 - **The installer must be a plain byte copy** — `fs.copyFileSync` / `shutil.copyfile`, never a text-mode read/write round-trip.
@@ -27,7 +27,7 @@
 
 ## The tool matrix
 
-This table is Task 1's contract, and Task 2 documents it.
+This table is Task 1's contract, and Task 5 documents it.
 
 | `--tool` | `.claude/commands/` | `.claude/skills/` | `.agents/skills/` | `.gemini/commands/` | `.github/prompts/` | `.code-flow/` |
 |---|---|---|---|---|---|---|
@@ -87,7 +87,7 @@ Copilot keeps its prompt files. `--tool copilot` writes them *and* `.agents/skil
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `VALID_TOOLS` / `_VALID_TOOLS` and `AGENTS_HOSTS` / `_AGENTS_HOSTS` in the two installers, and `EXPECTED_BY_TOOL` in both test suites. Task 2 documents the matrix they encode but does not edit them.
+- Produces: `VALID_TOOLS` / `_VALID_TOOLS` and `AGENTS_HOSTS` / `_AGENTS_HOSTS` in the two installers, and `EXPECTED_BY_TOOL` in both test suites. Task 5 documents the matrix they encode but does not edit them.
 
 - [ ] **Step 1: Write the failing per-tool expectations**
 
