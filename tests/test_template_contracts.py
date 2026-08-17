@@ -1819,3 +1819,50 @@ def test_map_template_fills_the_flow_switcher_token(
         f"{host}/{name} never mentions __FLOW_INDEX__, so the flow switcher would "
         "be dead markup on every generated page"
     )
+
+
+# --- Phase 5: --output and theme inlining -----------------------------------
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_the_output_flag(repo_root: Path, host: str, name: str) -> None:
+    """`--output` is parsed in step 1 with the other flags, so it must be stated
+    there — not only in whatever section describes the bundle.
+
+    Scoped to step 1's own region for the same reason
+    `test_map_template_documents_the_mode_flags` is: unscoped, the token would
+    be satisfied by the bundle section further down, and deleting the flag from
+    the place it is actually read would leave the assertion green.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _STEP1_START, _STEP1_END)
+    assert "files|bundle|both" in region, f"{host}/{name} step 1 never mentions --output"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES + QUALITY_TEMPLATES)
+def test_template_always_writes_the_json_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`--output bundle` suppresses pages, never data.
+
+    `/code-flow.quality` reads `index.json`, `inventory.json` and the per-flow
+    sidecars; a mode that skipped them would break it silently, and nothing else
+    in this repository couples the two commands tightly enough to notice.
+    Keyed on the literal clause every host must carry.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "never suppresses the JSON" in text, (
+        f"{host}/{name} does not state that --output never suppresses the JSON artifacts"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES + QUALITY_TEMPLATES)
+def test_template_inlines_the_theme(repo_root: Path, host: str, name: str) -> None:
+    """Every page-writing step must fill `__THEME_CSS__`, and must not fail when
+    `.code-flow/theme.css` is absent — an absent theme is the default state, not
+    an error."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "__THEME_CSS__" in text, f"{host}/{name} never fills the theme token"
+    assert re.search(r"theme\.css.{0,200}(does not exist|is absent|missing)", text, re.S), (
+        f"{host}/{name} does not say what to do when theme.css is absent"
+    )
