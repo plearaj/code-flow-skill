@@ -25,8 +25,14 @@ export function tempTarget() {
 // installers (this one and src/code_flow_skill/cli.py) are asserted against the
 // same literal list, which is what keeps them in lockstep.
 const EXPECTED_ALL = [
+  ".agents/skills/code-flow-map/SKILL.md",
+  ".agents/skills/code-flow-map/agents/openai.yaml",
+  ".agents/skills/code-flow-quality/SKILL.md",
+  ".agents/skills/code-flow-quality/agents/openai.yaml",
   ".claude/commands/code-flow.map.md",
   ".claude/commands/code-flow.quality.md",
+  ".claude/skills/code-flow-map/SKILL.md",
+  ".claude/skills/code-flow-quality/SKILL.md",
   ".code-flow/index.template.html",
   ".code-flow/report.template.html",
   ".code-flow/viewer.template.html",
@@ -171,4 +177,69 @@ test("selecting one tool installs both of its commands and neither of another's"
   assert.ok(fs.existsSync(path.join(prompts, "code-flow.quality.prompt.md")));
   assert.ok(!fs.existsSync(path.join(target, ".claude")));
   assert.ok(!fs.existsSync(path.join(target, ".gemini")));
+});
+
+test("agent skills install regardless of tool", () => {
+  const target = tempTarget();
+  runInstaller(target, "copilot");
+  for (const name of ["code-flow-map", "code-flow-quality"]) {
+    assert.ok(
+      fs.existsSync(path.join(target, ".agents", "skills", name, "SKILL.md")),
+      `.agents/skills/${name}/SKILL.md was not installed`,
+    );
+  }
+});
+
+test("claude skills ride on the claude selection", () => {
+  const target = tempTarget();
+  runInstaller(target, "gemini");
+  assert.ok(fs.existsSync(path.join(target, ".agents", "skills", "code-flow-map", "SKILL.md")));
+  assert.ok(!fs.existsSync(path.join(target, ".claude")));
+});
+
+test("the claude selection installs both skill roots", () => {
+  const target = tempTarget();
+  runInstaller(target, "claude");
+  for (const root of [".claude", ".agents"]) {
+    for (const name of ["code-flow-map", "code-flow-quality"]) {
+      assert.ok(
+        fs.existsSync(path.join(target, root, "skills", name, "SKILL.md")),
+        `${root}/skills/${name}/SKILL.md was not installed`,
+      );
+    }
+  }
+});
+
+test("installed skills are byte-identical to their template", () => {
+  const target = tempTarget();
+  // .gemini/ makes `--tool all` take the Gemini branch, so the install under
+  // test is the full one rather than the reduced set.
+  fs.mkdirSync(path.join(target, ".gemini"), { recursive: true });
+  runInstaller(target, "all");
+
+  for (const name of ["code-flow-map", "code-flow-quality"]) {
+    const source = fs.readFileSync(
+      path.join(repoRoot, "templates", "shared", name, "SKILL.md"),
+    );
+    for (const root of [".claude", ".agents"]) {
+      const installed = fs.readFileSync(path.join(target, root, "skills", name, "SKILL.md"));
+      assert.deepEqual(
+        installed,
+        source,
+        `${root}/skills/${name}/SKILL.md is not byte-identical to its template`,
+      );
+    }
+
+    // Codex's policy file, which exists under .agents/ only.
+    assert.deepEqual(
+      fs.readFileSync(path.join(target, ".agents", "skills", name, "agents", "openai.yaml")),
+      fs.readFileSync(path.join(repoRoot, "templates", "shared", name, "agents", "openai.yaml")),
+      `.agents/skills/${name}/agents/openai.yaml is not byte-identical to its template`,
+    );
+    assert.ok(
+      !fs.existsSync(path.join(target, ".claude", "skills", name, "agents")),
+      `${name}'s Codex policy file must not be installed under .claude/skills/, ` +
+        `which Codex never reads`,
+    );
+  }
 });

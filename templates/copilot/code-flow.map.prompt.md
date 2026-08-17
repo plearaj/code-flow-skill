@@ -1,5 +1,5 @@
 ---
-mode: agent
+agent: agent
 description: Analyze and document the flow of a code feature, generating a markdown file and an interactive HTML page with flow diagrams and function reference tables.
 ---
 

@@ -76,6 +76,45 @@ _TOOL_FILES = {
 
 _TOOL_LABELS = {"claude": "Claude", "gemini": "Gemini", "copilot": "Copilot"}
 
+# One canonical SKILL.md per command, copied unchanged to every directory a host
+# discovers skills from.
+#
+# `.agents/skills/` is the open standard's shared location — Copilot, both
+# Antigravity surfaces, OpenAI Codex and the legacy Gemini CLI all read it — so
+# it installs regardless of --tool, the way the .code-flow/ scaffolds do. It is
+# also the entirety of Codex support: Codex discovers repository skills from
+# $CWD/.agents/skills and $REPO_ROOT/.agents/skills and has no --tool value of
+# its own. `.claude/skills/` has exactly one consumer no other path serves,
+# Claude Code, so it rides on that selection instead; a `--tool gemini` install
+# must still leave no `.claude/` behind. This table and the one in
+# bin/install.js must stay in step; the installed-file-set tests in both
+# languages hold them there.
+_SKILL_NAMES = ("code-flow-map", "code-flow-quality")
+
+# What one installed skill is made of, per destination. SKILL.md goes to every
+# discovery root. `agents/openai.yaml` carries the implicit-invocation policy for
+# Codex alone, and Codex reads only `.agents/skills/`, so shipping it under
+# `.claude/skills/` would be a file no host there reads — Claude Code and Copilot
+# both take that policy from SKILL.md's frontmatter instead.
+_SKILL_FILES = ("SKILL.md",)
+_AGENTS_SKILL_FILES = ("SKILL.md", "agents/openai.yaml")
+
+
+def _install_skills(target: Path, root: str, files: tuple[str, ...]) -> None:
+    """Copy both skills into one discovery root.
+
+    A plain copy, deliberately: ``shutil.copyfile`` preserves bytes, where a
+    text-mode read/write round-trip would translate "\\n" to "\\r\\n" on Windows
+    and silently corrupt every shipped template.
+    """
+    for name in _SKILL_NAMES:
+        for rel in files:
+            parts = rel.split("/")
+            out = target.joinpath(root, "skills", name, *parts)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(_template_path("shared", name, *parts), out)
+            print(f"Installed skill file: {out}")
+
 
 def _install_tool(target: Path, name: str) -> None:
     """Copy every template belonging to one host into ``target``.
@@ -147,6 +186,10 @@ def main() -> None:
 
     for name in selected:
         _install_tool(target, name)
+
+    if "claude" in selected:
+        _install_skills(target, ".claude", _SKILL_FILES)
+    _install_skills(target, ".agents", _AGENTS_SKILL_FILES)
 
     if skipped_gemini:
         # Say what was skipped and how to get it. A silent omission would look

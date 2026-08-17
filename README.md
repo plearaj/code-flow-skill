@@ -22,9 +22,18 @@ The command was renamed and the Copilot integration changed. After upgrading:
 - `/code-flow.map` now also writes `Code_Flows/<feature_name>.json` and
   `Code_Flows/index.json`. Flows mapped before 1.0 have no sidecar until re-mapped.
 
+**The skills are new in 1.0 and additive.** You do not have to migrate to them.
+They install alongside the command and prompt files, under different names
+(`/code-flow-map`, not `/code-flow.map`), and both forms read the same
+`Code_Flows/` artifacts — a flow mapped by one is readable by the other. The
+first thing you will notice is that your slash menu now lists four entries with
+near-identical descriptions where it listed two: those are the same two commands
+in both forms, and either one is fine to use. See
+[Skills and commands](#skills-and-commands) for which host gives which guarantee.
+
 Everything 1.0 adds is listed in [CHANGELOG.md](CHANGELOG.md).
 
-A portable **Code Flow** skill for AI coding assistants — Claude Code, GitHub Copilot, and Gemini CLI ([which Google retired for individual users on 2026-06-18](#--tool-all-and-gemini-cli) — its templates now install only where Gemini CLI is actually in use). Installs a `/code-flow.map` command that asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
+A portable **Code Flow** skill for AI coding assistants — Claude Code, GitHub Copilot, OpenAI Codex, Antigravity CLI, Antigravity IDE, and Gemini CLI ([which Google retired for individual users on 2026-06-18](#--tool-all-and-gemini-cli) — its templates now install only where Gemini CLI is actually in use). It installs in two forms — the `/code-flow.map` command or prompt file each host has always read, and an [Agent Skill](#skills-and-commands) named `/code-flow-map` — and either asks the assistant to trace a feature through your codebase and produce **both** a markdown document and an interactive HTML page describing exactly how it works.
 
 ## What the skill does
 
@@ -80,7 +89,7 @@ CLI](#--tool-all-and-gemini-cli) for when its templates install.
 
 The installer writes an invocable prompt file to `.github/prompts/code-flow.map.prompt.md`.
 
-Prompt files — `.github/prompts/*.prompt.md` with `mode: agent` frontmatter, which is what this one is — are a **VS Code** Copilot Chat feature. In VS Code, open Copilot Chat and select the prompt from the Prompts picker, or try:
+Prompt files — `.github/prompts/*.prompt.md` with `agent: agent` frontmatter, which is what this one is — are a **VS Code** Copilot Chat feature. In VS Code, open Copilot Chat and select the prompt from the Prompts picker, or try:
 
 ```text
 /code-flow.map user login
@@ -256,7 +265,7 @@ uvx htst-code-flow-skill --tool all --target .
 
 ### Manual install (no npm, no uvx)
 
-If neither `npm` nor `uvx` is available, you only need to copy two or three small text files into your project. There is no code to build and no runtime dependency.
+If neither `npm` nor `uvx` is available, you only need to copy a few small text files into your project. There is no code to build and no runtime dependency.
 
 **1. Get the templates.** Pick whichever is easiest:
 
@@ -280,6 +289,20 @@ mkdir -p .claude/commands
 cp /path/to/code-flow-skill/templates/claude/code-flow.map.md .claude/commands/code-flow.map.md
 cp /path/to/code-flow-skill/templates/claude/code-flow.quality.md .claude/commands/code-flow.quality.md
 
+# Claude Code — the skill form; Claude Code does not read .agents/skills/
+mkdir -p .claude/skills/code-flow-map .claude/skills/code-flow-quality
+cp /path/to/code-flow-skill/templates/shared/code-flow-map/SKILL.md .claude/skills/code-flow-map/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-quality/SKILL.md .claude/skills/code-flow-quality/SKILL.md
+
+# Agent Skills — read by Copilot, both Antigravity surfaces, OpenAI Codex and
+# Gemini CLI. The openai.yaml files carry Codex's invocation policy; the other
+# hosts ignore them.
+mkdir -p .agents/skills/code-flow-map/agents .agents/skills/code-flow-quality/agents
+cp /path/to/code-flow-skill/templates/shared/code-flow-map/SKILL.md .agents/skills/code-flow-map/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-map/agents/openai.yaml .agents/skills/code-flow-map/agents/openai.yaml
+cp /path/to/code-flow-skill/templates/shared/code-flow-quality/SKILL.md .agents/skills/code-flow-quality/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-quality/agents/openai.yaml .agents/skills/code-flow-quality/agents/openai.yaml
+
 # Gemini CLI — only if you actually use it; see the note on --tool all above
 mkdir -p .gemini/commands
 cp /path/to/code-flow-skill/templates/gemini/code-flow.map.toml .gemini/commands/code-flow.map.toml
@@ -301,9 +324,82 @@ On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkd
 
 If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer. If you skip the `.code-flow/report.template.html` step, `/code-flow.quality` still works too, but there is no fallback page for it: the command says so and still writes `quality-report.json` and `quality-report.md`. Skipping `.code-flow/index.template.html` costs you only `Code_Flows/index.html`, the page that links the flows together — every individual flow page still opens on its own.
 
-**3. Verify.** Restart your assistant (or start a new session). In Claude Code or Gemini CLI, typing `/` should list **both** new commands — `/code-flow.map` and `/code-flow.quality`. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat); on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*.
+The `.agents/skills/` step is not optional in the same way. It is the *entirety* of the OpenAI Codex and Antigravity integration — neither host reads a command or prompt file — so skipping it leaves those two with nothing installed at all.
+
+**3. Verify.** Restart your assistant (or start a new session). In Claude Code, typing `/` should list **four** new entries — the commands `/code-flow.map` and `/code-flow.quality`, and the skills `/code-flow-map` and `/code-flow-quality`. In Gemini CLI, typing `/` should list the two commands; how it surfaces skills has not been checked here. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat), and both skills alongside them; on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*. On Codex the skills are `$code-flow-map` and `$code-flow-quality`, or the `/skills` menu, not a slash command; on Antigravity IDE, which documents no slash syntax, mention the skill by name.
 
 That's it — no install step runs any code on your machine. If you later want to update the skill, just re-copy the template files.
+
+## Skills and commands
+
+Every host now gets the same two commands twice: as the command or prompt file it
+has always had, and as an [Agent Skill](https://code.visualstudio.com/docs/agent-customization/agent-skills)
+under `.agents/skills/` (and `.claude/skills/` for Claude Code). Nothing was
+removed. If `/code-flow.map` works for you today, it still works.
+
+**This is also how OpenAI Codex is supported.** Codex reads repository skills from
+`.agents/skills/`, which every install writes, so it needs no `--tool` value of
+its own. There is no Codex-specific command file and there does not need to be.
+
+The two forms differ in three ways worth knowing before you pick one.
+
+**The names differ, and they had to.** The skill form is `/code-flow-map` and
+`/code-flow-quality`, with hyphens; the command form keeps `/code-flow.map` and
+`/code-flow.quality`, with dots. Only Copilot documents a character rule for skill
+names — no dots, and an invalid name silently fails to load — but Copilot reads
+the same `.claude/skills/` directory Claude Code does, so there is no directory
+where a laxer name would be safe. The dot is also spoken for: on Claude Code
+`/code-flow.map` already belongs to the command file, which still ships.
+
+**Who can start them differs by host.** Both skills set
+`disable-model-invocation: true`, which asks the host to run them only when you
+invoke them yourself. Not every host implements it:
+
+| Host | Skill directory it reads | Can the assistant start the skill unasked? |
+|---|---|---|
+| Claude Code | `.claude/skills/` | No |
+| GitHub Copilot | `.github/skills/`, `.claude/skills/`, `.agents/skills/` | No |
+| Antigravity CLI | `.agents/skills/` | **Yes** — the field is not in its schema |
+| Antigravity IDE | `.agents/skills/` | **Yes** — the field is not in its schema |
+| OpenAI Codex | `.agents/skills/` | No — set in `agents/openai.yaml`, which ships beside each skill |
+| Gemini CLI (legacy) | `.agents/skills/` | Yes, with a confirmation prompt |
+
+Every row above comes from that host's own published documentation as of
+2026-08-16, not from watching it happen: no row in this table has been observed
+on a running host in this repository, and no test here can observe one. Where a
+host ignores the field — or changes its mind about honouring it — what remains is
+the skills' own step of naming what they are about to do and waiting for you to
+confirm, which is why that step is in the skill body rather than in frontmatter.
+
+**On Copilot, the same skill lands in two directories it both scans.** `--tool
+all` writes `code-flow-map` to both `.claude/skills/` and `.agents/skills/`;
+Copilot's docs list both as read locations but say nothing about precedence or
+de-duplication when a name appears in both, so whether you see it once or
+twice there is unverified here. `--tool copilot` writes only `.agents/skills/`,
+which sidesteps the question if Copilot is the only host you use.
+
+Codex reads that policy from its own metadata file rather than from `SKILL.md`,
+so both files ship. On Codex, explicit invocation is `$code-flow-map` or the
+`/skills` menu rather than a slash command.
+
+On Antigravity there is no such setting to make. Both skills open by confirming
+what they are about to do before writing anything, which is the only gate
+available there — and the reason that paragraph is in the skill body rather than
+in frontmatter.
+
+On the hosts in the "Yes" rows, `code-flow-map` can begin because the conversation
+drifted near what it does, rather than because you asked. That matters more for
+this command than most: it writes files under `Code_Flows/` **and adds docstrings
+to source files that lack them**. Its first instruction is therefore to name the
+flow it is about to map and wait for you to confirm — a gate the assistant is free
+to skip, which is why this table is here rather than buried. The edits are
+additive, never rewrites or deletions. If that trade is not one you want, use the
+command form on those hosts, or don't install the skill.
+
+**The flags work the same in both.** `--whole-code-base`, `--detail
+thin|standard|verbose` and `--read-code` are read out of what you type either way.
+The skill format has no `$ARGUMENTS` substitution, so the skills advertise their
+flags through `argument-hint` instead — your host shows them during autocomplete.
 
 ## CLI options
 
@@ -343,19 +439,30 @@ code-flow-skill --tool gemini
 |------|---------|------|
 | Claude Code | `/code-flow.map` | `.claude/commands/code-flow.map.md` |
 | Claude Code | `/code-flow.quality` | `.claude/commands/code-flow.quality.md` |
+| Claude Code | `/code-flow-map` | `.claude/skills/code-flow-map/SKILL.md` |
+| Claude Code | `/code-flow-quality` | `.claude/skills/code-flow-quality/SKILL.md` |
 | Gemini CLI | `/code-flow.map` | `.gemini/commands/code-flow.map.toml` |
 | Gemini CLI | `/code-flow.quality` | `.gemini/commands/code-flow.quality.toml` |
 | GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-map` | `.agents/skills/code-flow-map/SKILL.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-quality` | `.agents/skills/code-flow-quality/SKILL.md` |
+| Codex | — | `.agents/skills/code-flow-map/agents/openai.yaml` (invocation policy) |
+| Codex | — | `.agents/skills/code-flow-quality/agents/openai.yaml` (invocation policy) |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 
 Every path this installer can write is listed above. The two `.gemini/` rows are the
 exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
-CLI](#--tool-all-and-gemini-cli).
+CLI](#--tool-all-and-gemini-cli). Every other row, the skills included, is written on
+every `--tool all` install.
 
 The `.code-flow/viewer.template.html`, `.code-flow/report.template.html` and `.code-flow/index.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
+
+`.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host except Claude Code reads. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
+
+**OpenAI Codex has no `--tool` value and does not need one.** It discovers repository skills from `.agents/skills/`, which every install writes.
 
 ## Packages
 

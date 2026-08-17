@@ -74,6 +74,41 @@ function installShared() {
   }
 }
 
+// One canonical SKILL.md per command, copied unchanged to every directory a
+// host discovers skills from.
+//
+// `.agents/skills/` is the open standard's shared location — Copilot, both
+// Antigravity surfaces, OpenAI Codex and the legacy Gemini CLI all read it — so
+// it installs regardless of --tool, the way the .code-flow/ scaffolds do. It is
+// also the entirety of Codex support: Codex discovers repository skills from
+// $CWD/.agents/skills and $REPO_ROOT/.agents/skills and has no --tool value of
+// its own. `.claude/skills/` has exactly one consumer no other path serves,
+// Claude Code, so it rides on that selection instead; a `--tool gemini` install
+// must still leave no `.claude/` behind. This list and the one in
+// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests in
+// both languages hold them there.
+const skillNames = ["code-flow-map", "code-flow-quality"];
+
+// What one installed skill is made of, per destination. SKILL.md goes to every
+// discovery root. `agents/openai.yaml` carries the implicit-invocation policy
+// for Codex alone, and Codex reads only `.agents/skills/`, so shipping it under
+// `.claude/skills/` would be a file no host there reads — Claude Code and
+// Copilot both take that policy from SKILL.md's frontmatter instead.
+const SKILL_FILES = ["SKILL.md"];
+const AGENTS_SKILL_FILES = ["SKILL.md", "agents/openai.yaml"];
+
+function installSkills(root, files) {
+  for (const name of skillNames) {
+    for (const rel of files) {
+      const src = path.join(pkgRoot, "templates", "shared", name, ...rel.split("/"));
+      const dst = path.join(target, root, "skills", name, ...rel.split("/"));
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+      console.log(`Installed skill file: ${dst}`);
+    }
+  }
+}
+
 // Each host installs one file per command. This list and the one in
 // src/code_flow_skill/cli.py must stay in step; the installed-file-set tests
 // in both languages are what holds them there.
@@ -106,6 +141,11 @@ for (const name of selected) {
     console.log(`Installed ${name} template: ${dst}`);
   }
 }
+
+if (selected.includes("claude")) {
+  installSkills(".claude", SKILL_FILES);
+}
+installSkills(".agents", AGENTS_SKILL_FILES);
 
 if (skippedGemini) {
   // Say what was skipped and how to get it. A silent omission would look

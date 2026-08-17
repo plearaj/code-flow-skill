@@ -1,5 +1,5 @@
 ---
-mode: agent
+agent: agent
 description: Report DRY, KISS and YAGNI findings from the persisted code-flow map, with file:line evidence and honest coverage.
 ---
 

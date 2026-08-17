@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 /**
- * Release gate for the HTML scaffolds.
+ * Release gate for the two things no test here can see: whether the HTML
+ * scaffolds render, and whether the skills load on a real host.
  *
  * No test in this repository executes any scaffold's rendering — they are
- * checked for what their content says, never for how a browser draws it. That
- * gap is accepted (docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md,
- * Decision 1) on the condition that a human closes it by hand before each
+ * checked for what their content says, never for how a browser draws it. Nor
+ * does any test start a host and watch it discover a skill: `SKILL.md` and
+ * `agents/openai.yaml` are checked for the name, frontmatter and policy the
+ * vendors' documentation says to write, never for what a host does with them.
+ * Both gaps are accepted (docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md,
+ * Decision 1) on the condition that a human closes them by hand before each
  * release. A condition recorded only in prose is not a condition, so this runs
  * as `prepublishOnly` and fails the publish until it is acknowledged.
  *
@@ -22,14 +26,20 @@ const SCAFFOLDS = [
 ];
 
 const CHECKLIST = `
-Release checklist — the rendering neither test suite covers
-===========================================================
+Release checklist — the rendering and the skill loading no test here covers
+===========================================================================
+
+Steps 1-3 cover the three HTML scaffolds:
 
   ${SCAFFOLDS.join("\n  ")}
 
 Each is checked for what it says, never for how a browser draws it. A
 malformed substitution would blank the page in a user's browser and every
 test here would still pass.
+
+Step 4 covers the two skills. Their names, frontmatter and Codex policy file
+are checked against what the vendors document; nothing here starts a host and
+watches it load one.
 
   1. Run /code-flow.map and /code-flow.quality against any project. Open the
      resulting Code_Flows/index.html, Code_Flows/<flow>.html and
@@ -46,8 +56,28 @@ test here would still pass.
      are plain links between separately generated files — nothing in either
      suite follows one.
 
-Do this for ALL THREE files. A change to any scaffold's rendering re-opens
-the gap, and the suites will not tell you.
+  4. Install into a scratch project with --tool all and open one host. Confirm
+     code-flow-map is listed wherever that host lists skills — the slash menu
+     on Claude Code, Copilot or Antigravity CLI; \`$code-flow-map\` or the
+     /skills menu on Codex; by name on Antigravity IDE, which documents no
+     slash syntax at all. An invalid or duplicated skill name does not warn;
+     the skill just silently does not load, or loads twice. On Copilot, which
+     reads both .claude/skills/ and .agents/skills/, confirm it is listed once
+     rather than twice.
+
+     Then pick one host whose row in the README's guarantee table says No —
+     Claude Code, Copilot or Codex — and confirm two things there that "it
+     showed up in the list" does not tell you: that the host presents the
+     skill as explicitly-invoked only, and that it reports no error loading
+     the skill or its frontmatter. A host that ignores the field lists the
+     skill exactly the same way as one that honours it. Those No rows are
+     read out of vendor documentation and have never been observed on a
+     running host in this repository; this step is the only thing that ever
+     will observe one.
+
+Do this for ALL THREE files, and do step 4 for at least one host. A change to
+any scaffold's rendering — or to a skill's name or frontmatter — re-opens the
+gap, and the suites will not tell you.
 `;
 
 console.log(CHECKLIST);

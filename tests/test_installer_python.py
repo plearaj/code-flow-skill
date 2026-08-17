@@ -9,8 +9,14 @@ from pathlib import Path
 # "Files written" table must match, since that table answers "what *can* end up
 # in my repo", not "what happened in your project".
 EXPECTED_ALL = [
+    ".agents/skills/code-flow-map/SKILL.md",
+    ".agents/skills/code-flow-map/agents/openai.yaml",
+    ".agents/skills/code-flow-quality/SKILL.md",
+    ".agents/skills/code-flow-quality/agents/openai.yaml",
     ".claude/commands/code-flow.map.md",
     ".claude/commands/code-flow.quality.md",
+    ".claude/skills/code-flow-map/SKILL.md",
+    ".claude/skills/code-flow-quality/SKILL.md",
     ".code-flow/index.template.html",
     ".code-flow/report.template.html",
     ".code-flow/viewer.template.html",
@@ -204,9 +210,57 @@ def test_installed_files_are_byte_identical_to_their_templates(
             repo_root / "templates" / "gemini" / "code-flow.quality.toml",
         tmp_path / ".github" / "prompts" / "code-flow.quality.prompt.md":
             repo_root / "templates" / "copilot" / "code-flow.quality.prompt.md",
+        tmp_path / ".claude" / "skills" / "code-flow-map" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-map" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-map" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-map" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-map" / "agents" / "openai.yaml":
+            repo_root / "templates" / "shared" / "code-flow-map" / "agents" / "openai.yaml",
+        tmp_path / ".claude" / "skills" / "code-flow-quality" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-quality" / "SKILL.md":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "SKILL.md",
+        tmp_path / ".agents" / "skills" / "code-flow-quality" / "agents" / "openai.yaml":
+            repo_root / "templates" / "shared" / "code-flow-quality" / "agents" / "openai.yaml",
     }
 
     for installed, source in installed_to_source.items():
         assert installed.read_bytes() == source.read_bytes(), (
             f"{installed} is not byte-identical to its source template {source}"
         )
+
+
+def test_agent_skills_install_regardless_of_tool(tmp_path: Path, run_python_installer) -> None:
+    """`.agents/skills/` is the open standard's shared location — Copilot, both
+    Antigravity surfaces and the legacy Gemini CLI all read it. That makes it
+    tool-agnostic in the same sense `.code-flow/` is, so selecting a single host
+    must still install it."""
+    run_python_installer(tmp_path, tool="copilot")
+    for name in ("code-flow-map", "code-flow-quality"):
+        assert (tmp_path / ".agents" / "skills" / name / "SKILL.md").is_file(), (
+            f".agents/skills/{name}/SKILL.md was not installed"
+        )
+
+
+def test_claude_skills_ride_on_the_claude_selection(
+    tmp_path: Path, run_python_installer
+) -> None:
+    """Claude Code is the only consumer of `.claude/skills/` that no other path
+    serves, so it follows the `claude` selection rather than installing
+    unconditionally. A `--tool gemini` install must still leave no `.claude/`
+    behind — the same promise `test_tool_selection_installs_only_that_tool`
+    makes about the command files."""
+    run_python_installer(tmp_path, tool="gemini")
+    assert (tmp_path / ".agents" / "skills" / "code-flow-map" / "SKILL.md").is_file()
+    assert not (tmp_path / ".claude").exists()
+
+
+def test_claude_selection_installs_both_skill_roots(
+    tmp_path: Path, run_python_installer
+) -> None:
+    run_python_installer(tmp_path, tool="claude")
+    for root in (".claude", ".agents"):
+        for name in ("code-flow-map", "code-flow-quality"):
+            assert (tmp_path / root / "skills" / name / "SKILL.md").is_file(), (
+                f"{root}/skills/{name}/SKILL.md was not installed"
+            )

@@ -138,15 +138,25 @@ def test_every_gemini_template_is_loadable_toml(repo_root: Path) -> None:
         assert "description" in parsed, f"{path.name} has no `description` key"
 
 
-def test_every_copilot_prompt_declares_agent_mode(repo_root: Path) -> None:
-    """`mode: agent` in the frontmatter is what makes a `.prompt.md` invocable
-    in VS Code Copilot Chat at all. Without it the file installs and does
-    nothing."""
+def test_every_copilot_prompt_declares_its_agent(repo_root: Path) -> None:
+    """`agent:` in the frontmatter is what makes a `.prompt.md` invocable in
+    VS Code Copilot Chat at all. Without it the file installs and does nothing.
+
+    This asserted `mode: agent` until 2026-08-15. `mode` is not a documented
+    prompt-file property — the documented set is `description`, `name`,
+    `argument-hint`, `agent`, `model` and `tools` — so the test was pinning a key
+    that may never have been read, and would have failed any correct fix. The
+    negative assertion is the point of the test now: without it, restoring the
+    dead key alongside the live one passes.
+    """
     prompts = sorted((repo_root / "templates" / "copilot").glob("*.prompt.md"))
     assert prompts, "no Copilot prompts found"
     for path in prompts:
         head = path.read_text(encoding="utf-8").split("---")[1]
-        assert "mode: agent" in head, f"{path.name} frontmatter lacks `mode: agent`"
+        assert "agent: agent" in head, f"{path.name} frontmatter lacks `agent: agent`"
+        assert "mode:" not in head, (
+            f"{path.name} still carries the undocumented `mode:` key"
+        )
 
 
 def test_every_claude_and_gemini_template_interpolates_arguments(repo_root: Path) -> None:
