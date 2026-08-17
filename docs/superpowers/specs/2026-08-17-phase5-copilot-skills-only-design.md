@@ -1,8 +1,8 @@
-# Design: Phase 5 — Copilot goes skills-only, and `--tool` learns the other hosts
+# Design: Phase 5 — `--tool` learns every host (and Copilot keeps both forms)
 
 **Date:** 2026-08-17
-**Status:** Draft, pending approval
-**Target version:** `2.0.0`
+**Status:** Amended 2026-08-17. **Decision 1 was overturned by direct observation before implementation — see below.**
+**Target version:** `1.1.0` — see Decision 3, as amended
 **Extends:** [`2026-08-08-phase4-agent-skills-design.md`](2026-08-08-phase4-agent-skills-design.md)
 
 ## How this document was produced
@@ -28,9 +28,46 @@ is the shadowing hazard Phase 4's Decision 2 identified on Claude Code, reproduc
 Copilot by our own hand. Hyphens on the prompt file only become safe once the prompt
 file is gone.
 
-## Decision 1: drop the Copilot prompt files entirely
+## Decision 1: ~~drop the Copilot prompt files entirely~~ — OVERTURNED BY OBSERVATION
 
-**Decision: delete `templates/copilot/`. Copilot is served by the Agent Skill alone.**
+**Overturned 2026-08-17, before any of it was implemented, by the first direct
+observation of a live host this project has ever had.** The decision as written is
+struck below and kept for audit. What replaces it is at the end of this section.
+
+### What was actually observed
+
+Installed `@htst/code-flow-skill@1.0.0` from npm into a real project with `--tool
+copilot`, then opened both Copilot surfaces.
+
+| Surface | Versions | `/code-flow.map` (prompt file) | `/code-flow-map` (skill) |
+|---|---|---|---|
+| VS Code Copilot Chat | VS Code 1.132.0, Copilot Chat 0.35.3 | **appeared, and ran correctly** | did not appear |
+| Copilot CLI | 1.0.10 | not tested | **appeared** |
+
+The VS Code run executed the map command's step 1 as written — surveyed the project,
+proposed five candidate flows, and asked which to trace — so the prompt file is not
+merely listed there, it works.
+
+**The two forms serve two different Copilot surfaces.** Agent Skills in VS Code are
+an *experimental* feature added in 1.108 (December 2025); the target machine is on
+1.132 with no skill-related settings configured, and the skill did not surface.
+Meanwhile VS Code's own documentation says agents on the Agent Host do not use prompt
+files — which is the CLI, where the skill did surface. Neither form is redundant:
+**deleting the prompt files would have removed the only working integration for VS
+Code Copilot Chat users**, which is the surface this project's own README spends the
+most words on.
+
+### A second thing the same test settled
+
+`code-flow-quality` was left carrying `disable-model-invocation: true` while
+`code-flow-map` had that one line stripped, in the same directory on the same host.
+**Both appeared in the Copilot CLI.** So the field does not remove a skill from
+explicit invocation there — which is what Phase 4's Decision 3 assumed and could not
+check. That assumption is now observed rather than inferred, on one host.
+
+### ~~The struck decision~~
+
+~~**Decision: delete `templates/copilot/`. Copilot is served by the Agent Skill alone.**~~
 
 Three things point the same way:
 
@@ -46,6 +83,12 @@ any confirmed Copilot behavior"*, and whether non-VS-Code Copilot surfaces read 
 files at all was never established. The skill is the better-documented path on more
 surfaces.
 
+> **This argument was the load-bearing one, and it was false.** It reasoned from the
+> absence of a verification to the absence of the behaviour. The prompt file works in
+> VS Code Copilot Chat; nobody had looked. "Unverified" is a statement about us, not
+> about the artifact, and this decision quietly treated the two as the same thing.
+> That is the mistake worth remembering out of this whole phase.
+
 **One name per host.** After this, Copilot has exactly one Code Flow entry point,
 hyphenated, matching every other skill-only host.
 
@@ -56,19 +99,51 @@ went out of its way to avoid.
 **Rejected: leave it.** It preserves a dotted name the user asked to remove, on the one
 host whose vendor documentation says the mechanism is going away.
 
-### What this costs, stated plainly
+### What replaces it
 
-**Three-host parity becomes two-host parity.** `tests/test_host_parity.py` and the
+**Decision: keep `templates/copilot/`. Both forms ship, because both are load-bearing,
+and the README says which Copilot surface needs which.**
+
+Copilot is not one host. It is at least two, and they read different files:
+
+| Surface | Reads | Invoke as |
+|---|---|---|
+| VS Code Copilot Chat | `.github/prompts/*.prompt.md` | `/code-flow.map` |
+| Copilot CLI / Agent Host | `.agents/skills/<name>/SKILL.md` | `/code-flow-map` |
+
+That is the whole answer to the question that started this phase — *why does Copilot use
+dots when everything else uses hyphens?* It does not. **VS Code Chat uses dots because it
+reads the prompt file; the Copilot CLI uses hyphens because it reads the skill.** Neither
+name is wrong and neither is removable; the README was simply presenting one host where
+there are two.
+
+This also retires a caveat rather than adding one. The README has said since 1.0 that it
+does not claim Copilot Chat exposes a dotted filename as a `/`-command. It does, on VS
+Code 1.132.0 with Copilot Chat 0.35.3, observed 2026-08-17. That sentence can become a
+positive statement with a version and a date on it.
+
+**Deferred, not cancelled.** When Agent Skills leave experimental status in VS Code and a
+default install of Copilot Chat reads `.agents/skills/`, the prompt files become genuinely
+redundant and Phase 4's Decision 6 removal applies. The trigger is observable — re-run this
+same test — and it has not happened.
+
+### ~~What this costs, stated plainly~~ — no longer applicable, kept for audit
+
+~~**Three-host parity becomes two-host parity.**~~ Nothing is deleted, so the parity
+machinery is untouched and the 64 Copilot-parametrized tests stay. The paragraph below
+described the cost of a removal that is no longer happening.
+
+~~`tests/test_host_parity.py` and the
 parametrized contract tests in `tests/test_template_contracts.py` have organized this
 project since Phase 1; 64 collected tests currently name Copilot. After this phase,
 Claude and Gemini are the only hand-written host templates left, and Copilot's content
 guarantee comes from the skill being byte-identical everywhere rather than from a
 divergence count. That is a **stronger** guarantee, but it is a different one, and the
-machinery that enforced the old one shrinks.
+machinery that enforced the old one shrinks.~~
 
-**Copilot users on 0.x and 1.0 lose a file on reinstall.** The installer does not delete
+~~**Copilot users on 0.x and 1.0 lose a file on reinstall.** The installer does not delete
 what it previously wrote, so an existing `.github/prompts/code-flow.map.prompt.md`
-lingers until removed by hand. The upgrade note must say so.
+lingers until removed by hand. The upgrade note must say so.~~
 
 ## Decision 2: `--tool` gains `codex` and `antigravity`, and `.agents/skills/` stops being unconditional
 
@@ -113,67 +188,75 @@ Antigravity unnameable, which is the actual gap.
 never reads is not harmful, but the user asked for the granularity and naming the hosts
 is the honest way to give it.
 
-## Decision 3: this is `2.0.0`
+## Decision 3: ~~this is `2.0.0`~~ — this is `1.1.0`
 
-**Decision: major version.** Removing an installed integration is breaking under SemVer,
+**Amended 2026-08-17 with Decision 1.** Nothing is removed any more, so nothing is
+breaking. Decision 2's tool values are additive, and the one behaviour change —
+`--tool claude` no longer writing `.agents/skills/` — narrows a set of files that host
+never read. **`1.1.0`.**
+
+~~**Decision: major version.** Removing an installed integration is breaking under SemVer,
 and Phase 4's Decision 6 already scheduled this exact removal for *"a later major
-version"*. `1.0.0` being one hour old does not change what the change is.
+version"*. `1.0.0` being one hour old does not change what the change is.~~
 
-Phase 4's Decision 6 also attached a condition to that removal, and **this phase does not
-satisfy it:**
+The gate below is what caught this, and it deserves to be recorded as having worked:
 
 > once the skills are confirmed working against all three hosts **in the wild**, a later
 > major version removes `.claude/commands/`, `.gemini/commands/` and `.github/prompts/`
 
-Nobody has confirmed the skill loads on Copilot. Deleting the prompt file leaves Copilot
-users with the skill or with nothing, and this repository still cannot test which. This
-is the single largest risk in the phase and it is not mitigated by anything in it — the
-mitigation is a human opening Copilot, which `scripts/prepublish-check.js` item 4 already
-asks for and which must be done on **Copilot specifically** before `2.0.0` is published.
+Phase 4 wrote that condition without knowing what it would catch. Ten minutes of a human
+opening two Copilot surfaces overturned a decision that three documents, a spec review and
+a written implementation plan had all accepted. **The condition was the only thing standing
+between this project and shipping a release that broke VS Code Copilot Chat users.** Keep
+it attached to any future removal.
 
-Partial removal, not total: `.claude/commands/` and `.gemini/commands/` stay. Decision 6
-listed all three together, but Claude Code and Gemini CLI have working, verified command
-files and no vendor signal that the mechanism is being retired. Copilot has both.
+The removal it governs is now deferred with an observable trigger: when Agent Skills leave
+experimental status in VS Code and a default Copilot Chat install reads `.agents/skills/`,
+re-run the same test and the prompt files become redundant for real.
 
 ## What Phase 5 ships
 
-- `templates/copilot/` deleted, both files
+Nothing is deleted. `templates/copilot/` stays, both files, and every test parametrized
+over it stays with it.
+
 - `bin/install.js` and `src/code_flow_skill/cli.py`: `codex` and `antigravity` tool
-  values, conditional `.agents/skills/`, no Copilot template copying
-- `tests/test_template_contracts.py`: `MAP_TEMPLATES` and `QUALITY_TEMPLATES` drop their
-  Copilot entries
-- `tests/test_host_parity.py`: `test_every_copilot_prompt_declares_agent_mode` deleted
-- `EXPECTED_ALL` (both languages) and `EXPECTED_IN_WHEEL`: Copilot paths removed, tool
-  matrix tests added
-- README: the per-host table, the Usage section's Copilot block, the manual-install
-  fence, the Files-written table, and a 1.0 → 2.0 upgrade note
-- `CHANGELOG.md`: a `2.0.0` entry leading with the removal
-- Version `2.0.0` in `package.json` and `pyproject.toml`, and
+  values, and `.agents/skills/` conditional on the selection containing a host that
+  reads it
+- `EXPECTED_BY_TOOL` in both test suites — one row per `--tool` value, the new contract
+- README: the per-host table gains the **two Copilot surfaces** as separate rows, the
+  Usage section explains which surface reads which file, `## CLI options` documents the
+  new tool values, and the "not verified" caveat about the dotted prompt file becomes a
+  positive statement with a version and a date
+- `CHANGELOG.md`: a `1.1.0` entry
+- Version `1.1.0` in `package.json` and `pyproject.toml`, and
   `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` re-pointed
 
 ## Testing
 
-**The tool matrix is the new contract.** Every row of Decision 2's table gets an
-assertion in both languages, against the same expected-path lists that already hold the
-two installers in lockstep. A row that installs the wrong set is the defect this phase
-can most easily introduce.
+**The tool matrix is the contract.** Every row of Decision 2's table gets an assertion in
+both languages, against the same expected-path lists that already hold the two installers
+in lockstep. A row that installs the wrong set is the defect this phase can most easily
+introduce.
 
-**Nothing may still reference `templates/copilot/`.** A test asserting the directory is
-absent, so a half-finished revert leaves a failure rather than a stale template that
-ships.
-
-**Not tested, disclosed:** that Copilot loads the skill. Unchanged from Phase 4 and now
-load-bearing rather than additive, per Decision 3.
+**Now observed rather than disclosed:** that `/code-flow.map` works in VS Code Copilot
+Chat, that `/code-flow-map` works in the Copilot CLI, and that
+`disable-model-invocation: true` does not hide a skill from the CLI's list. One machine,
+one date, three versions — recorded in Decision 1 with all three, because a single
+observation is evidence and not a guarantee. No test in this repository can re-check any
+of it.
 
 ## Risks
 
-- **Copilot users could end up with nothing.** Decision 3 states this in full. It is a
-  manual gate, not a test.
-- **Deleting 64 collected tests' worth of Copilot parametrization removes coverage that
-  was doing real work** on the Copilot template's *content*. The skill inherits those
-  contracts through `tests/test_skill_templates.py`, which asserts the body is derived
-  from the Gemini template — but the derivation covers the body only, and Phase 4 already
-  found one honesty rule living in the hand-written head. The head contracts must be
-  checked for anything that was previously guaranteed only by the Copilot parametrization.
-- **`--tool copilot` changing what it writes** is a silent behavior change for anyone
-  scripting the installer.
+- **`--tool claude` no longer writing `.agents/skills/`** is a silent behaviour change for
+  anyone scripting the installer, and it is the one thing in this phase that takes files
+  away from an existing configuration. Nothing on Claude Code reads them, which is why
+  this is `1.1.0` rather than a major, but a scripted install that greps for
+  `.agents/skills/` after `--tool claude` will now find nothing.
+- **The Copilot surface split is documented from one observation each.** VS Code Chat
+  reading prompt files and the CLI reading skills are each a single data point on a single
+  machine. If a future Copilot Chat release starts reading `.agents/skills/`, the README's
+  surface table becomes misleading in the safe direction — it would understate what works,
+  not overstate it.
+- **The deferred removal has no scheduled re-check.** Decision 1 names an observable
+  trigger but nothing prompts anyone to look for it. It will be noticed when someone next
+  installs into a Copilot project, or not at all.

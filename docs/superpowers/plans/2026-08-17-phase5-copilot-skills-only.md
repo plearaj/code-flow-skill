@@ -1,10 +1,12 @@
-# Phase 5 Implementation Plan — Copilot goes skills-only
+# Phase 5 Implementation Plan — `--tool` learns every host
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give `--tool` a value per supported host, stop installing `.agents/skills/` where nothing reads it, and delete the GitHub Copilot prompt files so Copilot is served by the Agent Skill alone.
+**Goal:** Give `--tool` a value per supported host, and stop installing `.agents/skills/` into projects where nothing reads it.
 
-**Architecture:** Both installers already copy from two sources — a per-host `toolMap`/`_TOOL_FILES` table and a shared skill installer. This phase splits host *selection* from host *files*: a host may now be selectable without having a table entry, which is exactly what Copilot becomes. `.agents/skills/` stops being unconditional and installs when the selection contains any host that reads it.
+**Architecture:** Both installers already copy from two sources — a per-host `toolMap`/`_TOOL_FILES` table and a shared skill installer. This phase splits host *selection* from host *files*, so a host can be selectable without having a table entry of its own — which is what Codex and Antigravity are. `.agents/skills/` stops being unconditional and installs when the selection contains a host that reads it.
+
+**Scope note:** an earlier revision of this plan also deleted the Copilot prompt files. That was overturned by direct observation before any of it was written — see the spec's Decision 1. `templates/copilot/` stays, and so does every test parametrized over it.
 
 **Tech Stack:** Node 18+ (`node --test`), Python 3.11+ (`pytest`), zero dependencies in both.
 
@@ -13,7 +15,7 @@
 ## Global Constraints
 
 - **Zero dependencies, including dev.** No `devDependencies` key in `package.json`; the Python dev group stays exactly `pytest>=8.0`.
-- **The version becomes `2.0.0`** in `package.json` and `pyproject.toml`, in Task 3 and nowhere else. `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` currently pins `1.0.0` and is re-pointed in the same task — until then, leave both manifests alone.
+- **The version becomes `1.1.0`** in `package.json` and `pyproject.toml`, in Task 2 and nowhere else. `tests/test_packaging.py::test_package_versions_match_and_are_1_0_0` currently pins `1.0.0` and is re-pointed in the same task — until then, leave both manifests alone.
 - **Every file under `templates/` must use bare LF line endings, never CRLF.** Windows text-mode round-trips have corrupted this repo's templates twice. `tests/test_template_contracts.py::test_shipped_templates_have_no_crlf` checks at the byte level.
 - **The two installers must stay in lockstep.** Anything added to `bin/install.js` gets its equivalent in `src/code_flow_skill/cli.py`, including the explanatory comment. The installed-file-set tests in both languages are what holds them there.
 - **The installer must be a plain byte copy** — `fs.copyFileSync` / `shutil.copyfile`, never a text-mode read/write round-trip.
@@ -23,49 +25,43 @@
 
 ## The tool matrix
 
-This table is the contract for Tasks 1 and 2. Task 1 builds every row except Copilot's; Task 2 removes `.github/prompts/` from Copilot's.
+This table is Task 1's contract, and Task 2 documents it.
 
 | `--tool` | `.claude/commands/` | `.claude/skills/` | `.agents/skills/` | `.gemini/commands/` | `.github/prompts/` | `.code-flow/` |
 |---|---|---|---|---|---|---|
 | `claude` | yes | yes | — | — | — | yes |
-| `copilot` | — | — | yes | — | **Task 1: yes → Task 2: —** | yes |
+| `copilot` | — | — | yes | — | yes | yes |
 | `codex` | — | — | yes | — | — | yes |
 | `antigravity` | — | — | yes | — | — | yes |
 | `gemini` | — | — | yes | yes | — | yes |
-| `all` | yes | yes | yes | conditional¹ | Task 1: yes → Task 2: — | yes |
+| `all` | yes | yes | yes | conditional¹ | yes | yes |
 
 ¹ Unchanged: under `--tool all` the Gemini CLI templates install only when the target has its own `.gemini/` directory. `--tool gemini` always installs them.
 
+`copilot` keeps **both** rows, and that is the point of the phase's correction: VS Code Copilot Chat reads the prompt file, the Copilot CLI reads the skill, and both were observed working on 2026-08-17. One `--tool` value, two surfaces, two files.
+
 ## File structure
 
-**Deleted (Task 2):**
-
-| Path | Why |
-|---|---|
-| `templates/copilot/code-flow.map.prompt.md` | Copilot is served by `templates/shared/code-flow-map/SKILL.md` |
-| `templates/copilot/code-flow.quality.prompt.md` | same, for the quality command |
+**Nothing is created or deleted.** No template changes at all — this phase is installer logic and documentation.
 
 **Modified:**
 
 | Path | Change |
 |---|---|
-| `bin/install.js` | tool selection split from tool files (Task 1); Copilot table entry removed (Task 2) |
-| `src/code_flow_skill/cli.py` | the same, in Python |
-| `tests/test_installer_python.py` | per-tool expected sets (Task 1); Copilot paths dropped (Task 2) |
-| `test/install.test.js` | the same, in Node |
-| `tests/test_template_contracts.py` | `MAP_TEMPLATES` / `QUALITY_TEMPLATES` drop Copilot (Task 2) |
-| `tests/test_host_parity.py` | `test_every_copilot_prompt_declares_agent_mode` deleted (Task 2) |
-| `tests/test_skill_templates.py` | head-contract coverage for anything Copilot's parametrization was guarding (Task 2) |
-| `tests/test_packaging.py` | `EXPECTED_IN_WHEEL` drops two paths (Task 2); version test re-pointed (Task 3) |
-| `README.md` | per-host table, Usage, manual-install fence, Files-written table, upgrade note (Task 3) |
-| `CHANGELOG.md` | `2.0.0` entry (Task 3) |
-| `package.json`, `pyproject.toml` | version `2.0.0` (Task 3) |
+| `bin/install.js` | tool selection split from tool files; `.agents/skills/` conditional (Task 1) |
+| `src/code_flow_skill/cli.py` | the same, in Python (Task 1) |
+| `tests/test_installer_python.py` | `EXPECTED_BY_TOOL` and the matrix test (Task 1) |
+| `test/install.test.js` | the same, in Node (Task 1) |
+| `README.md` | the two Copilot surfaces, the new `--tool` values, and the retired caveat (Task 2) |
+| `CHANGELOG.md` | `1.1.0` entry (Task 2) |
+| `package.json`, `pyproject.toml` | version `1.1.0` (Task 2) |
+| `tests/test_packaging.py` | version test re-pointed (Task 2) |
 
 ---
 
 ### Task 1: `--tool` learns every host, and `.agents/skills/` stops being unconditional
 
-Copilot keeps its prompt files through this task. That is deliberate: it keeps the diff to one idea, and leaves a working installer at the end of it.
+Copilot keeps its prompt files. `--tool copilot` writes them *and* `.agents/skills/`, because VS Code Copilot Chat reads the first and the Copilot CLI reads the second.
 
 **Files:**
 - Modify: `bin/install.js`
@@ -75,7 +71,7 @@ Copilot keeps its prompt files through this task. That is deliberate: it keeps t
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `VALID_TOOLS` / `_VALID_TOOLS` and `AGENTS_HOSTS` / `_AGENTS_HOSTS` in the two installers, and `EXPECTED_BY_TOOL` in both test suites, all of which Task 2 edits.
+- Produces: `VALID_TOOLS` / `_VALID_TOOLS` and `AGENTS_HOSTS` / `_AGENTS_HOSTS` in the two installers, and `EXPECTED_BY_TOOL` in both test suites. Task 2 documents the matrix they encode but does not edit them.
 
 - [ ] **Step 1: Write the failing per-tool expectations**
 
@@ -368,157 +364,155 @@ git commit -m "feat: give --tool a value per host, and install .agents/skills on
 
 ---
 
-### Task 2: Delete the Copilot prompt files
+### Task 2: Docs, and the version
+
+The documentation change is the larger half of this task, and it is not the `--tool` values. It is that **Copilot is two surfaces reading two different files**, which this project did not know until 2026-08-17 and which explains the naming inconsistency the README has been apologising for since 1.0.
 
 **Files:**
-- Delete: `templates/copilot/code-flow.map.prompt.md`
-- Delete: `templates/copilot/code-flow.quality.prompt.md`
-- Modify: `bin/install.js`, `src/code_flow_skill/cli.py`
-- Modify: `tests/test_installer_python.py`, `test/install.test.js`
-- Modify: `tests/test_template_contracts.py`, `tests/test_host_parity.py`, `tests/test_packaging.py`
-- Modify: `tests/test_skill_templates.py`
+- Modify: `README.md`
+- Modify: `CHANGELOG.md`
+- Modify: `package.json`, `pyproject.toml`
+- Modify: `tests/test_packaging.py`
 
 **Interfaces:**
-- Consumes: `EXPECTED_BY_TOOL`, `VALID_TOOLS`/`_VALID_TOOLS`, `AGENTS_HOSTS`/`_AGENTS_HOSTS` from Task 1.
-- Produces: nothing later tasks read in code; Task 3 documents the outcome.
+- Consumes: the per-tool installed sets from Task 1.
+- Produces: nothing.
 
-- [ ] **Step 1: Check what coverage the Copilot parametrization was carrying**
+- [ ] **Step 1: Re-point the version test, then bump both manifests**
 
-Before deleting anything, find out what only Copilot's rows were guarding. Run:
-
-```bash
-uv run --group dev pytest -q --collect-only 2>/dev/null | grep -c copilot
-```
-
-Expected: 64. Then read `MAP_TEMPLATES` and `QUALITY_TEMPLATES` in `tests/test_template_contracts.py`. Every test parametrized over them asserts a rule about *content* — the honesty phrasings, the detector thresholds, the step-6 index fields.
-
-Those rules survive for Claude and Gemini, and the skill inherits them through `tests/test_skill_templates.py::test_skill_body_is_derived_from_the_gemini_template` — **but only for the body.** `derive_skill_body` slices from `#### 1.` onward, so anything stated in a template's hand-written head is not covered by derivation. Phase 4 found exactly one such rule (`never edits source code`) shipping untested for this reason.
-
-Read the head of `templates/shared/code-flow-quality/SKILL.md` and `templates/shared/code-flow-map/SKILL.md` — everything above `#### 1.` — and list every factual claim or rule stated there. For each, check whether `tests/test_skill_templates.py` already asserts it. Record the list in your report. If any rule is unasserted, add a test for it in Step 6 rather than leaving it to review.
-
-- [ ] **Step 2: Delete the templates and drop Copilot from the installers**
+In `tests/test_packaging.py`, rename `test_package_versions_match_and_are_1_0_0` to `test_package_versions_match_and_are_1_1_0` and change the expected string from `"1.0.0"` to `"1.1.0"`. Run it and watch it fail:
 
 ```bash
-git rm templates/copilot/code-flow.map.prompt.md templates/copilot/code-flow.quality.prompt.md
+uv run --group dev pytest tests/test_packaging.py -v
 ```
 
-In `bin/install.js`, delete the `copilot:` entry from `toolMap`, leaving `claude` and `gemini`. **Do not** remove `"copilot"` from `VALID_TOOLS` — it stays selectable and is now served entirely by `.agents/skills/`. Amend the comment above `toolMap` to say so:
+Expected: FAIL, both manifests still say `1.0.0`.
 
-```js
-// The hosts that install files of their own, one per command. Copilot is not
-// here: its prompt files were removed in 2.0.0 and it reads `.agents/skills/`
-// like every other skill-only host. This list and the one in
-// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests
-// in both languages are what holds them there.
+Then set `"version": "1.1.0"` in `package.json` and `version = "1.1.0"` in `pyproject.toml`, and re-run. Expected: PASS.
+
+- [ ] **Step 2: Split Copilot into its two surfaces in the lede table**
+
+The table under the lede currently has one Copilot row claiming a VS-Code-only caveat. Replace that single row with two:
+
+```markdown
+| GitHub Copilot (VS Code Chat) | `/code-flow.map` | — |
+| GitHub Copilot (CLI) | — | `/code-flow-map` |
 ```
 
-In `src/code_flow_skill/cli.py`, delete the `"copilot"` key from `_TOOL_FILES` and the `"copilot"` entry from `_TOOL_LABELS`, and carry the same comment.
+Then replace the sentence below the table that reads "Three hosts read both forms; three read only the skill:" with:
 
-- [ ] **Step 3: Shrink the expected sets**
-
-In `tests/test_installer_python.py`, delete the `_COPILOT` list and both of its uses:
-
-```python
-EXPECTED_BY_TOOL = {
-    "claude": sorted(_CLAUDE + _SHARED),
-    "copilot": sorted(_AGENTS + _SHARED),
-    "codex": sorted(_AGENTS + _SHARED),
-    "antigravity": sorted(_AGENTS + _SHARED),
-    "gemini": sorted(_AGENTS + _GEMINI + _SHARED),
-}
-
-EXPECTED_ALL = sorted(_CLAUDE + _AGENTS + _GEMINI + _SHARED)
+```markdown
+because the skill format forbids dots in a name. Which one you get depends on
+what your host reads — and **GitHub Copilot is two hosts**, not one:
 ```
 
-Make the identical change in `test/install.test.js` (delete `COPILOT`, drop it from `copilot:` and `EXPECTED_ALL`).
+And replace the paragraph beginning "If a row shows no command form" with:
 
-Delete `test_copilot_install_does_not_touch_instructions_file` from `tests/test_installer_python.py` and `copilot install leaves copilot-instructions.md untouched` from `test/install.test.js`: both assert the installer leaves `.github/copilot-instructions.md` alone, which was only ever interesting because the installer used to edit it and then wrote a prompt file next to it. It now writes nothing under `.github/` at all — Step 5's absence test is the stronger statement.
-
-Delete `test_installs_copilot_prompt_file` (`tests/test_installer_python.py:127`) — it asserts a file that no longer exists.
-
-`test_selecting_one_tool_installs_both_of_its_commands` (`tests/test_installer_python.py:154`) is built entirely on Copilot's prompt files and cannot survive as written — Copilot no longer *has* two commands of its own. **Re-point it at Gemini rather than deleting it**, because the property it checks is still worth having: that selecting one host installs both of that host's commands and none of another's.
-
-```python
-def test_selecting_one_tool_installs_both_of_its_commands(
-    tmp_path: Path, run_python_installer
-) -> None:
-    """Re-pointed from Copilot to Gemini in 2.0.0. Copilot no longer installs
-    commands of its own — it reads the Agent Skill — so Gemini is now the
-    smallest host that still has a pair of command files to check."""
-    run_python_installer(tmp_path, tool="gemini")
-    commands = tmp_path / ".gemini" / "commands"
-    assert (commands / "code-flow.map.toml").is_file()
-    assert (commands / "code-flow.quality.toml").is_file()
-    assert not (tmp_path / ".claude").exists()
-    assert not (tmp_path / ".github").exists()
+```markdown
+If a row shows only one form, that host reads only one file. **VS Code Copilot
+Chat reads the prompt file** at `.github/prompts/`, where Agent Skills are still
+an experimental feature; **the Copilot CLI reads the skill** at `.agents/skills/`,
+where VS Code's documentation says prompt files are not used at all. Both were
+observed working on 2026-08-17. Both forms read and write the same `Code_Flows/`
+artifacts, so a flow mapped by one is readable by the other.
 ```
 
-Then grep both test files for `prompts/` and `copilot-instructions` and remove every remaining reference.
+- [ ] **Step 3: Retire the unverified caveat, because it is now verified**
 
-- [ ] **Step 4: Drop Copilot from the content contracts**
+Under `## Usage`, the **GitHub Copilot** block contains this paragraph:
 
-In `tests/test_template_contracts.py`:
+> Two things this project has **not** verified and therefore does not claim: that Copilot Chat exposes a *dotted* filename as a `/`-command (the `code-flow.map` name follows the [GitHub Spec Kit](https://github.com/github/spec-kit) prompt-file naming convention rather than any confirmed Copilot behavior), and whether Copilot surfaces other than VS Code read prompt files at all. If the slash form doesn't appear, use the Prompts picker.
 
-```python
-MAP_TEMPLATES = (
-    ("claude", "code-flow.map.md"),
-    ("gemini", "code-flow.map.toml"),
-)
+Replace it with:
+
+```markdown
+**Verified 2026-08-17** on VS Code 1.132.0 with Copilot Chat 0.35.3: `/code-flow.map`
+appears in chat and runs. The dotted name follows the [GitHub Spec Kit](https://github.com/github/spec-kit)
+prompt-file convention, and Copilot Chat does expose it as a `/`-command. That is one
+observation on one machine, not a guarantee for every version — if the slash form
+doesn't appear for you, use the Prompts picker.
+
+**In the Copilot CLI, use the skill instead:** `/code-flow-map`. The CLI is an Agent
+Host, and [VS Code's documentation](https://code.visualstudio.com/docs/copilot/customization/prompt-files)
+says agents on the Agent Host do not use prompt files. Skills in VS Code Chat are the
+mirror image — an [experimental feature](https://code.visualstudio.com/docs/agent-customization/agent-skills)
+added in 1.108 — so at present each Copilot surface has exactly one working form, and
+this package installs both.
 ```
 
-```python
-QUALITY_TEMPLATES = (
-    ("claude", "code-flow.quality.md"),
-    ("gemini", "code-flow.quality.toml"),
-)
+Leave the paragraph beginning "**If you don't use Copilot in VS Code**" exactly as it is. It covers github.com, JetBrains and Visual Studio, none of which were tested, and its advice is unchanged.
+
+- [ ] **Step 4: Document the new `--tool` values**
+
+Replace the `## CLI options` usage line with:
+
+```text
+code-flow-skill [--target PATH] [--tool claude|copilot|codex|antigravity|gemini|all]
 ```
 
-Several region-anchor regexes in that module carry a Copilot alternative — for example `_INDEX_SECTION_END = re.compile(r"\n(?:#### 7\.|7\.\s*\*\*Report)")` and `_DETECTORS_END = re.compile(r"\n(?:#### 4\.|4\.\s*\*\*)")`. **Leave every one of them exactly as it is.** They are harmless with two hosts, and their comments record why the Copilot alternative was written the way it was — evidence a future reader needs if a third host is ever added back. Removing them is a silent loss of reasoning for no gain.
+And add, immediately below that block:
 
-In `tests/test_host_parity.py`, delete `test_every_copilot_prompt_declares_agent_mode` entirely, including its docstring. It asserts a property of files that no longer exist.
+```markdown
+`--tool` names every supported host. `claude` writes `.claude/` and the shared
+scaffolds and nothing else — Claude Code does not read `.agents/skills/`, so a
+Claude-only project no longer gets four files nothing there opens. `codex` and
+`antigravity` write `.agents/skills/`, which is the whole of their integration.
+`copilot` writes `.agents/skills/` **and** `.github/prompts/`, because its two
+surfaces read different files. `gemini` adds `.gemini/commands/` on top.
 
-In `tests/test_packaging.py`, remove these two entries from `EXPECTED_IN_WHEEL`:
-
-```python
-    "code_flow_skill/templates/copilot/code-flow.map.prompt.md",
-    "code_flow_skill/templates/copilot/code-flow.quality.prompt.md",
+**If you upgraded from 1.0 and used `--tool claude`,** re-running the installer will
+not remove an `.agents/skills/` directory that an earlier version created. Delete it
+by hand if you want it gone; nothing on Claude Code reads it either way.
 ```
 
-- [ ] **Step 5: Assert the directory is gone and stays gone**
+- [ ] **Step 5: Fix the Copilot double-write paragraph**
 
-Append to `tests/test_template_contracts.py`:
+Under `## Skills and commands`, find the paragraph beginning "**On Copilot, the same skill lands in two directories it both scans.**" and change its final sentence from "`--tool copilot` writes only `.agents/skills/`, which sidesteps the question if Copilot is the only host you use." to:
 
-```python
-def test_no_copilot_template_directory(repo_root: Path) -> None:
-    """Copilot's prompt files were removed in 2.0.0; it is served by the Agent
-    Skill alone.
-
-    This is a tombstone, not a tidiness check. A half-finished revert that
-    restored `templates/copilot/` without restoring the installer entry would
-    ship two dead files inside both packages — `package.json`'s `files` list and
-    hatch's force-include both take `templates/` wholesale, so anything left in
-    that directory is published whether or not any code copies it.
-    """
-    assert not (repo_root / "templates" / "copilot").exists(), (
-        "templates/copilot/ is back; Copilot is served by "
-        "templates/shared/code-flow-*/SKILL.md, and anything under templates/ "
-        "ships in both packages whether or not the installer copies it"
-    )
+```markdown
+`--tool copilot` writes the skill to `.agents/skills/` only, so a Copilot-only install
+sidesteps the question entirely.
 ```
 
-- [ ] **Step 6: Cover any head rule Step 1 found unasserted**
+The rest of that paragraph is unchanged and still correct: `--tool all` does put the skill in both directories Copilot scans, and Copilot's docs still say nothing about precedence.
 
-If Step 1 found a rule stated in a `SKILL.md` head with no test, add one now, scoped to the head using the existing `_head(repo_root, skill_dir)` helper in `tests/test_skill_templates.py`. Follow the shape of the test that already lives there:
+- [ ] **Step 6: Write the CHANGELOG entry**
 
-```python
-def test_quality_skill_never_writes_source(repo_root: Path) -> None:
-    head = _head(repo_root, "code-flow-quality")
-    assert re.search(r"never edits source code", head, re.IGNORECASE), (
-        "the quality skill's head no longer states that it never edits source code"
-    )
+At the top of `CHANGELOG.md`, immediately below the intro paragraph and above `## [1.0.0]`:
+
+```markdown
+## [1.1.0]
+
+### Added
+
+- **`--tool` names every supported host**: `claude`, `copilot`, `codex`, `antigravity`,
+  `gemini`, `all`. `codex` and `antigravity` are new — `.agents/skills/` used to install
+  unconditionally purely for want of a way to ask for those two hosts.
+
+### Changed
+
+- **`--tool claude` no longer writes `.agents/skills/`.** Claude Code reads
+  `.claude/skills/` and not `.agents/`, so those four files were never opened by anything
+  in a Claude-only project. Re-running the installer does not remove an `.agents/skills/`
+  directory an earlier version created.
+
+### Documentation — and one thing this project got wrong
+
+- **GitHub Copilot is two surfaces, not one, and they read different files.** VS Code
+  Copilot Chat reads `.github/prompts/*.prompt.md` and answers to `/code-flow.map`; the
+  Copilot CLI reads `.agents/skills/` and answers to `/code-flow-map`. Both were observed
+  working on 2026-08-17 (VS Code 1.132.0, Copilot Chat 0.35.3, Copilot CLI 1.0.10). The
+  README presented one Copilot where there are two, which is why its naming looked
+  inconsistent.
+- **The caveat that `1.0.0` shipped about the dotted prompt-file name is retired.** It
+  said this project had "not verified and therefore does not claim" that Copilot Chat
+  exposes a dotted filename as a `/`-command. It does.
+- A planned `2.0.0` would have **deleted** the Copilot prompt files on the reasoning that
+  the skill had replaced them. It had not: skills in VS Code Chat are still experimental
+  and did not load, so that release would have left VS Code Copilot users with nothing.
+  The plan was overturned before implementation by ten minutes of opening both surfaces.
+  See `docs/superpowers/specs/2026-08-17-phase5-copilot-skills-only-design.md`.
 ```
-
-If Step 1 found nothing unasserted, write that finding in your report and skip this step — do not invent a test to have something to add here.
 
 - [ ] **Step 7: Run both suites**
 
@@ -530,204 +524,14 @@ uv run --group dev pytest -q
 npm test
 ```
 
-Expected: Python drops by roughly 34 (the Copilot parametrizations across both contract sets, the parity test, and the two installer tests) and gains 1 from Step 5; Node drops by 2. Report the actual numbers.
+Expected: both green, including `test_readme_files_written_table_lists_exactly_the_installed_set` — the Files-written table is unchanged by this task, because nothing was added to or removed from what the installer can write.
 
-- [ ] **Step 8: Mutation proof, three ways**
+- [ ] **Step 8: Mutation proof, two ways**
 
-1. Recreate `templates/copilot/` with a single empty file. Expected: `pytest tests/test_template_contracts.py -v` fails `test_no_copilot_template_directory`. Remove it.
-2. Add `"copilot"` back to `_TOOL_FILES` in `src/code_flow_skill/cli.py` pointing at the deleted templates. Expected: pytest fails the `copilot` row of `test_each_tool_installs_exactly_its_own_set` — with `FileNotFoundError`, since the source files are gone. Restore.
-3. Remove `"copilot"` from `VALID_TOOLS` in `bin/install.js`. Expected: `npm test` fails `--tool copilot installs exactly its own set`, which must still pass — Copilot stays selectable. Restore.
+1. Set `"version": "1.1.1"` in `package.json` only. Expected: pytest fails `test_package_versions_match_and_are_1_1_0` on the mismatch between the two manifests. Restore.
+2. Delete one `.agents/skills/` row from the README's Files-written table. Expected: pytest fails `test_readme_files_written_table_lists_exactly_the_installed_set` naming the missing path. Restore. (This confirms the table test is still live after Task 1 changed how the paths are composed.)
 
-- [ ] **Step 9: Confirm the packages no longer carry the templates**
-
-```bash
-npm pack --dry-run 2>&1 | grep -c "templates/copilot"
-```
-
-Expected: `0`.
-
-- [ ] **Step 10: Commit**
-
-```bash
-git add -A templates bin src tests test
-git commit -m "feat!: remove the Copilot prompt files; Copilot is served by the Agent Skill"
-```
-
----
-
-### Task 3: Docs, and the version
-
-**Files:**
-- Modify: `README.md`
-- Modify: `CHANGELOG.md`
-- Modify: `package.json`, `pyproject.toml`
-- Modify: `tests/test_packaging.py`
-
-**Interfaces:**
-- Consumes: the installed sets from Tasks 1 and 2.
-- Produces: nothing.
-
-- [ ] **Step 1: Re-point the version test, then bump both manifests**
-
-In `tests/test_packaging.py`, rename `test_package_versions_match_and_are_1_0_0` to `test_package_versions_match_and_are_2_0_0` and change the expected string from `"1.0.0"` to `"2.0.0"`. Run it and watch it fail:
-
-```bash
-uv run --group dev pytest tests/test_packaging.py -v
-```
-
-Expected: FAIL, both manifests still say `1.0.0`.
-
-Then set `"version": "2.0.0"` in `package.json` and `version = "2.0.0"` in `pyproject.toml`, and re-run. Expected: PASS.
-
-- [ ] **Step 2: Fix the README's per-host table**
-
-The table under the lede currently gives Copilot a command form. Replace that row:
-
-```markdown
-| GitHub Copilot | — | `/code-flow-map` |
-```
-
-And amend the sentence below the table, which currently says "Three hosts read both forms; three read only the skill", to:
-
-```markdown
-because the skill format forbids dots in a name. Two hosts read both forms; four
-read only the skill:
-```
-
-- [ ] **Step 3: Rewrite the README's Copilot usage block**
-
-Under `## Usage`, replace the whole **GitHub Copilot** block — from the `**GitHub Copilot**` heading through the paragraph beginning "**If you don't use Copilot in VS Code**" — with:
-
-```markdown
-**GitHub Copilot**
-
-```text
-/code-flow-map user login
-```
-
-Copilot reads the Agent Skill from `.agents/skills/`. It has no prompt file: the
-`.github/prompts/*.prompt.md` files that 0.x and 1.0 installed were removed in
-2.0.0, because [VS Code's own documentation](https://code.visualstudio.com/docs/copilot/customization/prompt-files)
-says agents on the Agent Host do not use prompt files and to convert them to
-skills. If you upgraded, delete `.github/prompts/code-flow.map.prompt.md` and
-`.github/prompts/code-flow.quality.prompt.md` by hand — the installer does not
-remove what it previously wrote.
-```
-
-- [ ] **Step 4: Fix the manual-install fence and the Verify step**
-
-In `### Manual install (no npm, no uvx)`, delete the `# GitHub Copilot` block and its two `cp` lines, and delete `.github/prompts` from the `mkdir -p` above them.
-
-In the `**3. Verify.**` paragraph, replace the Copilot clause — "For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat), and both skills alongside them; on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*." — with:
-
-```markdown
-In Copilot, look for the skills `/code-flow-map` and `/code-flow-quality`; there are no longer any prompt files to find.
-```
-
-- [ ] **Step 5: Fix the Files-written table and the `--tool` documentation**
-
-Delete the two `GitHub Copilot` rows from the `## Files written` table — the test `test_readme_files_written_table_lists_exactly_the_installed_set` compares it against `EXPECTED_ALL` and will fail until you do.
-
-Replace the `## CLI options` usage line with:
-
-```text
-code-flow-skill [--target PATH] [--tool claude|copilot|codex|antigravity|gemini|all]
-```
-
-And add, immediately below that block:
-
-```markdown
-`--tool` now names every supported host. `claude` writes `.claude/` and the shared
-scaffolds and nothing else — Claude Code does not read `.agents/skills/`, so a
-Claude-only project no longer gets four files nothing there opens. `copilot`,
-`codex` and `antigravity` write `.agents/skills/`, which is the whole of their
-integration. `gemini` adds its own `.gemini/commands/` on top.
-
-One consequence worth knowing if you use Copilot: **`--tool copilot` writes the
-skill exactly once.** Only `--tool all` puts it in both `.claude/skills/` and
-`.agents/skills/`, which are both directories Copilot scans.
-```
-
-Then find the paragraph under `## Skills and commands` that begins "**On Copilot, the same skill lands in two directories it both scans.**" and change its final sentence from "`--tool copilot` writes only `.agents/skills/`, which sidesteps the question if Copilot is the only host you use." to "`--tool copilot` writes only `.agents/skills/`, so a Copilot-only install sidesteps the question entirely."
-
-- [ ] **Step 6: Add the 1.0 → 2.0 upgrade note**
-
-At the top of `## Upgrading from 0.x to 1.0`, change the heading to `## Upgrading` and insert before the existing content:
-
-```markdown
-### 1.0 to 2.0
-
-**The Copilot prompt files are gone.** `.github/prompts/code-flow.map.prompt.md`
-and `.github/prompts/code-flow.quality.prompt.md` are no longer installed, and
-the installer does not delete what it previously wrote — remove them by hand.
-Copilot is served by the Agent Skill at `.agents/skills/code-flow-map/`, which
-1.0 already installed, so **if you installed 1.0 you already have the
-replacement.** Invoke it as `/code-flow-map` rather than `/code-flow.map`.
-
-**`--tool` gained `codex` and `antigravity`**, and no longer writes
-`.agents/skills/` for a Claude-only install. Re-running the installer with
-`--tool claude` will not remove an `.agents/skills/` directory an earlier version
-created; delete it by hand if you want it gone.
-
-### 0.x to 1.0
-```
-
-- [ ] **Step 7: Write the CHANGELOG entry**
-
-At the top of `CHANGELOG.md`, immediately below the intro paragraph and above `## [1.0.0]`:
-
-```markdown
-## [2.0.0]
-
-### Removed — breaking
-
-- **The GitHub Copilot prompt files.** `.github/prompts/code-flow.map.prompt.md`
-  and `.github/prompts/code-flow.quality.prompt.md` are no longer installed.
-  Copilot is served by the Agent Skill at `.agents/skills/`, which `1.0.0`
-  already installed. VS Code's own documentation says agents on the Agent Host
-  do not use prompt files and to convert them to skills, and this project never
-  verified that the dotted prompt-file name was exposed as a `/`-command at all.
-  The installer does not delete what it previously wrote; remove the two files by
-  hand. **See "Upgrading" in the README.**
-
-### Changed
-
-- **`--tool` names every supported host**: `claude`, `copilot`, `codex`,
-  `antigravity`, `gemini`, `all`. `codex` and `antigravity` are new, and exist
-  because `.agents/skills/` used to install unconditionally purely for want of a
-  way to ask for those two hosts.
-- **`--tool claude` no longer writes `.agents/skills/`.** Claude Code reads
-  `.claude/skills/` and not `.agents/`, so those four files were never opened by
-  anything in a Claude-only project.
-- **`--tool copilot` now writes the skill exactly once**, under `.agents/skills/`
-  only. Only `--tool all` places it in both directories Copilot scans.
-
-### Note on the release cadence
-
-`2.0.0` follows `1.0.0` by a day. Removing an installed integration is a breaking
-change whatever its age, and `1.0.0`'s own design document had already scheduled
-this removal for "a later major version" — that document simply expected more
-time to pass. Nothing in `1.0.0` was withdrawn from the registry.
-```
-
-- [ ] **Step 8: Run both suites**
-
-```bash
-uv run --group dev pytest -q
-```
-
-```bash
-npm test
-```
-
-Expected: both green, including `test_readme_files_written_table_lists_exactly_the_installed_set` and the renamed version test.
-
-- [ ] **Step 9: Mutation proof, two ways**
-
-1. Add a `| GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |` row back to the README's Files-written table. Expected: pytest fails `test_readme_files_written_table_lists_exactly_the_installed_set` naming the extra path. Remove it.
-2. Set `"version": "2.0.1"` in `package.json` only. Expected: pytest fails `test_package_versions_match_and_are_2_0_0` on the mismatch between the two manifests. Restore.
-
-- [ ] **Step 10: Check the release gate still describes reality**
+- [ ] **Step 9: Check the release gate still describes reality**
 
 Run:
 
@@ -735,19 +539,24 @@ Run:
 node scripts/prepublish-check.js
 ```
 
-Read checklist item 4. It names the hosts a maintainer may pick and tells them to confirm the skill is listed. It does not mention prompt files, so it needs no edit — but **confirm that by reading it**, and say so in your report. If it does mention them, fix it.
+Read checklist item 4. It tells the maintainer to pick a host and confirm the skill is listed, and names the per-host invocation forms. **It currently implies one Copilot.** Amend the Copilot clause so it names both surfaces and says which form to expect on each — a maintainer who checks VS Code Chat for `/code-flow-map` will find nothing and wrongly conclude the release is broken, which is precisely the confusion this phase exists to clear up.
 
-- [ ] **Step 11: Commit**
+Then add `assert.match(r.stdout, /Copilot CLI/i, "checklist does not distinguish the two Copilot surfaces");` to the checklist test in `test/prepublish-check.test.js`, run `npm test`, and mutation-prove it by deleting the clause.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add README.md CHANGELOG.md package.json pyproject.toml tests/test_packaging.py
-git commit -m "docs: document the Copilot removal and the per-host --tool, and bump to 2.0.0"
+git add README.md CHANGELOG.md package.json pyproject.toml tests/test_packaging.py scripts/prepublish-check.js test/prepublish-check.test.js
+git commit -m "docs: document the two Copilot surfaces and the per-host --tool, and bump to 1.1.0"
 ```
 
 ---
 
 ## Before this ships
 
-**`2.0.0` must not be published until a human has confirmed `/code-flow-map` loads in GitHub Copilot.** Phase 4's Decision 6 conditioned removing a host's command files on the skills being "confirmed working against all three hosts in the wild", and that has not happened for Copilot. Until it does, this phase deletes the only other thing that served Copilot on the strength of documentation alone. `scripts/prepublish-check.js` item 4 asks for exactly this observation; it must be done on **Copilot specifically** for this release, not on whichever host is most convenient.
+**Nothing here is release-blocked.** The gate that governed the previous revision of this plan — confirming the skill works on Copilot before deleting the prompt files — was run, and it is what overturned that plan. Nothing is being removed now, so no host can end up with less than it has today.
 
-That check is the release gate, not a task in this plan, and no test in this repository can stand in for it.
+Two things are worth doing anyway before publishing `1.1.0`:
+
+- **Re-run the manual browser pass.** `scripts/prepublish-check.js` items 1–3 cover the three HTML scaffolds, which no test in this repository renders. They are unchanged by this phase, but the gate does not track that and the checklist is cheap.
+- **Install into a real project with `--tool claude` and confirm no `.agents/` appears.** It is the one behaviour this phase takes away, and the tests assert it in a temp directory rather than in a project that already has one.
