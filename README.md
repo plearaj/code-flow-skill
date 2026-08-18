@@ -20,7 +20,7 @@ what your host reads — and **GitHub Copilot is two hosts**, not one:
 |---|---|---|
 | Claude Code | `/code-flow.map` | `/code-flow-map` |
 | GitHub Copilot (VS Code Chat) | `/code-flow.map` | — |
-| GitHub Copilot (CLI) | — | `/code-flow-map` |
+| GitHub Copilot (CLI) | `/code-flow.map` | `/code-flow-map` |
 | Gemini CLI (legacy) | `/code-flow.map` | `/code-flow-map` |
 | OpenAI Codex | — | `$code-flow-map`, or the `/skills` menu |
 | Antigravity CLI | — | `/code-flow-map` |

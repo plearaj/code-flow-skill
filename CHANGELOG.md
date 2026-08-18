@@ -47,7 +47,8 @@ from this repository at the same version.
 
 - **GitHub Copilot is two surfaces, not one, and they read different files.** VS Code
   Copilot Chat reads `.github/prompts/*.prompt.md` and answers to `/code-flow.map`; the
-  Copilot CLI reads `.agents/skills/` and answers to `/code-flow-map`. Both were observed
+  Copilot CLI reads both, and lists `/code-flow.map` and `/code-flow-map` side by side.
+  Both were observed
   working on 2026-08-17 (VS Code 1.132.0, Copilot Chat 0.35.3, Copilot CLI 1.0.10). The
   README presented one Copilot where there are two, which is why its naming looked
   inconsistent.
