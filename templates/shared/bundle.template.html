@@ -871,7 +871,7 @@ function renderReport(){
     none.className = "no-findings";
     var h2 = document.createElement("h2"); h2.textContent = "No quality report yet";
     var p = document.createElement("p");
-    p.textContent = "This bundle was generated before the quality command ran. Re-run /code-flow.quality " +
+    p.textContent = "This bundle was generated before the quality command ran. Re-run the quality command " +
       "and rebuild the bundle to add findings, coverage and confidence here.";
     none.appendChild(h2); none.appendChild(p);
     repApp.appendChild(none);
