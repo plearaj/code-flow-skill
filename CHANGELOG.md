@@ -30,7 +30,8 @@ from this repository at the same version.
   no other HTML. **No mode suppresses the JSON artifacts**, which `/code-flow.quality`
   reads. The bundle is rebuilt from those artifacts on every run, so it is never stale.
 - **`.code-flow/theme.css`** — every colour the pages use, as CSS custom properties at
-  their current defaults, commented out. Uncomment and edit; your values are inlined into
+  a current default value (the interactive viewer's, where the scaffolds disagree),
+  commented out. Uncomment and edit; your values are inlined into
   every generated page after the built-in styles. Absent or untouched, nothing changes.
   Keep both the `:root` and `[data-theme="light"]` blocks or the light/dark toggle will
   appear broken, which is why the shipped file has both. **The installer overwrites this

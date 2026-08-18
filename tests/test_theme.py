@@ -65,6 +65,43 @@ def test_shipped_theme_declares_both_palettes(repo_root: Path) -> None:
     )
 
 
+def _root_block_props(text: str) -> set[str]:
+    """Return every custom property name declared inside a `:root{...}` block.
+
+    Matches by name only (`--foo` before its colon), never by value — several
+    scaffolds intentionally disagree on the value of a handful of shared
+    properties (`--shadow`'s dark alpha, `--bg-2`'s light shade), and this
+    helper must not care.
+    """
+    match = re.search(r":root\{(.*?)\n\}", text, re.DOTALL)
+    assert match, "no :root{...} block found"
+    return set(re.findall(r"--[a-z0-9-]+(?=\s*:)", match.group(1)))
+
+
+def test_theme_lists_every_property_any_scaffold_declares(repo_root: Path) -> None:
+    """`theme.css` is documented (README, CHANGELOG) as the complete menu of
+    colours the pages use. Nothing enforced that claim — a property could be
+    added to a scaffold's `:root` block and never make it into the editable
+    theme, which is exactly how `--high`/`--medium`/`--low` (the quality
+    report's per-severity accents) and `--section`/`--section-ghost` (the index
+    page's headings) went missing. This asserts presence only: the four
+    scaffolds are allowed to disagree on a property's exact shade, but not on
+    whether the property exists for a user to edit at all.
+    """
+    theme_css = (repo_root / "templates" / "shared" / "theme.css").read_text(encoding="utf-8")
+    theme_props = set(re.findall(r"--[a-z0-9-]+(?=\s*:)", theme_css))
+
+    for name in THEMED_SCAFFOLDS:
+        text = (repo_root / "templates" / "shared" / name).read_text(encoding="utf-8")
+        scaffold_props = _root_block_props(text)
+        missing = scaffold_props - theme_props
+        assert not missing, (
+            f"{name} declares {sorted(missing)} in :root that theme.css never "
+            f"mentions — the shipped theme is no longer the complete menu it is "
+            f"documented as being"
+        )
+
+
 def test_shipped_theme_is_inert(repo_root: Path) -> None:
     """Every declaration in the shipped file must be commented out.
 

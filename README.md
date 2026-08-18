@@ -97,7 +97,8 @@ file, which is why `files` is still the default.
 ### Your own colours
 
 The installer writes `.code-flow/theme.css` listing every colour the pages use as a CSS
-custom property, at its current default, commented out. Uncomment what you want to change:
+custom property, commented out at a current default value — the interactive viewer's,
+where the four scaffolds disagree on the exact shade. Uncomment what you want to change:
 
 ```css
 :root {

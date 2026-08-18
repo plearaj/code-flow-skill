@@ -45,6 +45,15 @@
   /* --lane-line:rgba(233,233,237,.06); */
   /* --shadow:0 0 0 1px #3f424d, 0 6px 18px rgba(0,0,0,.55); */
   /* --glow:0 0 0 1px rgba(145,132,217,.4), 0 6px 24px rgba(145,132,217,.14); */
+
+  /* Quality report — per-severity accent on every finding */
+  /* --high:#b5abfc; */
+  /* --medium:#796cbf; */
+  /* --low:#595d6c; */
+
+  /* Index page — section headings */
+  /* --section:#262a60; */
+  /* --section-ghost:#4c5397; */
 }
 [data-theme="light"]{
   /* --bg:#f3f5fe; */
@@ -81,4 +90,13 @@
   /* --lane-line:rgba(41,43,49,.07); */
   /* --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08); */
   /* --glow:0 0 0 1px rgba(93,82,148,.35), 0 6px 20px rgba(93,82,148,.12); */
+
+  /* Quality report — per-severity accent on every finding */
+  /* --high:#423a6a; */
+  /* --medium:#796cbf; */
+  /* --low:#75798c; */
+
+  /* Index page — section headings */
+  /* --section:#d2cefd; */
+  /* --section-ghost:#9690c9; */
 }
