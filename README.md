@@ -64,7 +64,7 @@ If you invoke the skill with no argument, the assistant will survey the project 
 Alongside the markdown, the assistant produces a **single self-contained HTML file** you can explore in a browser — no server, no build step, no internet required. Just double-click it. It renders the flow as a browsable graph where you can:
 
 - **Pan/zoom** the layered call graph and **Fit** it to view.
-- **Click any function node** to open a side panel with its description, `file:line`, a code snippet, an "Open in VS Code" link, and clickable **Called by** / **Calls** lists to walk the flow.
+- **Click any function node** to open a side panel with its description, `file:line`, a code snippet, an "Open in VS Code" link, and clickable **Called by** / **Calls** lists to walk the flow. The panel needs a window at least 720px wide; below that it is hidden and the graph gets the whole width.
 - **Search/filter** functions by name, file, or description.
 - **Highlight a path** — selecting a node lights up its full ancestor and descendant chain, answering "how did execution get here?" and "what happens next?".
 - Toggle **light/dark** theme (persisted).
@@ -469,7 +469,8 @@ additive, never rewrites or deletions. If that trade is not one you want, use th
 command form on those hosts, or don't install the skill.
 
 **The flags work the same in both.** `--whole-code-base`, `--detail
-thin|standard|verbose` and `--read-code` are read out of what you type either way.
+thin|standard|verbose`, `--output files|bundle|both` and `--read-code` are read out
+of what you type either way.
 The skill format has no `$ARGUMENTS` substitution, so the skills advertise their
 flags through `argument-hint` instead — your host shows them during autocomplete.
 
