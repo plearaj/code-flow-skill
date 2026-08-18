@@ -116,7 +116,7 @@ if (process.env.CODE_FLOW_RELEASE_CHECKED === "1") {
 console.error(
   `Publish blocked: the checklist above has not been acknowledged.
 
-Once you have actually opened all three pages, re-run with:
+Once you have actually opened all four pages, re-run with:
 
   CODE_FLOW_RELEASE_CHECKED=1 npm publish --access public
 

@@ -31,6 +31,16 @@ test("prepublish check blocks the publish when the checklist is unacknowledged",
     /CODE_FLOW_RELEASE_CHECKED=1/,
     "the failure must say how to proceed, or it is an obstacle rather than a gate"
   );
+  // The scaffold count lives in two places: the checklist on stdout and this
+  // last instruction on stderr. Only the first was pinned, so when the bundle
+  // made it four the blocked message kept telling people to open three — the
+  // very last thing they read before publishing.
+  assert.doesNotMatch(
+    r.stderr,
+    /all three pages/i,
+    "the blocked message still names three scaffolds"
+  );
+  assert.match(r.stderr, /all four pages/i, "the blocked message must name all four scaffolds");
 });
 
 test("prepublish check passes once the checklist is acknowledged", () => {
