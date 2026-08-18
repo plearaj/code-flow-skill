@@ -225,6 +225,38 @@ That's it — no install step runs any code on your machine. If you later want t
 
 ## Usage
 
+### Commands and flags
+
+Two commands, and every flag either one takes. Both read and write the same
+`Code_Flows/` artifacts, so anything mapped by one is available to the other. Use the
+hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts whose row in
+[the table at the top](#code-flow-skill) says so.
+
+| Command | Does |
+|---|---|
+| `/code-flow.map <flow name>` | Traces one flow and writes its markdown, HTML and JSON |
+| `/code-flow.map` (no argument) | Surveys the project and suggests 3–5 flows to pick from |
+| `/code-flow.quality` | Reports DRY, KISS and YAGNI findings from what the map recorded |
+
+| Flag | On | Default | Does |
+|---|---|---|---|
+| `--whole-code-base` | map | off | Catalogues every function, then discovers entry points and traces flows from them. [Details](#whole-codebase-mode) |
+| `--detail thin\|standard\|verbose` | map | `standard` | How much evidence the function catalogue carries. Only affects whole-codebase mode. [Details](#whole-codebase-mode) |
+| `--output files\|bundle\|both` | map | `files` | Which HTML gets written. `both` adds the single-file bundle; `bundle` writes only it. Never skips the JSON. [Details](#one-file-you-can-send-someone) |
+| `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. [Details](#quality-reporting) |
+
+```text
+/code-flow.map user login
+/code-flow.map user login --output both
+/code-flow.map --whole-code-base --detail verbose
+/code-flow.quality --read-code
+```
+
+Flags work identically in the command and skill forms — see
+[Skills and commands](#skills-and-commands).
+
+### Invoking on your host
+
 After installing (see below), invoke from inside your project:
 
 **Claude Code**
