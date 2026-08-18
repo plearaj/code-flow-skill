@@ -94,14 +94,14 @@ If `.code-flow/bundle.template.html` does not exist, say so and skip the bundle.
 
 ### Output Location
 
-All five outputs go in `Code_Flows/` at the project root — create that directory if it does not exist. None of them is optional:
+All outputs go in `Code_Flows/` at the project root — create that directory if it does not exist. Which HTML pages get written depends on `--output` (step 1): the markdown document, the flow sidecar, and the index registry are never optional; the per-flow interactive page and `index.html` are written unless `--output` is `bundle`, in which case the bundle page replaces them and they are skipped; the bundle itself is written only when `--output` is `bundle` or `both`.
 
-- `Code_Flows/<functionality_name>.md` — the flow document (step 4)
-- `Code_Flows/<functionality_name>.html` — the interactive page (step 5)
-- `Code_Flows/<functionality_name>.json` — the flow sidecar (step 6)
-- `Code_Flows/index.json` — the shared flow registry, created or updated in place, never rewritten from scratch (step 6)
-- `Code_Flows/index.html` — the flow index, rebuilt from that registry every time it is written (step 6)
-- `Code_Flows/code-flow.html` — the bundle, written only when `--output` is `bundle` or `both` (see "The bundle" above)
+- `Code_Flows/<functionality_name>.md` — the flow document (step 4). Always written.
+- `Code_Flows/<functionality_name>.html` — the interactive page (step 5). Written unless `--output` is `bundle`.
+- `Code_Flows/<functionality_name>.json` — the flow sidecar (step 6). Always written.
+- `Code_Flows/index.json` — the shared flow registry, created or updated in place, never rewritten from scratch (step 6). Always written.
+- `Code_Flows/index.html` — the flow index, rebuilt from that registry every time it is written (step 6). Written unless `--output` is `bundle`.
+- `Code_Flows/code-flow.html` — the bundle, written only when `--output` is `bundle` or `both` (see "The bundle" above).
 
 ## Whole-codebase mode
 
