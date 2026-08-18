@@ -118,7 +118,12 @@ console.error(
 
 Once you have actually opened all four pages, re-run with:
 
-  CODE_FLOW_RELEASE_CHECKED=1 npm publish --access public
+  bash / zsh:
+    CODE_FLOW_RELEASE_CHECKED=1 npm publish --access public
+
+  PowerShell (no inline VAR=value prefix — clear it again afterwards, or the
+  next publish in this session skips the gate without telling you):
+    $env:CODE_FLOW_RELEASE_CHECKED = "1"; npm publish --access public; Remove-Item Env:CODE_FLOW_RELEASE_CHECKED
 
 The same checklist governs the PyPI release, which has no equivalent hook —
 run \`npm run release-check\` by hand before \`uv publish\`.

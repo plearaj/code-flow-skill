@@ -680,6 +680,14 @@ npm run release-check
 CODE_FLOW_RELEASE_CHECKED=1 npm publish --access public
 ```
 
+PowerShell has no inline `VAR=value` prefix, so that line fails there with
+`CommandNotFoundException`. Set it, publish, then clear it — left set, the next
+publish in the same session skips the gate without saying so:
+
+```powershell
+$env:CODE_FLOW_RELEASE_CHECKED = "1"; npm publish --access public; Remove-Item Env:CODE_FLOW_RELEASE_CHECKED
+```
+
 ### PyPI
 
 `uv publish` has no equivalent hook, so the same checklist is on you here — run
