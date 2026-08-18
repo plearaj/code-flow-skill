@@ -13,21 +13,29 @@ install only where Gemini CLI is actually in use).
 **Two names, and which one you get depends on your host.** The original command
 and prompt files use a dot — `/code-flow.map`. The newer
 [Agent Skill](#skills-and-commands) form uses a hyphen — `/code-flow-map` —
-because the skill format forbids dots in a name. Three hosts read both forms;
-three read only the skill:
+because the skill format forbids dots in a name. Which one you get depends on
+what your host reads — and **GitHub Copilot is two hosts**, not one:
 
 | Host | Command / prompt file | Agent Skill |
 |---|---|---|
 | Claude Code | `/code-flow.map` | `/code-flow-map` |
-| GitHub Copilot | `/code-flow.map` (VS Code only — [see below](#github-copilot)) | `/code-flow-map` |
+| GitHub Copilot (VS Code Chat) | `/code-flow.map` | — |
+| GitHub Copilot (CLI) | — | `/code-flow-map` |
 | Gemini CLI (legacy) | `/code-flow.map` | `/code-flow-map` |
 | OpenAI Codex | — | `$code-flow-map`, or the `/skills` menu |
 | Antigravity CLI | — | `/code-flow-map` |
 | Antigravity IDE | — | mention `code-flow-map` by name |
 
-If a row shows no command form, that host never had one and does not get one —
-**the hyphenated skill is the only way in.** Both forms read and write the same
-`Code_Flows/` artifacts, so a flow mapped by one is readable by the other.
+If a row shows only one form, that host reads only one file. Both forms read and
+write the same `Code_Flows/` artifacts, so a flow mapped by one is readable by the
+other.
+
+**GitHub Copilot is two surfaces.** VS Code Copilot Chat lists the prompt file and
+not the skill — Agent Skills there are still an
+[experimental feature](https://code.visualstudio.com/docs/agent-customization/agent-skills).
+The Copilot CLI lists **both**, so you will see `/code-flow.map` and `/code-flow-map`
+side by side: two commands doing the same job, one from each form, not a duplicate.
+Observed 2026-08-17 on VS Code 1.132.0 with Copilot Chat 0.35.3, and Copilot CLI 1.0.10.
 
 Everything below uses the dotted form when it means the command and the
 hyphenated form when it means the skill. Where only one exists for your host,
@@ -64,6 +72,51 @@ Alongside the markdown, the assistant produces a **single self-contained HTML fi
 Node colors distinguish `entry` points, ordinary `step`s, `external` (third-party) boundaries, and `io` (DB/network/file) side effects. Edges distinguish plain `call`s, `async` calls (dashed), `conditional` branches (labeled), and `back`/cycle edges.
 
 **How it works:** the installer drops a viewer scaffold at `.code-flow/viewer.template.html`. When you run the command, the assistant only has to emit a small JSON data block and inject it into that scaffold — so the interactive page is produced reliably, and the page self-validates (showing a clear error card, never a blank screen, if the data is malformed). If the scaffold is missing, the assistant falls back to a minimal Mermaid-based page.
+
+## Output and appearance
+
+### One file you can send someone
+
+By default `/code-flow.map` writes what it always has: `Code_Flows/index.html`, one page
+per flow, and `quality-report.html`. Add `--output both` and it also writes
+**`Code_Flows/code-flow.html`** — a single self-contained page carrying the index, every
+mapped flow and the quality report. One file, no server, opens from `file://`. Use
+`--output bundle` to write that page and no other HTML.
+
+```text
+/code-flow.map --output both
+```
+
+The bundle is rebuilt from `Code_Flows/`'s JSON artifacts every run, so it is never
+stale — and **no `--output` mode ever skips those artifacts**, because `/code-flow.quality`
+reads them.
+
+It carries every flow, so it grows with your map. On a large repository that is a large
+file, which is why `files` is still the default.
+
+### Your own colours
+
+The installer writes `.code-flow/theme.css` listing every colour the pages use as a CSS
+custom property, at its current default, commented out. Uncomment what you want to change:
+
+```css
+:root {
+  --accent: #7c5cff;
+}
+[data-theme="light"] {
+  --accent: #5b3fd6;
+}
+```
+
+Your declarations are inlined into every generated page after the built-in styles, so they
+win. Leave the file alone and nothing changes.
+
+**Keep both blocks.** `:root` is the dark palette and `[data-theme="light"]` is the light
+one, and they have equal CSS specificity — set only `:root` and your colours apply in both
+modes, making the theme toggle look broken.
+
+**Re-running the installer overwrites `.code-flow/theme.css`**, along with the other
+templates in that directory. Keep your edits in version control or a copy elsewhere.
 
 ## Install
 
@@ -191,7 +244,17 @@ Prompt files — `.github/prompts/*.prompt.md` with `agent: agent` frontmatter, 
 /code-flow.map user login
 ```
 
-Two things this project has **not** verified and therefore does not claim: that Copilot Chat exposes a *dotted* filename as a `/`-command (the `code-flow.map` name follows the [GitHub Spec Kit](https://github.com/github/spec-kit) prompt-file naming convention rather than any confirmed Copilot behavior), and whether Copilot surfaces other than VS Code read prompt files at all. If the slash form doesn't appear, use the Prompts picker.
+**Verified 2026-08-17** on VS Code 1.132.0 with Copilot Chat 0.35.3: `/code-flow.map`
+appears in chat and runs. The dotted name follows the [GitHub Spec Kit](https://github.com/github/spec-kit)
+prompt-file convention, and Copilot Chat does expose it as a `/`-command. That is one
+observation on one machine, not a guarantee for every version — if the slash form
+doesn't appear for you, use the Prompts picker.
+
+**The Copilot CLI lists both forms**, so `/code-flow.map` and `/code-flow-map` appear
+side by side there. They are two commands doing the same job — one from the prompt file,
+one from the skill — not a duplicate entry. Either should work; this package installs
+both because VS Code Chat has only the first and Codex, Antigravity and Gemini CLI have
+only the second.
 
 **If you don't use Copilot in VS Code**, assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
 
@@ -339,9 +402,9 @@ today, it still works.
 the legacy Gemini CLI have command or prompt files and now also have skills. **OpenAI
 Codex, Antigravity CLI and Antigravity IDE have never had a command file and do not
 get one** — they read `.agents/skills/` and nothing else, so for them the hyphenated
-skill is not an alternative form, it is the whole integration. Codex in particular
-needs no `--tool` value of its own: every install writes `.agents/skills/`, which is
-all it reads. See the [table at the top](#code-flow-skill) for which row you are in.
+skill is not an alternative form, it is the whole integration. `--tool codex` and
+`--tool antigravity` write exactly that directory and nothing else. See the
+[table at the top](#code-flow-skill) for which row you are in.
 
 Where both forms exist, they differ in three ways worth knowing before you pick one.
 
@@ -383,8 +446,8 @@ confirm, which is why that step is in the skill body rather than in frontmatter.
 all` writes `code-flow-map` to both `.claude/skills/` and `.agents/skills/`;
 Copilot's docs list both as read locations but say nothing about precedence or
 de-duplication when a name appears in both, so whether you see it once or
-twice there is unverified here. `--tool copilot` writes only `.agents/skills/`,
-which sidesteps the question if Copilot is the only host you use.
+twice there is unverified here. `--tool copilot` writes the skill to `.agents/skills/`
+only, so a Copilot-only install sidesteps the question entirely.
 
 Codex reads that policy from its own metadata file rather than from `SKILL.md`,
 so both files ship. On Codex, explicit invocation is `$code-flow-map` or the
@@ -412,8 +475,19 @@ flags through `argument-hint` instead — your host shows them during autocomple
 ## CLI options
 
 ```text
-code-flow-skill [--target PATH] [--tool claude|gemini|copilot|all]
+code-flow-skill [--target PATH] [--tool claude|copilot|codex|antigravity|gemini|all]
 ```
+
+`--tool` names every supported host. `claude` writes `.claude/` and the shared
+scaffolds and nothing else — Claude Code does not read `.agents/skills/`, so a
+Claude-only project no longer gets four files nothing there opens. `codex` and
+`antigravity` write `.agents/skills/`, which is the whole of their integration.
+`copilot` writes `.agents/skills/` **and** `.github/prompts/`, because its two
+surfaces read different files. `gemini` adds `.gemini/commands/` on top.
+
+**If you upgraded from 1.0 and used `--tool claude`,** re-running the installer will
+not remove an `.agents/skills/` directory that an earlier version created. Delete it
+by hand if you want it gone; nothing on Claude Code reads it either way.
 
 Defaults: `--tool all`, `--target .`.
 
@@ -470,9 +544,16 @@ every `--tool all` install.
 
 The `.code-flow/viewer.template.html`, `.code-flow/report.template.html`, `.code-flow/index.template.html`, `.code-flow/bundle.template.html` and `.code-flow/theme.css` files are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of the scaffolds and every scaffold inlines the theme.
 
-`.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host except Claude Code reads. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
+`.agents/skills/` is **not** unconditional: it installs when your `--tool` selection
+includes `copilot`, `codex`, `antigravity`, or `gemini` — the hosts that read it — and
+is skipped for a bare `--tool claude`, which writes no `.agents/` directory at all.
+`.claude/skills/` is the one directory only Claude Code reads, so it installs with the
+`claude` selection — `--tool gemini` still leaves no `.claude/` directory in your
+project.
 
-**OpenAI Codex has no `--tool` value and does not need one.** It discovers repository skills from `.agents/skills/`, which every install writes.
+**OpenAI Codex and Antigravity CLI each have their own `--tool` value**, `codex` and
+`antigravity`, and each writes only `.agents/skills/` — the whole of what that host
+reads.
 
 ## Upgrading from 0.x to 1.0
 

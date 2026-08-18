@@ -87,8 +87,8 @@ def _declared_version(repo_root: Path) -> str:
     return npm_version
 
 
-def test_package_versions_match_and_are_1_0_0(repo_root: Path) -> None:
-    assert _declared_version(repo_root) == "1.0.0"
+def test_package_versions_match_and_are_1_1_0(repo_root: Path) -> None:
+    assert _declared_version(repo_root) == "1.1.0"
 
 
 def test_changelog_leads_with_the_version_being_shipped(repo_root: Path) -> None:

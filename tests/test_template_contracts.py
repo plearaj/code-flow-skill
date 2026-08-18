@@ -1908,3 +1908,45 @@ def test_map_template_inlines_the_theme_in_the_bundle_step(
         f"{host}/{name} step 6d (the bundle) does not say what to do when "
         f"theme.css is absent"
     )
+
+
+# --- Phase 5: the detail panel's responsive breakpoint ----------------------
+
+# The panel's own selector differs by scaffold: the viewer's styles are bare
+# (`#panel`), the bundle's are namespaced under the multi-view page
+# (`#view-flow #panel`). Paired with the scaffold name so one parametrized
+# test covers both without either selector leaking into the other file.
+PANEL_SCAFFOLDS = (
+    ("viewer.template.html", "#panel"),
+    ("bundle.template.html", "#view-flow #panel"),
+)
+
+
+@pytest.mark.parametrize("name,selector", PANEL_SCAFFOLDS)
+def test_detail_panel_survives_to_at_least_720px(
+    repo_root: Path, name: str, selector: str
+) -> None:
+    """The detail panel is the only way to inspect a node: click it, read its
+    description, its `file:line`, its source excerpt, and walk its callers and
+    callees. Hiding it below 900px left a tablet in portrait (768px), or a
+    bundle opened on any window the sender does not control, with a graph and
+    no way to inspect anything in it.
+
+    Extracted the breakpoint number out of the CSS rather than string-matching
+    the whole rule, so this states the contract — the panel survives to at
+    least 720px — rather than pinning today's formatting. The minimap keeps
+    its own 900px cutoff; this test does not touch it.
+    """
+    text = _scaffold(repo_root, name)
+    pattern = re.compile(
+        r"@media\s*\(max-width:(\d+)px\)\s*\{\s*"
+        + re.escape(selector)
+        + r"\{display:none\}"
+    )
+    match = pattern.search(text)
+    assert match, f"{name} has no max-width breakpoint that hides {selector!r}"
+    breakpoint_px = int(match.group(1))
+    assert breakpoint_px <= 720, (
+        f"{name} hides the detail panel ({selector!r}) at {breakpoint_px}px; "
+        f"it must survive down to at least 720px"
+    )

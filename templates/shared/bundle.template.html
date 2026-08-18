@@ -453,7 +453,14 @@ html,body{height:100%; background:var(--bg)}
 #view-flow .keys{display:grid; grid-template-columns:auto 1fr; gap:6px 10px; font-size:11.5px; color:var(--dim); align-items:center}
 #view-flow kbd{font:10px ui-monospace,Menlo,monospace; border:1px solid var(--border); border-bottom-width:2px;
   border-radius:5px; padding:2px 6px; background:var(--bg-2); color:var(--text); white-space:nowrap}
-@media (max-width:900px){ #view-flow #panel{display:none} #view-flow #mini{display:none} }
+/* The minimap is a navigation luxury and genuinely unusable this small, so it
+   still drops at 900px. The panel is the only way to inspect a node — click,
+   read description/file:line/snippet, walk callers and callees — so it earns
+   a narrower width instead of disappearing, and survives down to a tablet in
+   portrait (768px). */
+@media (max-width:900px){ #view-flow #mini{display:none} }
+@media (max-width:900px) and (min-width:720px){ #view-flow #panel{width:300px} }
+@media (max-width:719px){ #view-flow #panel{display:none} }
 </style>
 </head>
 <body>

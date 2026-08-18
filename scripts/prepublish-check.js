@@ -23,29 +23,39 @@ const SCAFFOLDS = [
   "templates/shared/viewer.template.html",
   "templates/shared/report.template.html",
   "templates/shared/index.template.html",
+  "templates/shared/bundle.template.html",
 ];
 
 const CHECKLIST = `
 Release checklist — the rendering and the skill loading no test here covers
 ===========================================================================
 
-Steps 1-3 cover the three HTML scaffolds:
+Steps 1-3 cover the four HTML scaffolds:
 
   ${SCAFFOLDS.join("\n  ")}
 
 Each is checked for what it says, never for how a browser draws it. A
 malformed substitution would blank the page in a user's browser and every
-test here would still pass.
+test here would still pass. templates/shared/bundle.template.html is the one
+that most needs opening: it does what the other three do in a single
+document, and nothing in either suite renders it.
 
 Step 4 covers the two skills. Their names, frontmatter and Codex policy file
 are checked against what the vendors document; nothing here starts a host and
 watches it load one.
+
+Step 5 covers the user theme, which nothing in either suite renders either.
 
   1. Run /code-flow.map and /code-flow.quality against any project. Open the
      resulting Code_Flows/index.html, Code_Flows/<flow>.html and
      Code_Flows/quality-report.html in a browser. Confirm each draws its
      flow list, its diagram or its findings — not a blank page, not a raw
      JSON dump.
+
+     Then open a generated Code_Flows/code-flow.html (run with --output both
+     or --output bundle to get one) and walk it: the landing view lists the
+     same flows as index.html, opening a flow shows its graph, and the
+     quality report is reachable from the same page.
 
   2. Corrupt the embedded JSON in each (change a character inside the
      <script type="application/json"> block so it no longer parses) and
@@ -58,12 +68,21 @@ watches it load one.
 
   4. Install into a scratch project with --tool all and open one host. Confirm
      code-flow-map is listed wherever that host lists skills — the slash menu
-     on Claude Code, Copilot or Antigravity CLI; \`$code-flow-map\` or the
+     on Claude Code, Copilot CLI or Antigravity CLI; \`$code-flow-map\` or the
      /skills menu on Codex; by name on Antigravity IDE, which documents no
      slash syntax at all. An invalid or duplicated skill name does not warn;
      the skill just silently does not load, or loads twice. On Copilot, which
      reads both .claude/skills/ and .agents/skills/, confirm it is listed once
      rather than twice.
+
+     Copilot is two surfaces, not one, and they do not show the same thing.
+     VS Code Copilot Chat lists the prompt file as /code-flow.map and — as of
+     2026-08-17 — does not list the skill, because Agent Skills there are
+     still experimental. The Copilot CLI lists both: /code-flow.map from the
+     prompt file and /code-flow-map from the skill, side by side. Checking VS
+     Code Chat for /code-flow-map, or the Copilot CLI for only one of the two,
+     is not a failed install — confirm each surface against the form it
+     actually reads before concluding anything is broken.
 
      Then pick one host whose row in the README's guarantee table says No —
      Claude Code, Copilot or Codex — and confirm two things there that "it
@@ -75,7 +94,14 @@ watches it load one.
      running host in this repository; this step is the only thing that ever
      will observe one.
 
-Do this for ALL THREE files, and do step 4 for at least one host. A change to
+  5. Uncomment one property in a generated project's .code-flow/theme.css,
+     regenerate any page, and confirm the colour changed — in both light and
+     dark. A user's CSS is inlined into the page verbatim and nothing in
+     either suite validates it, so this is the only check theming will ever
+     get. Getting this step wrong looks like a broken light/dark toggle, not
+     like an error.
+
+Do this for ALL FOUR files, and do step 4 for at least one host. A change to
 any scaffold's rendering — or to a skill's name or frontmatter — re-opens the
 gap, and the suites will not tell you.
 `;

@@ -55,6 +55,10 @@ test("prepublish check names every scaffold and every manual step", () => {
   assert.match(r.stdout, /Flows link/i, "step 3 must name the round trip between pages");
   assert.match(r.stdout, /slash menu/i, "checklist does not cover skill loading");
   assert.match(r.stdout, /rather than\s+twice/i, "checklist does not cover duplicate registration");
+  assert.match(r.stdout, /Copilot CLI/i, "checklist does not distinguish the two Copilot surfaces");
+  assert.match(r.stdout, /bundle\.template\.html/, "checklist does not name the bundle scaffold");
+  assert.match(r.stdout, /theme\.css/, "checklist does not cover a themed render");
+  assert.match(r.stdout, /ALL FOUR/i, "checklist still says three scaffolds");
 });
 
 test("npm runs the gate on publish, and it is runnable by hand for the PyPI release", () => {
