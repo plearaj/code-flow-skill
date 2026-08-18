@@ -245,3 +245,38 @@ test("index.template.html: a flow entry without a slug is reported", () => {
   assert.equal(v.ok, false);
   assert.match(v.lines.join(" "), /flows\[0\] is missing a string `slug`/);
 });
+
+// The bundle scaffold marks the same sentinels as the three scaffolds above,
+// so it is lifted the same way. `liftValidator` is just `extractValidate`
+// under the name this suite's cases use for it.
+const liftValidator = extractValidate;
+
+const bundleValidate = liftValidator("bundle.template.html");
+
+test("bundle validator rejects the unreplaced token", () => {
+  // Written as a concatenation so a naive string replace over this file cannot
+  // rewrite the check itself — the same guard the other three scaffolds use.
+  const TOKEN = "__BUNDLE" + "_DATA__";
+  const r = bundleValidate(TOKEN, TOKEN);
+  assert.equal(r.ok, false);
+  assert.match(r.error, /not been generated|placeholder/i);
+});
+
+test("bundle validator rejects malformed JSON", () => {
+  const r = bundleValidate("{not json", "__BUNDLE" + "_DATA__");
+  assert.equal(r.ok, false);
+});
+
+test("bundle validator requires an index and a flows array", () => {
+  const TOKEN = "__BUNDLE" + "_DATA__";
+  assert.equal(bundleValidate('{"flows":[]}', TOKEN).ok, false, "missing index");
+  assert.equal(bundleValidate('{"index":{}}', TOKEN).ok, false, "missing flows");
+});
+
+test("bundle validator accepts a report-less bundle", () => {
+  // `report` is optional: a project that has never run /code-flow.quality has
+  // no quality-report.json, and that is not an error.
+  const TOKEN = "__BUNDLE" + "_DATA__";
+  const data = '{"index":{"flows":[]},"flows":[]}';
+  assert.equal(bundleValidate(data, TOKEN).ok, true);
+});

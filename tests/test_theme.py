@@ -18,6 +18,7 @@ THEMED_SCAFFOLDS = (
     "viewer.template.html",
     "report.template.html",
     "index.template.html",
+    "bundle.template.html",
 )
 
 

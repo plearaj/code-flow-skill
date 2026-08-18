@@ -11,6 +11,7 @@ import pytest
 # "Files written" table must match, since that table answers "what *can* end up
 # in my repo", not "what happened in your project".
 _SHARED = [
+    ".code-flow/bundle.template.html",
     ".code-flow/index.template.html",
     ".code-flow/report.template.html",
     ".code-flow/theme.css",
@@ -122,7 +123,12 @@ def test_both_shared_scaffolds_are_installed_regardless_of_tool(
     """The scaffolds are tool-agnostic: every command template references one
     of them, so selecting a single host must still install both."""
     run_python_installer(tmp_path, tool="claude")
-    for name in ("viewer.template.html", "report.template.html", "index.template.html"):
+    for name in (
+        "viewer.template.html",
+        "report.template.html",
+        "index.template.html",
+        "bundle.template.html",
+    ):
         assert (tmp_path / ".code-flow" / name).is_file(), f"{name} was not installed"
 
 
@@ -224,6 +230,8 @@ def test_installed_files_are_byte_identical_to_their_templates(
             repo_root / "templates" / "shared" / "viewer.template.html",
         tmp_path / ".code-flow" / "report.template.html":
             repo_root / "templates" / "shared" / "report.template.html",
+        tmp_path / ".code-flow" / "bundle.template.html":
+            repo_root / "templates" / "shared" / "bundle.template.html",
         tmp_path / ".claude" / "commands" / "code-flow.quality.md":
             repo_root / "templates" / "claude" / "code-flow.quality.md",
         tmp_path / ".gemini" / "commands" / "code-flow.quality.toml":

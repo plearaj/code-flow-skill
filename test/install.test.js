@@ -25,6 +25,7 @@ export function tempTarget() {
 // installers (this one and src/code_flow_skill/cli.py) are asserted against the
 // same literal list, which is what keeps them in lockstep.
 const SHARED = [
+  ".code-flow/bundle.template.html",
   ".code-flow/index.template.html",
   ".code-flow/report.template.html",
   ".code-flow/theme.css",

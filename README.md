@@ -461,13 +461,14 @@ code-flow-skill --tool gemini
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 | _All tools_ | — | `.code-flow/theme.css` (your theme) |
+| _All tools_ | — | `.code-flow/bundle.template.html` (single-file bundled viewer scaffold) |
 
 Every path this installer can write is listed above. The two `.gemini/` rows are the
 exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
 CLI](#--tool-all-and-gemini-cli). Every other row, the skills included, is written on
 every `--tool all` install.
 
-The `.code-flow/viewer.template.html`, `.code-flow/report.template.html`, `.code-flow/index.template.html` and `.code-flow/theme.css` files are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of the scaffolds and every scaffold inlines the theme.
+The `.code-flow/viewer.template.html`, `.code-flow/report.template.html`, `.code-flow/index.template.html`, `.code-flow/bundle.template.html` and `.code-flow/theme.css` files are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of the scaffolds and every scaffold inlines the theme.
 
 `.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host except Claude Code reads. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
 

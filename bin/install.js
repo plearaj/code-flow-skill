@@ -73,15 +73,16 @@ if (explicit) {
   skippedGemini = true;
 }
 
-// Both scaffolds are tool-agnostic: every command template references one of
-// them, so both install regardless of --tool. This list and the one in
-// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests
-// in both languages are what holds them there.
+// Every scaffold here is tool-agnostic: every command template references one
+// of them, so all of them install regardless of --tool. This list and the one
+// in src/code_flow_skill/cli.py must stay in step; the installed-file-set
+// tests in both languages are what holds them there.
 const sharedFiles = [
   ["viewer.template.html", "interactive viewer"],
   ["report.template.html", "quality report viewer"],
   ["index.template.html", "flow index"],
   ["theme.css", "your theme"],
+  ["bundle.template.html", "bundled viewer"],
 ];
 
 function installShared() {

@@ -25,15 +25,16 @@ def _template_path(*parts: str) -> Path:
     return _template_root().joinpath(*parts)
 
 
-# Both scaffolds are tool-agnostic: every command template references one of
-# them, so both install regardless of --tool. This table and the one in
-# bin/install.js must stay in step; the installed-file-set tests in both
+# Every scaffold here is tool-agnostic: every command template references one
+# of them, so all of them install regardless of --tool. This table and the one
+# in bin/install.js must stay in step; the installed-file-set tests in both
 # languages are what holds them there.
 _SHARED_FILES = (
     ("viewer.template.html", "interactive viewer"),
     ("report.template.html", "quality report viewer"),
     ("index.template.html", "flow index"),
     ("theme.css", "your theme"),
+    ("bundle.template.html", "bundled viewer"),
 )
 
 
