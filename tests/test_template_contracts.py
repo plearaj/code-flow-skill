@@ -1401,6 +1401,15 @@ SCAFFOLDS = (
     ("report.template.html", "__REPORT_DATA__"),
 )
 
+# The bundle joins every SCAFFOLDS contract except the failed-validation wiring
+# check: its fatal validator returns `{ok, error}` where the other three return
+# `{ok, title, lines}`, so `fail()` takes one argument there instead of two and
+# the pinned call-site shape below does not apply unchanged. See
+# `test_bundle_wires_a_failed_validation_to_fail` for its own version of that
+# check.
+BUNDLE_SCAFFOLD = ("bundle.template.html", "__BUNDLE_DATA__")
+ALL_SCAFFOLDS = SCAFFOLDS + (BUNDLE_SCAFFOLD,)
+
 # The one URL either scaffold is allowed to contain. An XML namespace is an
 # opaque identifier, not a network reference: no browser ever dereferences it,
 # and `document.createElementNS` needs the literal string to build SVG nodes.
@@ -1417,16 +1426,16 @@ def _scaffold(repo_root: Path, name: str) -> str:
     return (repo_root / "templates" / "shared" / name).read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name,token", SCAFFOLDS)
+@pytest.mark.parametrize("name,token", ALL_SCAFFOLDS)
 def test_scaffold_has_exactly_one_token(repo_root: Path, name: str, token: str) -> None:
     """More than one token means the installer's replacement would fill some and
     not others; none means it fills nothing and the page shows the token check."""
     assert _scaffold(repo_root, name).count(token) == 1
 
 
-@pytest.mark.parametrize("name,token", SCAFFOLDS)
+@pytest.mark.parametrize("name,token", ALL_SCAFFOLDS)
 def test_scaffold_is_self_contained(repo_root: Path, name: str, token: str) -> None:
-    """Both scaffolds must render from a file:// URL with no network. An external
+    """Every scaffold must render from a file:// URL with no network. An external
     reference would leave a user staring at an unstyled or empty page offline."""
     text = _scaffold(repo_root, name)
     assert not re.search(r"<script[^>]+\bsrc\s*=", text), f"{name} loads an external script"
@@ -1481,6 +1490,27 @@ def test_scaffold_wires_a_failed_validation_to_fail(repo_root: Path, name: str, 
     assert re.search(
         r"if\s*\(!v\.ok\)\s*\{\s*fail\(v\.title,\s*v\.lines\);\s*return;\s*\}", render
     ), f"{name} does not wire a failed validate() verdict to fail() and a return"
+
+
+def test_bundle_wires_a_failed_validation_to_fail(repo_root: Path) -> None:
+    """The bundle's own version of `test_scaffold_wires_a_failed_validation_to_fail`.
+
+    Its fatal validator returns `{ok, error}`, not `{ok, title, lines}` --
+    `__BUNDLE_DATA__`'s validator reports one combined message rather than a
+    title and a list of lines -- so `fail()` there takes a single argument and
+    the pinned shape the other three scaffolds share does not apply to it
+    unchanged. Left out of `SCAFFOLDS`, `bundle.template.html` was exempt from
+    every one of these contracts; this is the mutation-sensitive one, so it
+    gets its own copy rather than being silently uncovered. Same reasoning as
+    the SCAFFOLDS version: scoped to the text after `validate:end`, and pinned
+    as one flattened, whitespace-tolerant sequence so that changing any link in
+    the chain -- the condition, the call, the `return` -- fails this test.
+    """
+    text = _scaffold(repo_root, "bundle.template.html")
+    render = _flatten(text[text.index("/* ==== validate:end ==== */") :])
+    assert re.search(
+        r"if\s*\(!v\.ok\)\s*\{\s*fail\(v\.error\);\s*return;\s*\}", render
+    ), "bundle.template.html does not wire a failed validate() verdict to fail() and a return"
 
 
 @pytest.mark.parametrize("name,token", SCAFFOLDS)
