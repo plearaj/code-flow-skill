@@ -32,6 +32,17 @@ derive any filename from what is left.
   it appears without `--whole-code-base`, accept it silently rather than erroring.
   If it appears with a value that is not one of those three, tell the user what you
   read, use `standard`, and carry on.
+- `--output files|bundle|both` chooses which HTML gets written, default `files`.
+  `files` writes `index.html`, one page per flow, and the quality report page,
+  exactly as before. `both` adds `Code_Flows/code-flow.html`, a single
+  self-contained page carrying every flow. `bundle` writes that page and no other
+  HTML. If its value is not one of those three, say what you read, use `files`,
+  and carry on. **`--output` never suppresses the JSON artifacts** —
+  `index.json`, `<functionality_name>.json` and `inventory.json` are written in
+  every mode, because `/code-flow.quality` reads them and a run that skipped
+  them would break it silently. Unlike `--detail`, it changes behavior in both
+  modes: in whole-codebase mode it governs the bundle exactly as it does here —
+  see Whole-Codebase Mode's Pass 1 and Pass 2 for where that applies.
 
 Everything from here through step 7 is **feature mode**, the default.
 
@@ -130,7 +141,7 @@ comment line above it: `src_jobs_worker_run_l31` and `src_jobs_worker_run_l88`. 
 - All file paths use **forward slashes**, repo-relative. `meta.root` is the absolute project root with forward slashes (used only to build editor links).
 - `snippet` is optional — a short excerpt (≤ ~40 lines). **Inside every `snippet` string, replace each `</` with `<\/`** (a literal `</script>` would terminate the data block). No trailing commas anywhere.
 
-**5b. Fill the template.** Read `.code-flow/viewer.template.html`. Write `Code_Flows/<functionality_name>.html` as an **exact copy** of that template with two tokens replaced and nothing else changed. `__FLOW_DATA__` becomes the JSON object from 5a. `__FLOW_INDEX__` becomes the `flows` array as it will stand after step 6b — read `Code_Flows/index.json` now, apply this flow's entry to a copy of its `flows` array, and use that; it drives the page's flow switcher. If `index.json` is missing or does not parse, leave `__FLOW_INDEX__` exactly as you found it: the page then hides the switcher and keeps its link to the index, which is the right behavior for a registry that is not there. (The page self-validates on load: if the JSON is malformed or an edge points at a missing node, it shows a specific error card instead of a blank page — read it and fix the JSON.)
+**5b. Fill the template.** Read `.code-flow/viewer.template.html`. Write `Code_Flows/<functionality_name>.html` as an **exact copy** of that template with three tokens replaced and nothing else changed. `__FLOW_DATA__` becomes the JSON object from 5a. `__FLOW_INDEX__` becomes the `flows` array as it will stand after step 6b — read `Code_Flows/index.json` now, apply this flow's entry to a copy of its `flows` array, and use that; it drives the page's flow switcher. If `index.json` is missing or does not parse, leave `__FLOW_INDEX__` exactly as you found it: the page then hides the switcher and keeps its link to the index, which is the right behavior for a registry that is not there. `__THEME_CSS__` becomes the contents of `.code-flow/theme.css`, or an empty string if that file does not exist or cannot be read. (The page self-validates on load: if the JSON is malformed or an edge points at a missing node, it shows a specific error card instead of a blank page — read it and fix the JSON.)
 
 **5c. Fallback if the template is missing.** If `.code-flow/viewer.template.html` does not exist (the skill was only partially installed), write this minimal page to `Code_Flows/<functionality_name>.html` instead, then tell the user to reinstall `code-flow` for the full interactive viewer:
 
@@ -201,10 +212,12 @@ every flow mapped before this one.
 
 **6c. The index page.** `index.json` is the data; `Code_Flows/index.html` is how a
 person reads it. Read `.code-flow/index.template.html` and write
-`Code_Flows/index.html` as an **exact copy** of that template with the single token
-`__INDEX_DATA__` replaced by the registry object you just wrote in 6b. Change
-nothing else in the template. Inside every string value, replace each `</` with
-`<\/`, exactly as in step 5a.
+`Code_Flows/index.html` as an **exact copy** of that template with two tokens
+replaced. `__INDEX_DATA__` becomes the registry object you just wrote in 6b.
+`__THEME_CSS__` becomes the contents of `.code-flow/theme.css`, or an empty
+string if that file does not exist or cannot be read. Change nothing else in the
+template. Inside every string value, replace each `</` with `<\/`, exactly as in
+step 5a.
 
 Do this **every time you write `index.json`** — here, and in whole-codebase mode's
 pass 1. The two files are one artifact in two forms, and an `index.html` carried
@@ -221,11 +234,32 @@ to reinstall `code-flow` for the flow index. There is no fallback page here: the
 registry is already readable as `index.json`, and a hand-built substitute would be
 one more file to keep in step with it.
 
+**6d. The bundle.** If `--output` is `bundle` or `both`, read
+`.code-flow/bundle.template.html` and write `Code_Flows/code-flow.html` as an
+**exact copy** with two tokens replaced. `__BUNDLE_DATA__` becomes `{"index": <the
+object you just wrote to index.json>, "flows": [<the full JSON object for every
+flow in the registry, read back from its sidecar>], "report": <the object in
+Code_Flows/quality-report.json if that file exists and parses, otherwise null>}`.
+`__THEME_CSS__` becomes the contents of `.code-flow/theme.css`, or an empty string
+if that file does not exist or cannot be read — an absent theme is the normal
+case and is never an error. Inside every string value, replace each `</` with
+`<\/`, exactly as in step 5a.
+
+Rebuild it from the sidecars every time, never by editing an existing bundle: the
+JSON is the data and this page is one rendering of it, so a bundle is always
+current by construction. If a sidecar is missing or does not parse, leave that
+flow out, and say which and why in your step 7 report.
+
+If `.code-flow/bundle.template.html` does not exist, say so and skip the bundle.
+There is no fallback page here.
+
 #### 7. Finalize
 
 - Create the `Code_Flows/` directory if it doesn't exist
 - Write `Code_Flows/<functionality_name>.md`, `.html`, and `.json`, plus `index.json`
   and `index.html`
+- If `--output` was `bundle` or `both` and the bundle was written, also report
+  `Code_Flows/code-flow.html`
 - Report the markdown and HTML paths to the user, name `Code_Flows/index.html` as
   the page that lists every mapped flow, and mention that the JSON artifacts were
   updated
@@ -338,7 +372,11 @@ same rule as feature mode applies: if `index.json` exists but does not parse,
 
 Step 6c applies here too: having written `index.json`, rewrite `Code_Flows/index.html`
 from it. After pass 1 that page shows the census and says plainly that no flows have
-been traced yet — which is what a half-finished map should look like.
+been traced yet — which is what a half-finished map should look like. **Step 6d
+applies here too**, on the same condition: if `--output` is `bundle` or `both`,
+rebuild `Code_Flows/code-flow.html` from the census now — `flows` will be empty
+until pass 2 traces some, which is a correct rendering of a half-finished map, not
+an error.
 
 `filesScanned` and `functionsCatalogued` describe the whole catalog, including files
 carried forward unchanged from an earlier run — not only what this session re-read.

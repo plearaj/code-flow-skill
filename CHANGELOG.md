@@ -7,6 +7,61 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Both
 package (`@htst/code-flow-skill`) and the Python package (`htst-code-flow-skill`) ship
 from this repository at the same version.
 
+## [1.1.0]
+
+### Added
+
+- **`--tool` names every supported host**: `claude`, `copilot`, `codex`, `antigravity`,
+  `gemini`, `all`. `codex` and `antigravity` are new — `.agents/skills/` used to install
+  unconditionally purely for want of a way to ask for those two hosts.
+
+### Changed
+
+- **`--tool claude` no longer writes `.agents/skills/`.** Claude Code reads
+  `.claude/skills/` and not `.agents/`, so those four files were never opened by anything
+  in a Claude-only project. Re-running the installer does not remove an `.agents/skills/`
+  directory an earlier version created.
+
+### Added — output and appearance
+
+- **`--output files|bundle|both` on `/code-flow.map`**, default `files`. `both` adds
+  `Code_Flows/code-flow.html`, one self-contained page carrying the index, every mapped
+  flow and the quality report — the file to send someone. `bundle` writes that page and
+  no other HTML. **No mode suppresses the JSON artifacts**, which `/code-flow.quality`
+  reads. The bundle is rebuilt from those artifacts on every run, so it is never stale.
+- **`.code-flow/theme.css`** — every colour the pages use, as CSS custom properties at
+  a current default value (the interactive viewer's, where the scaffolds disagree),
+  commented out. Uncomment and edit; your values are inlined into
+  every generated page after the built-in styles. Absent or untouched, nothing changes.
+  Keep both the `:root` and `[data-theme="light"]` blocks or the light/dark toggle will
+  appear broken, which is why the shipped file has both. **The installer overwrites this
+  file**, so version your edits or keep a copy.
+- A bundle carries every flow, so it grows with your map. On a large repository it is a
+  large file; the loose pages stay small, which is why `files` is still the default.
+- **The detail panel now survives down to 720px viewports**, narrowing from `380px` to
+  `300px` between 720px and 900px so a tablet in portrait keeps the ability to inspect a
+  node. Only the minimap stays hidden below 900px — it is a navigation luxury, not the
+  only way to see a node's detail. Both `templates/shared/viewer.template.html` and
+  `templates/shared/bundle.template.html` carry the fix.
+
+### Documentation — and one thing this project got wrong
+
+- **GitHub Copilot is two surfaces, not one, and they read different files.** VS Code
+  Copilot Chat reads `.github/prompts/*.prompt.md` and answers to `/code-flow.map`; the
+  Copilot CLI reads both, and lists `/code-flow.map` and `/code-flow-map` side by side.
+  Both were observed
+  working on 2026-08-17 (VS Code 1.132.0, Copilot Chat 0.35.3, Copilot CLI 1.0.10). The
+  README presented one Copilot where there are two, which is why its naming looked
+  inconsistent.
+- **The caveat that `1.0.0` shipped about the dotted prompt-file name is retired.** It
+  said this project had "not verified and therefore does not claim" that Copilot Chat
+  exposes a dotted filename as a `/`-command. It does.
+- A planned `2.0.0` would have **deleted** the Copilot prompt files on the reasoning that
+  the skill had replaced them. It had not: skills in VS Code Chat are still experimental
+  and did not load, so that release would have left VS Code Copilot users with nothing.
+  The plan was overturned before implementation by ten minutes of opening both surfaces.
+  See `docs/superpowers/specs/2026-08-17-phase5-copilot-skills-only-design.md`.
+
 ## [1.0.0]
 
 The first stable release, and a large jump from `0.2.0`. Everything below was built

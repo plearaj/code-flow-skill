@@ -13,21 +13,29 @@ install only where Gemini CLI is actually in use).
 **Two names, and which one you get depends on your host.** The original command
 and prompt files use a dot — `/code-flow.map`. The newer
 [Agent Skill](#skills-and-commands) form uses a hyphen — `/code-flow-map` —
-because the skill format forbids dots in a name. Three hosts read both forms;
-three read only the skill:
+because the skill format forbids dots in a name. Which one you get depends on
+what your host reads — and **GitHub Copilot is two hosts**, not one:
 
 | Host | Command / prompt file | Agent Skill |
 |---|---|---|
 | Claude Code | `/code-flow.map` | `/code-flow-map` |
-| GitHub Copilot | `/code-flow.map` (VS Code only — [see below](#github-copilot)) | `/code-flow-map` |
+| GitHub Copilot (VS Code Chat) | `/code-flow.map` | — |
+| GitHub Copilot (CLI) | `/code-flow.map` | `/code-flow-map` |
 | Gemini CLI (legacy) | `/code-flow.map` | `/code-flow-map` |
 | OpenAI Codex | — | `$code-flow-map`, or the `/skills` menu |
 | Antigravity CLI | — | `/code-flow-map` |
 | Antigravity IDE | — | mention `code-flow-map` by name |
 
-If a row shows no command form, that host never had one and does not get one —
-**the hyphenated skill is the only way in.** Both forms read and write the same
-`Code_Flows/` artifacts, so a flow mapped by one is readable by the other.
+If a row shows only one form, that host reads only one file. Both forms read and
+write the same `Code_Flows/` artifacts, so a flow mapped by one is readable by the
+other.
+
+**GitHub Copilot is two surfaces.** VS Code Copilot Chat lists the prompt file and
+not the skill — Agent Skills there are still an
+[experimental feature](https://code.visualstudio.com/docs/agent-customization/agent-skills).
+The Copilot CLI lists **both**, so you will see `/code-flow.map` and `/code-flow-map`
+side by side: two commands doing the same job, one from each form, not a duplicate.
+Observed 2026-08-17 on VS Code 1.132.0 with Copilot Chat 0.35.3, and Copilot CLI 1.0.10.
 
 Everything below uses the dotted form when it means the command and the
 hyphenated form when it means the skill. Where only one exists for your host,
@@ -56,7 +64,7 @@ If you invoke the skill with no argument, the assistant will survey the project 
 Alongside the markdown, the assistant produces a **single self-contained HTML file** you can explore in a browser — no server, no build step, no internet required. Just double-click it. It renders the flow as a browsable graph where you can:
 
 - **Pan/zoom** the layered call graph and **Fit** it to view.
-- **Click any function node** to open a side panel with its description, `file:line`, a code snippet, an "Open in VS Code" link, and clickable **Called by** / **Calls** lists to walk the flow.
+- **Click any function node** to open a side panel with its description, `file:line`, a code snippet, an "Open in VS Code" link, and clickable **Called by** / **Calls** lists to walk the flow. The panel needs a window at least 720px wide; below that it is hidden and the graph gets the whole width.
 - **Search/filter** functions by name, file, or description.
 - **Highlight a path** — selecting a node lights up its full ancestor and descendant chain, answering "how did execution get here?" and "what happens next?".
 - Toggle **light/dark** theme (persisted).
@@ -64,6 +72,58 @@ Alongside the markdown, the assistant produces a **single self-contained HTML fi
 Node colors distinguish `entry` points, ordinary `step`s, `external` (third-party) boundaries, and `io` (DB/network/file) side effects. Edges distinguish plain `call`s, `async` calls (dashed), `conditional` branches (labeled), and `back`/cycle edges.
 
 **How it works:** the installer drops a viewer scaffold at `.code-flow/viewer.template.html`. When you run the command, the assistant only has to emit a small JSON data block and inject it into that scaffold — so the interactive page is produced reliably, and the page self-validates (showing a clear error card, never a blank screen, if the data is malformed). If the scaffold is missing, the assistant falls back to a minimal Mermaid-based page.
+
+## Output and appearance
+
+### One file you can send someone
+
+By default `/code-flow.map` writes what it always has: `Code_Flows/index.html`, one page
+per flow, and `quality-report.html`. Add `--output both` and it also writes
+**`Code_Flows/code-flow.html`** — a single self-contained page carrying the index, every
+mapped flow and the quality report. One file, no server, opens from `file://`. Use
+`--output bundle` to write that page and no other HTML.
+
+```text
+/code-flow.map user login --output both
+/code-flow.map user login --output bundle
+/code-flow.map --whole-code-base --output both
+```
+
+The first writes the loose pages and the bundle; the second writes the bundle alone;
+the third bundles a whole-codebase map. Omit `--output` and you get `files`, exactly
+what earlier versions wrote.
+
+The bundle is rebuilt from `Code_Flows/`'s JSON artifacts every run, so it is never
+stale — and **no `--output` mode ever skips those artifacts**, because `/code-flow.quality`
+reads them.
+
+It carries every flow, so it grows with your map. On a large repository that is a large
+file, which is why `files` is still the default.
+
+### Your own colours
+
+The installer writes `.code-flow/theme.css` listing every colour the pages use as a CSS
+custom property, commented out at a current default value — the interactive viewer's,
+where the four scaffolds disagree on the exact shade. Uncomment what you want to change:
+
+```css
+:root {
+  --accent: #7c5cff;
+}
+[data-theme="light"] {
+  --accent: #5b3fd6;
+}
+```
+
+Your declarations are inlined into every generated page after the built-in styles, so they
+win. Leave the file alone and nothing changes.
+
+**Keep both blocks.** `:root` is the dark palette and `[data-theme="light"]` is the light
+one, and they have equal CSS specificity — set only `:root` and your colours apply in both
+modes, making the theme toggle look broken.
+
+**Re-running the installer overwrites `.code-flow/theme.css`**, along with the other
+templates in that directory. Keep your edits in version control or a copy elsewhere.
 
 ## Install
 
@@ -165,6 +225,38 @@ That's it — no install step runs any code on your machine. If you later want t
 
 ## Usage
 
+### Commands and flags
+
+Two commands, and every flag either one takes. Both read and write the same
+`Code_Flows/` artifacts, so anything mapped by one is available to the other. Use the
+hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts whose row in
+[the table at the top](#code-flow-skill) says so.
+
+| Command | Does |
+|---|---|
+| `/code-flow.map <flow name>` | Traces one flow and writes its markdown, HTML and JSON |
+| `/code-flow.map` (no argument) | Surveys the project and suggests 3–5 flows to pick from |
+| `/code-flow.quality` | Reports DRY, KISS and YAGNI findings from what the map recorded |
+
+| Flag | On | Default | Does |
+|---|---|---|---|
+| `--whole-code-base` | map | off | Catalogues every function, then discovers entry points and traces flows from them. [Details](#whole-codebase-mode) |
+| `--detail thin\|standard\|verbose` | map | `standard` | How much evidence the function catalogue carries. Only affects whole-codebase mode. [Details](#whole-codebase-mode) |
+| `--output files\|bundle\|both` | map | `files` | Which HTML gets written. `both` adds the single-file bundle; `bundle` writes only it. Never skips the JSON. [Details](#one-file-you-can-send-someone) |
+| `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. [Details](#quality-reporting) |
+
+```text
+/code-flow.map user login
+/code-flow.map user login --output both
+/code-flow.map --whole-code-base --detail verbose
+/code-flow.quality --read-code
+```
+
+Flags work identically in the command and skill forms — see
+[Skills and commands](#skills-and-commands).
+
+### Invoking on your host
+
 After installing (see below), invoke from inside your project:
 
 **Claude Code**
@@ -191,9 +283,19 @@ Prompt files — `.github/prompts/*.prompt.md` with `agent: agent` frontmatter, 
 /code-flow.map user login
 ```
 
-Two things this project has **not** verified and therefore does not claim: that Copilot Chat exposes a *dotted* filename as a `/`-command (the `code-flow.map` name follows the [GitHub Spec Kit](https://github.com/github/spec-kit) prompt-file naming convention rather than any confirmed Copilot behavior), and whether Copilot surfaces other than VS Code read prompt files at all. If the slash form doesn't appear, use the Prompts picker.
+**Verified 2026-08-17** on VS Code 1.132.0 with Copilot Chat 0.35.3: `/code-flow.map`
+appears in chat and runs. The dotted name follows the [GitHub Spec Kit](https://github.com/github/spec-kit)
+prompt-file convention, and Copilot Chat does expose it as a `/`-command. That is one
+observation on one machine, not a guarantee for every version — if the slash form
+doesn't appear for you, use the Prompts picker.
 
-**If you don't use Copilot in VS Code**, assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
+**The Copilot CLI lists both forms**, so `/code-flow.map` and `/code-flow-map` appear
+side by side there. They are two commands doing the same job — one from the prompt file,
+one from the skill — not a duplicate entry. Either should work; this package installs
+both because VS Code Chat has only the first and Codex, Antigravity and Gemini CLI have
+only the second.
+
+**If you use neither Copilot surface** — not VS Code Chat, not the CLI — assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
 
 In all three, the assistant writes its output to `Code_Flows/<feature_name>.md`, `Code_Flows/<feature_name>.html`, and `Code_Flows/<feature_name>.json` at the project root, creates or updates the shared `Code_Flows/index.json` registry, and rebuilds `Code_Flows/index.html` from it.
 
@@ -339,9 +441,9 @@ today, it still works.
 the legacy Gemini CLI have command or prompt files and now also have skills. **OpenAI
 Codex, Antigravity CLI and Antigravity IDE have never had a command file and do not
 get one** — they read `.agents/skills/` and nothing else, so for them the hyphenated
-skill is not an alternative form, it is the whole integration. Codex in particular
-needs no `--tool` value of its own: every install writes `.agents/skills/`, which is
-all it reads. See the [table at the top](#code-flow-skill) for which row you are in.
+skill is not an alternative form, it is the whole integration. `--tool codex` and
+`--tool antigravity` write exactly that directory and nothing else. See the
+[table at the top](#code-flow-skill) for which row you are in.
 
 Where both forms exist, they differ in three ways worth knowing before you pick one.
 
@@ -383,8 +485,8 @@ confirm, which is why that step is in the skill body rather than in frontmatter.
 all` writes `code-flow-map` to both `.claude/skills/` and `.agents/skills/`;
 Copilot's docs list both as read locations but say nothing about precedence or
 de-duplication when a name appears in both, so whether you see it once or
-twice there is unverified here. `--tool copilot` writes only `.agents/skills/`,
-which sidesteps the question if Copilot is the only host you use.
+twice there is unverified here. `--tool copilot` writes the skill to `.agents/skills/`
+only, so a Copilot-only install sidesteps the question entirely.
 
 Codex reads that policy from its own metadata file rather than from `SKILL.md`,
 so both files ship. On Codex, explicit invocation is `$code-flow-map` or the
@@ -405,15 +507,27 @@ additive, never rewrites or deletions. If that trade is not one you want, use th
 command form on those hosts, or don't install the skill.
 
 **The flags work the same in both.** `--whole-code-base`, `--detail
-thin|standard|verbose` and `--read-code` are read out of what you type either way.
+thin|standard|verbose`, `--output files|bundle|both` and `--read-code` are read out
+of what you type either way.
 The skill format has no `$ARGUMENTS` substitution, so the skills advertise their
 flags through `argument-hint` instead — your host shows them during autocomplete.
 
 ## CLI options
 
 ```text
-code-flow-skill [--target PATH] [--tool claude|gemini|copilot|all]
+code-flow-skill [--target PATH] [--tool claude|copilot|codex|antigravity|gemini|all]
 ```
+
+`--tool` names every supported host. `claude` writes `.claude/` and the shared
+scaffolds and nothing else — Claude Code does not read `.agents/skills/`, so a
+Claude-only project no longer gets four files nothing there opens. `codex` and
+`antigravity` write `.agents/skills/`, which is the whole of their integration.
+`copilot` writes `.agents/skills/` **and** `.github/prompts/`, because its two
+surfaces read different files. `gemini` adds `.gemini/commands/` on top.
+
+**If you upgraded from 1.0 and used `--tool claude`,** re-running the installer will
+not remove an `.agents/skills/` directory that an earlier version created. Delete it
+by hand if you want it gone; nothing on Claude Code reads it either way.
 
 Defaults: `--tool all`, `--target .`.
 
@@ -460,17 +574,26 @@ code-flow-skill --tool gemini
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
 | _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
+| _All tools_ | — | `.code-flow/theme.css` (your theme) |
+| _All tools_ | — | `.code-flow/bundle.template.html` (single-file bundled viewer scaffold) |
 
 Every path this installer can write is listed above. The two `.gemini/` rows are the
 exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
 CLI](#--tool-all-and-gemini-cli). Every other row, the skills included, is written on
 every `--tool all` install.
 
-The `.code-flow/viewer.template.html`, `.code-flow/report.template.html` and `.code-flow/index.template.html` scaffolds are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of them.
+The `.code-flow/viewer.template.html`, `.code-flow/report.template.html`, `.code-flow/index.template.html`, `.code-flow/bundle.template.html` and `.code-flow/theme.css` files are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of the scaffolds and every scaffold inlines the theme.
 
-`.agents/skills/` is installed regardless of `--tool` for the same reason: it is the shared location every supported host except Claude Code reads. `.claude/skills/` is the one directory only Claude Code reads, so it installs with the `claude` selection — `--tool gemini` still leaves no `.claude/` directory in your project.
+`.agents/skills/` is **not** unconditional: it installs when your `--tool` selection
+includes `copilot`, `codex`, `antigravity`, or `gemini` — the hosts that read it — and
+is skipped for a bare `--tool claude`, which writes no `.agents/` directory at all.
+`.claude/skills/` is the one directory only Claude Code reads, so it installs with the
+`claude` selection — `--tool gemini` still leaves no `.claude/` directory in your
+project.
 
-**OpenAI Codex has no `--tool` value and does not need one.** It discovers repository skills from `.agents/skills/`, which every install writes.
+**OpenAI Codex and Antigravity CLI each have their own `--tool` value**, `codex` and
+`antigravity`, and each writes only `.agents/skills/` — the whole of what that host
+reads.
 
 ## Upgrading from 0.x to 1.0
 
@@ -515,8 +638,9 @@ Everything 1.0 adds is listed in [CHANGELOG.md](CHANGELOG.md).
 ### Before publishing
 
 No test in this repository executes any scaffold's rendering — `templates/shared/viewer.template.html`,
-`templates/shared/report.template.html` and `templates/shared/index.template.html` are checked for what
-their prompt-filled content says, never for how a browser draws it. That gap is accepted (see
+`templates/shared/report.template.html`, `templates/shared/index.template.html` and
+`templates/shared/bundle.template.html` are checked for what their prompt-filled content says,
+never for how a browser draws it. That gap is accepted (see
 `docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md`, Decision 1), on the
 condition that a human closes it by hand before every release:
 
@@ -524,11 +648,18 @@ condition that a human closes it by hand before every release:
    `Code_Flows/index.html`, `Code_Flows/<flow>.html` and `Code_Flows/quality-report.html` in a
    browser. Confirm each renders its registry, diagram or findings instead of a blank page or a
    raw JSON dump, and that the index's flow cards and the pages' `Flows` links actually navigate.
-2. Corrupt one of the two files' embedded JSON (edit a character inside the
+   Then run again with `--output both` or `--output bundle`, open the resulting
+   `Code_Flows/code-flow.html`, and confirm it does the same three things in one document: its
+   landing view lists the same flows as `index.html`, opening a flow shows its graph, and the
+   quality report is reachable from the same page.
+2. Corrupt one of the four files' embedded JSON (edit a character inside the
    `<script type="application/json">` block so it no longer parses) and reload it. Confirm
    the page shows the red error card instead of a blank page or a silent failure.
+3. Uncomment one property in a generated project's `.code-flow/theme.css`, regenerate any page,
+   and confirm the colour changed in both light and dark. A user's CSS is inlined verbatim and
+   nothing in either suite validates it, so this is the only check theming ever gets.
 
-Do this for both files, every release — a change to either scaffold's rendering re-opens the
+Do this for all four files, every release — a change to any scaffold's rendering re-opens the
 gap and the test suite will not tell you.
 
 Add the release's entry to [CHANGELOG.md](CHANGELOG.md) before bumping the version.

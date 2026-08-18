@@ -3,31 +3,52 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 # Every path this installer can write — nothing missing, nothing extra. Both
 # installers (this one and bin/install.js) are asserted against the same literal
 # list, which is what keeps them in lockstep. This is also the set the README's
 # "Files written" table must match, since that table answers "what *can* end up
 # in my repo", not "what happened in your project".
-EXPECTED_ALL = [
-    ".agents/skills/code-flow-map/SKILL.md",
-    ".agents/skills/code-flow-map/agents/openai.yaml",
-    ".agents/skills/code-flow-quality/SKILL.md",
-    ".agents/skills/code-flow-quality/agents/openai.yaml",
+_SHARED = [
+    ".code-flow/bundle.template.html",
+    ".code-flow/index.template.html",
+    ".code-flow/report.template.html",
+    ".code-flow/theme.css",
+    ".code-flow/viewer.template.html",
+]
+_CLAUDE = [
     ".claude/commands/code-flow.map.md",
     ".claude/commands/code-flow.quality.md",
     ".claude/skills/code-flow-map/SKILL.md",
     ".claude/skills/code-flow-quality/SKILL.md",
-    ".code-flow/index.template.html",
-    ".code-flow/report.template.html",
-    ".code-flow/viewer.template.html",
+]
+_AGENTS = [
+    ".agents/skills/code-flow-map/SKILL.md",
+    ".agents/skills/code-flow-map/agents/openai.yaml",
+    ".agents/skills/code-flow-quality/SKILL.md",
+    ".agents/skills/code-flow-quality/agents/openai.yaml",
+]
+_GEMINI = [
     ".gemini/commands/code-flow.map.toml",
     ".gemini/commands/code-flow.quality.toml",
+]
+_COPILOT = [
     ".github/prompts/code-flow.map.prompt.md",
     ".github/prompts/code-flow.quality.prompt.md",
 ]
 
-# What `--tool all` produces in a project with no sign of Gemini CLI, which is
-# now the common case: everything above except the two TOML commands.
+# One row per --tool value. This is the contract the two installers are held
+# to, and the identical table lives in test/install.test.js.
+EXPECTED_BY_TOOL = {
+    "claude": sorted(_CLAUDE + _SHARED),
+    "copilot": sorted(_AGENTS + _COPILOT + _SHARED),
+    "codex": sorted(_AGENTS + _SHARED),
+    "antigravity": sorted(_AGENTS + _SHARED),
+    "gemini": sorted(_AGENTS + _GEMINI + _SHARED),
+}
+
+EXPECTED_ALL = sorted(_CLAUDE + _AGENTS + _GEMINI + _COPILOT + _SHARED)
 EXPECTED_WITHOUT_GEMINI = [p for p in EXPECTED_ALL if not p.startswith(".gemini/")]
 
 
@@ -96,13 +117,20 @@ def test_installs_viewer_scaffold(tmp_path: Path, run_python_installer) -> None:
     assert "__FLOW_DATA__" in viewer.read_text(encoding="utf-8")
 
 
-def test_both_shared_scaffolds_are_installed_regardless_of_tool(
+def test_all_shared_files_are_installed_regardless_of_tool(
     tmp_path: Path, run_python_installer
 ) -> None:
-    """The scaffolds are tool-agnostic: every command template references one
-    of them, so selecting a single host must still install both."""
+    """The four scaffolds and the theme are tool-agnostic: every command
+    template references one of the scaffolds and every scaffold inlines the
+    theme, so selecting a single host must still install all five."""
     run_python_installer(tmp_path, tool="claude")
-    for name in ("viewer.template.html", "report.template.html", "index.template.html"):
+    for name in (
+        "viewer.template.html",
+        "report.template.html",
+        "index.template.html",
+        "bundle.template.html",
+        "theme.css",
+    ):
         assert (tmp_path / ".code-flow" / name).is_file(), f"{name} was not installed"
 
 
@@ -204,6 +232,8 @@ def test_installed_files_are_byte_identical_to_their_templates(
             repo_root / "templates" / "shared" / "viewer.template.html",
         tmp_path / ".code-flow" / "report.template.html":
             repo_root / "templates" / "shared" / "report.template.html",
+        tmp_path / ".code-flow" / "bundle.template.html":
+            repo_root / "templates" / "shared" / "bundle.template.html",
         tmp_path / ".claude" / "commands" / "code-flow.quality.md":
             repo_root / "templates" / "claude" / "code-flow.quality.md",
         tmp_path / ".gemini" / "commands" / "code-flow.quality.toml":
@@ -230,11 +260,13 @@ def test_installed_files_are_byte_identical_to_their_templates(
         )
 
 
-def test_agent_skills_install_regardless_of_tool(tmp_path: Path, run_python_installer) -> None:
+def test_agent_skills_install_for_a_host_that_reads_them(
+    tmp_path: Path, run_python_installer
+) -> None:
     """`.agents/skills/` is the open standard's shared location — Copilot, both
-    Antigravity surfaces and the legacy Gemini CLI all read it. That makes it
-    tool-agnostic in the same sense `.code-flow/` is, so selecting a single host
-    must still install it."""
+    Antigravity surfaces, Codex and the legacy Gemini CLI all read it. Copilot
+    reads it in addition to its own prompt files, so selecting it must still
+    install `.agents/skills/` alongside them."""
     run_python_installer(tmp_path, tool="copilot")
     for name in ("code-flow-map", "code-flow-quality"):
         assert (tmp_path / ".agents" / "skills" / name / "SKILL.md").is_file(), (
@@ -255,12 +287,31 @@ def test_claude_skills_ride_on_the_claude_selection(
     assert not (tmp_path / ".claude").exists()
 
 
-def test_claude_selection_installs_both_skill_roots(
+def test_claude_selection_installs_only_the_claude_skill_root(
     tmp_path: Path, run_python_installer
 ) -> None:
+    """Claude Code does not read `.agents/skills/` — its documented skill
+    locations are `~/.claude/skills/`, `.claude/skills/` and plugin
+    directories — so `--tool claude` must not write it."""
     run_python_installer(tmp_path, tool="claude")
-    for root in (".claude", ".agents"):
-        for name in ("code-flow-map", "code-flow-quality"):
-            assert (tmp_path / root / "skills" / name / "SKILL.md").is_file(), (
-                f"{root}/skills/{name}/SKILL.md was not installed"
-            )
+    for name in ("code-flow-map", "code-flow-quality"):
+        assert (tmp_path / ".claude" / "skills" / name / "SKILL.md").is_file(), (
+            f".claude/skills/{name}/SKILL.md was not installed"
+        )
+    assert not (tmp_path / ".agents").exists()
+
+
+@pytest.mark.parametrize("tool", sorted(EXPECTED_BY_TOOL))
+def test_each_tool_installs_exactly_its_own_set(
+    tmp_path: Path, run_python_installer, tool: str
+) -> None:
+    """Every --tool value writes exactly what that host reads, and nothing else.
+
+    The rows that matter most are `claude`, which must write no
+    `.agents/skills/` because Claude Code does not read it, and `codex` /
+    `antigravity`, which exist only so those two hosts can be named — before
+    this, `.agents/skills/` installed unconditionally because there was no way
+    to ask for them.
+    """
+    run_python_installer(tmp_path, tool=tool)
+    assert _installed_paths(tmp_path) == EXPECTED_BY_TOOL[tool]

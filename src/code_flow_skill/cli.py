@@ -25,14 +25,16 @@ def _template_path(*parts: str) -> Path:
     return _template_root().joinpath(*parts)
 
 
-# Both scaffolds are tool-agnostic: every command template references one of
-# them, so both install regardless of --tool. This table and the one in
-# bin/install.js must stay in step; the installed-file-set tests in both
+# Every scaffold here is tool-agnostic: every command template references one
+# of them, so all of them install regardless of --tool. This table and the one
+# in bin/install.js must stay in step; the installed-file-set tests in both
 # languages are what holds them there.
 _SHARED_FILES = (
     ("viewer.template.html", "interactive viewer"),
     ("report.template.html", "quality report viewer"),
     ("index.template.html", "flow index"),
+    ("theme.css", "your theme"),
+    ("bundle.template.html", "bundled viewer"),
 )
 
 
@@ -49,6 +51,18 @@ def _install_shared(target: Path) -> None:
         shutil.copyfile(_template_path("shared", name), out)
         print(f"Installed {label} template: {out}")
 
+
+# Every value --tool accepts. Not the same thing as `_TOOL_FILES` below: a host
+# can be selectable without having files of its own. Copilot, Codex and
+# Antigravity read `.agents/skills/` and nothing this installer writes
+# elsewhere, so they appear here and not there.
+_VALID_TOOLS = ("claude", "copilot", "codex", "antigravity", "gemini")
+
+# The hosts that read `.agents/skills/`. Claude Code is deliberately absent:
+# its documented skill locations are `~/.claude/skills/`, `.claude/skills/` and
+# plugin directories, with no `.agents/` among them, so a Claude-only install
+# that wrote there would leave four files nothing reads.
+_AGENTS_HOSTS = frozenset({"copilot", "codex", "antigravity", "gemini"})
 
 # Each host installs one file per command. This table and the one in
 # bin/install.js must stay in step; the installed-file-set tests in both
@@ -123,7 +137,8 @@ def _install_tool(target: Path, name: str) -> None:
     text-mode read/write round-trip would translate "\\n" to "\\r\\n" on
     Windows and silently corrupt every shipped template.
     """
-    for src_parts, dst_parts in _TOOL_FILES[name]:
+    # A host with no table entry is served entirely by `.agents/skills/`.
+    for src_parts, dst_parts in _TOOL_FILES.get(name, ()):
         out = target.joinpath(*dst_parts)
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(_template_path(*src_parts), out)
@@ -166,7 +181,7 @@ def main() -> None:
     parser.add_argument(
         "--tool",
         default="all",
-        choices=["claude", "gemini", "copilot", "all"],
+        choices=[*_VALID_TOOLS, "all"],
         help="Template target to install",
     )
     args = parser.parse_args()
@@ -179,9 +194,17 @@ def main() -> None:
     if args.tool != "all":
         selected = [args.tool]
     elif _gemini_is_in_use(target):
-        selected = ["claude", "gemini", "copilot"]
+        # Every valid tool. Derived from _VALID_TOOLS rather than hand-typed:
+        # codex and antigravity own no files of their own (see _TOOL_FILES
+        # above), so a second hardcoded list here would be a literal that
+        # nothing observable — not the installed files, not stdout — could
+        # distinguish from ["claude", "copilot"]. Deriving from _VALID_TOOLS
+        # closes that gap by construction instead of relying on an assertion
+        # to catch it.
+        selected = list(_VALID_TOOLS)
     else:
-        selected = ["claude", "copilot"]
+        # Every valid tool except gemini, for the same reason.
+        selected = [name for name in _VALID_TOOLS if name != "gemini"]
         skipped_gemini = True
 
     for name in selected:
@@ -189,7 +212,8 @@ def main() -> None:
 
     if "claude" in selected:
         _install_skills(target, ".claude", _SKILL_FILES)
-    _install_skills(target, ".agents", _AGENTS_SKILL_FILES)
+    if _AGENTS_HOSTS.intersection(selected):
+        _install_skills(target, ".agents", _AGENTS_SKILL_FILES)
 
     if skipped_gemini:
         # Say what was skipped and how to get it. A silent omission would look

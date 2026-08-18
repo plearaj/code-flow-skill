@@ -1401,6 +1401,15 @@ SCAFFOLDS = (
     ("report.template.html", "__REPORT_DATA__"),
 )
 
+# The bundle joins every SCAFFOLDS contract except the failed-validation wiring
+# check: its fatal validator returns `{ok, error}` where the other three return
+# `{ok, title, lines}`, so `fail()` takes one argument there instead of two and
+# the pinned call-site shape below does not apply unchanged. See
+# `test_bundle_wires_a_failed_validation_to_fail` for its own version of that
+# check.
+BUNDLE_SCAFFOLD = ("bundle.template.html", "__BUNDLE_DATA__")
+ALL_SCAFFOLDS = SCAFFOLDS + (BUNDLE_SCAFFOLD,)
+
 # The one URL either scaffold is allowed to contain. An XML namespace is an
 # opaque identifier, not a network reference: no browser ever dereferences it,
 # and `document.createElementNS` needs the literal string to build SVG nodes.
@@ -1417,16 +1426,16 @@ def _scaffold(repo_root: Path, name: str) -> str:
     return (repo_root / "templates" / "shared" / name).read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("name,token", SCAFFOLDS)
+@pytest.mark.parametrize("name,token", ALL_SCAFFOLDS)
 def test_scaffold_has_exactly_one_token(repo_root: Path, name: str, token: str) -> None:
     """More than one token means the installer's replacement would fill some and
     not others; none means it fills nothing and the page shows the token check."""
     assert _scaffold(repo_root, name).count(token) == 1
 
 
-@pytest.mark.parametrize("name,token", SCAFFOLDS)
+@pytest.mark.parametrize("name,token", ALL_SCAFFOLDS)
 def test_scaffold_is_self_contained(repo_root: Path, name: str, token: str) -> None:
-    """Both scaffolds must render from a file:// URL with no network. An external
+    """Every scaffold must render from a file:// URL with no network. An external
     reference would leave a user staring at an unstyled or empty page offline."""
     text = _scaffold(repo_root, name)
     assert not re.search(r"<script[^>]+\bsrc\s*=", text), f"{name} loads an external script"
@@ -1481,6 +1490,27 @@ def test_scaffold_wires_a_failed_validation_to_fail(repo_root: Path, name: str, 
     assert re.search(
         r"if\s*\(!v\.ok\)\s*\{\s*fail\(v\.title,\s*v\.lines\);\s*return;\s*\}", render
     ), f"{name} does not wire a failed validate() verdict to fail() and a return"
+
+
+def test_bundle_wires_a_failed_validation_to_fail(repo_root: Path) -> None:
+    """The bundle's own version of `test_scaffold_wires_a_failed_validation_to_fail`.
+
+    Its fatal validator returns `{ok, error}`, not `{ok, title, lines}` --
+    `__BUNDLE_DATA__`'s validator reports one combined message rather than a
+    title and a list of lines -- so `fail()` there takes a single argument and
+    the pinned shape the other three scaffolds share does not apply to it
+    unchanged. Left out of `SCAFFOLDS`, `bundle.template.html` was exempt from
+    every one of these contracts; this is the mutation-sensitive one, so it
+    gets its own copy rather than being silently uncovered. Same reasoning as
+    the SCAFFOLDS version: scoped to the text after `validate:end`, and pinned
+    as one flattened, whitespace-tolerant sequence so that changing any link in
+    the chain -- the condition, the call, the `return` -- fails this test.
+    """
+    text = _scaffold(repo_root, "bundle.template.html")
+    render = _flatten(text[text.index("/* ==== validate:end ==== */") :])
+    assert re.search(
+        r"if\s*\(!v\.ok\)\s*\{\s*fail\(v\.error\);\s*return;\s*\}", render
+    ), "bundle.template.html does not wire a failed validate() verdict to fail() and a return"
 
 
 @pytest.mark.parametrize("name,token", SCAFFOLDS)
@@ -1818,4 +1848,135 @@ def test_map_template_fills_the_flow_switcher_token(
     assert "__FLOW_INDEX__" in text, (
         f"{host}/{name} never mentions __FLOW_INDEX__, so the flow switcher would "
         "be dead markup on every generated page"
+    )
+
+
+# --- Phase 5: --output and theme inlining -----------------------------------
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_the_output_flag(repo_root: Path, host: str, name: str) -> None:
+    """`--output` is parsed in step 1 with the other flags, so it must be stated
+    there — not only in whatever section describes the bundle.
+
+    Scoped to step 1's own region for the same reason
+    `test_map_template_documents_the_mode_flags` is: unscoped, the token would
+    be satisfied by the bundle section further down, and deleting the flag from
+    the place it is actually read would leave the assertion green.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _STEP1_START, _STEP1_END)
+    assert "files|bundle|both" in region, f"{host}/{name} step 1 never mentions --output"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES + QUALITY_TEMPLATES)
+def test_template_always_writes_the_json_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`--output bundle` suppresses pages, never data.
+
+    `/code-flow.quality` reads `index.json`, `inventory.json` and the per-flow
+    sidecars; a mode that skipped them would break it silently, and nothing else
+    in this repository couples the two commands tightly enough to notice.
+    Keyed on the literal clause every host must carry.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "never suppresses the JSON" in text, (
+        f"{host}/{name} does not state that --output never suppresses the JSON artifacts"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES + QUALITY_TEMPLATES)
+def test_template_inlines_the_theme(repo_root: Path, host: str, name: str) -> None:
+    """Every page-writing step must fill `__THEME_CSS__`, and must not fail when
+    `.code-flow/theme.css` is absent — an absent theme is the default state, not
+    an error."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "__THEME_CSS__" in text, f"{host}/{name} never fills the theme token"
+    assert re.search(r"theme\.css.{0,200}(does not exist|is absent|missing)", text, re.S), (
+        f"{host}/{name} does not say what to do when theme.css is absent"
+    )
+
+
+# Marks the start of step 6d, "The bundle" — the step that writes
+# `Code_Flows/code-flow.html` — in every host (Claude/Gemini:
+# "**6d. The bundle.**"; Copilot: the "### The bundle" heading).
+_BUNDLE_START = re.compile(r"\*\*6d\. The bundle\.\*\*|^### The bundle\s*$", re.MULTILINE)
+
+# Marks the start of the *next* section after step 6d, in every host
+# (Claude/Gemini: "#### 7. Finalize"; Copilot: "### Output Location"). Used as
+# the end boundary so the region cannot run past 6d into unrelated text.
+_BUNDLE_END = re.compile(r"\n(?:#### 7\.|### Output Location)")
+
+
+def _bundle_region(text: str) -> str:
+    return _section_region(text, _BUNDLE_START, _BUNDLE_END)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_inlines_the_theme_in_the_bundle_step(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`test_template_inlines_the_theme` above is a whole-file check, and the
+    theme-fallback sentence is independently restated three times in every map
+    template — 5b, 6c, and 6d. That makes the whole-file check satisfiable by
+    5b's or 6c's copy alone: deleting the sentence from 6d specifically — the
+    bundle step, this task's own newest and least-reviewed addition — leaves
+    the whole-file assertion green, so an unthemed bundle page could ship with
+    no test failure to flag it.
+
+    This companion assertion scopes to the 6d/bundle region specifically, the
+    same way `test_map_template_documents_the_output_flag` scopes to step 1,
+    so the bundle step's own copy of the rule has its own guard.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _bundle_region(text)
+    assert "__THEME_CSS__" in region, (
+        f"{host}/{name} step 6d (the bundle) never fills the theme token"
+    )
+    assert re.search(r"theme\.css.{0,200}(does not exist|is absent|missing)", region, re.S), (
+        f"{host}/{name} step 6d (the bundle) does not say what to do when "
+        f"theme.css is absent"
+    )
+
+
+# --- Phase 5: the detail panel's responsive breakpoint ----------------------
+
+# The panel's own selector differs by scaffold: the viewer's styles are bare
+# (`#panel`), the bundle's are namespaced under the multi-view page
+# (`#view-flow #panel`). Paired with the scaffold name so one parametrized
+# test covers both without either selector leaking into the other file.
+PANEL_SCAFFOLDS = (
+    ("viewer.template.html", "#panel"),
+    ("bundle.template.html", "#view-flow #panel"),
+)
+
+
+@pytest.mark.parametrize("name,selector", PANEL_SCAFFOLDS)
+def test_detail_panel_survives_to_at_least_720px(
+    repo_root: Path, name: str, selector: str
+) -> None:
+    """The detail panel is the only way to inspect a node: click it, read its
+    description, its `file:line`, its source excerpt, and walk its callers and
+    callees. Hiding it below 900px left a tablet in portrait (768px), or a
+    bundle opened on any window the sender does not control, with a graph and
+    no way to inspect anything in it.
+
+    Extracted the breakpoint number out of the CSS rather than string-matching
+    the whole rule, so this states the contract — the panel survives to at
+    least 720px — rather than pinning today's formatting. The minimap keeps
+    its own 900px cutoff; this test does not touch it.
+    """
+    text = _scaffold(repo_root, name)
+    pattern = re.compile(
+        r"@media\s*\(max-width:(\d+)px\)\s*\{\s*"
+        + re.escape(selector)
+        + r"\{display:none\}"
+    )
+    match = pattern.search(text)
+    assert match, f"{name} has no max-width breakpoint that hides {selector!r}"
+    breakpoint_px = int(match.group(1))
+    assert breakpoint_px <= 720, (
+        f"{name} hides the detail panel ({selector!r}) at {breakpoint_px}px; "
+        f"it must survive down to at least 720px"
     )

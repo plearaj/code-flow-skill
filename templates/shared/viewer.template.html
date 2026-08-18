@@ -41,6 +41,7 @@
   --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08);
   --glow:0 0 0 1px rgba(93,82,148,.35), 0 6px 20px rgba(93,82,148,.12);
 }
+__THEME_CSS__
 /* ============ app frame ============ */
 *{box-sizing:border-box; margin:0}
 html,body{height:100%; overflow:hidden}
@@ -245,7 +246,14 @@ header .spacer{flex:1}
 .keys{display:grid; grid-template-columns:auto 1fr; gap:6px 10px; font-size:11.5px; color:var(--dim); align-items:center}
 kbd{font:10px ui-monospace,Menlo,monospace; border:1px solid var(--border); border-bottom-width:2px;
   border-radius:5px; padding:2px 6px; background:var(--bg-2); color:var(--text); white-space:nowrap}
-@media (max-width:900px){ #panel{display:none} #mini{display:none} }
+/* The minimap is a navigation luxury and genuinely unusable this small, so it
+   still drops at 900px. The panel is the only way to inspect a node — click,
+   read description/file:line/snippet, walk callers and callees — so it earns
+   a narrower width instead of disappearing, and survives down to a tablet in
+   portrait (768px). */
+@media (max-width:900px){ #mini{display:none} }
+@media (max-width:900px) and (min-width:720px){ #panel{width:300px} }
+@media (max-width:719px){ #panel{display:none} }
 </style>
 </head>
 <body>

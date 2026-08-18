@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const HELP = `code-flow-skill install helper\n\nUsage:\n  code-flow-skill [--target PATH] [--tool claude|gemini|copilot|all]\n\nDefaults:\n  --target .\n  --tool all\n`;
+const HELP = `code-flow-skill install helper\n\nUsage:\n  code-flow-skill [--target PATH] [--tool claude|copilot|codex|antigravity|gemini|all]\n\nDefaults:\n  --target .\n  --tool all\n`;
 
 function parseArg(name, fallback) {
   const idx = process.argv.indexOf(name);
@@ -40,6 +40,18 @@ function geminiIsInUse(dir) {
   return fs.existsSync(path.join(dir, ".gemini"));
 }
 
+// Every value --tool accepts. Not the same thing as `toolMap` below: a host
+// can be selectable without having files of its own. Copilot, Codex and
+// Antigravity read `.agents/skills/` and nothing this installer writes
+// elsewhere, so they appear here and not there.
+const VALID_TOOLS = ["claude", "copilot", "codex", "antigravity", "gemini"];
+
+// The hosts that read `.agents/skills/`. Claude Code is deliberately absent:
+// its documented skill locations are `~/.claude/skills/`, `.claude/skills/`
+// and plugin directories, with no `.agents/` among them, so a Claude-only
+// install that wrote there would leave four files nothing reads.
+const AGENTS_HOSTS = ["copilot", "codex", "antigravity", "gemini"];
+
 // `--tool gemini` is an explicit request and always installs. A heuristic must
 // never overrule someone who said exactly what they wanted.
 const explicit = tool !== "all";
@@ -48,20 +60,29 @@ let selected;
 if (explicit) {
   selected = [tool];
 } else if (geminiIsInUse(target)) {
-  selected = ["claude", "gemini", "copilot"];
+  // Every valid tool. Derived from VALID_TOOLS rather than hand-typed: codex
+  // and antigravity own no files of their own (see toolMap below), so a
+  // second hardcoded list here would be a literal that nothing observable —
+  // not the installed files, not stdout — could distinguish from
+  // `["claude", "copilot"]`. Deriving from VALID_TOOLS closes that gap by
+  // construction instead of relying on an assertion to catch it.
+  selected = [...VALID_TOOLS];
 } else {
-  selected = ["claude", "copilot"];
+  // Every valid tool except gemini, for the same reason.
+  selected = VALID_TOOLS.filter((name) => name !== "gemini");
   skippedGemini = true;
 }
 
-// Both scaffolds are tool-agnostic: every command template references one of
-// them, so both install regardless of --tool. This list and the one in
-// src/code_flow_skill/cli.py must stay in step; the installed-file-set tests
-// in both languages are what holds them there.
+// Every scaffold here is tool-agnostic: every command template references one
+// of them, so all of them install regardless of --tool. This list and the one
+// in src/code_flow_skill/cli.py must stay in step; the installed-file-set
+// tests in both languages are what holds them there.
 const sharedFiles = [
   ["viewer.template.html", "interactive viewer"],
   ["report.template.html", "quality report viewer"],
   ["index.template.html", "flow index"],
+  ["theme.css", "your theme"],
+  ["bundle.template.html", "bundled viewer"],
 ];
 
 function installShared() {
@@ -128,9 +149,14 @@ const toolMap = {
 };
 
 for (const name of selected) {
-  if (!Object.prototype.hasOwnProperty.call(toolMap, name)) {
+  if (!VALID_TOOLS.includes(name)) {
     console.error(`Unknown --tool value: ${name}`);
     process.exit(1);
+  }
+
+  // A host with no table entry is served entirely by `.agents/skills/`.
+  if (!Object.prototype.hasOwnProperty.call(toolMap, name)) {
+    continue;
   }
 
   for (const [relSrc, relDst] of toolMap[name]) {
@@ -145,7 +171,9 @@ for (const name of selected) {
 if (selected.includes("claude")) {
   installSkills(".claude", SKILL_FILES);
 }
-installSkills(".agents", AGENTS_SKILL_FILES);
+if (selected.some((name) => AGENTS_HOSTS.includes(name))) {
+  installSkills(".agents", AGENTS_SKILL_FILES);
+}
 
 if (skippedGemini) {
   // Say what was skipped and how to get it. A silent omission would look

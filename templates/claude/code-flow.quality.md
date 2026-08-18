@@ -45,6 +45,10 @@ some of them, and which ones are readable decides which detectors run.
 2. `Code_Flows/inventory.json` — the function catalog.
 3. `Code_Flows/<slug>.json` — one per entry in the index's `flows` array.
 
+However `/code-flow.map` was run, these three exist. **`--output` never suppresses the JSON artifacts** —
+`index.json`, `<functionality_name>.json` and `inventory.json` are written in
+every mode, including `bundle`, because this command depends on them.
+
 **The gating rule, which governs everything below:** a detector that cannot
 produce its required evidence does not run, and the report names it and says why.
 Never substitute a weaker signal for a missing one — a finding derived from
@@ -302,7 +306,9 @@ AST walk, so it is best-effort and the report must never claim completeness.
 
 Last, write `Code_Flows/quality-report.html`. Read `.code-flow/report.template.html`
 and replace its single `__REPORT_DATA__` token with the exact JSON you just wrote.
-Change nothing else in the scaffold.
+Also replace its `__THEME_CSS__` token with the contents of `.code-flow/theme.css`,
+or an empty string if that file does not exist or cannot be read. Change nothing
+else in the scaffold.
 
 Escape every literal `</` inside the JSON as `<\/` before substituting. Findings
 carry source snippets, and an unescaped `</` closes the script block early — the

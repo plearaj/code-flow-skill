@@ -55,6 +55,39 @@ test("prepublish check names every scaffold and every manual step", () => {
   assert.match(r.stdout, /Flows link/i, "step 3 must name the round trip between pages");
   assert.match(r.stdout, /slash menu/i, "checklist does not cover skill loading");
   assert.match(r.stdout, /rather than\s+twice/i, "checklist does not cover duplicate registration");
+  assert.match(r.stdout, /Copilot CLI/i, "checklist does not distinguish the two Copilot surfaces");
+  assert.match(r.stdout, /bundle\.template\.html/, "checklist does not name the bundle scaffold");
+  assert.match(r.stdout, /theme\.css/, "checklist does not cover a themed render");
+  assert.match(r.stdout, /ALL FOUR/i, "checklist still says three scaffolds");
+});
+
+test("README's Before-publishing scaffold list matches the script's SCAFFOLDS", () => {
+  // The README carries a hand-written prose mirror of this script's checklist
+  // (see "## Publishing" > "### Before publishing"). Nothing ties the two
+  // together, which is exactly how that prose fell behind when the bundle
+  // scaffold was added: `SCAFFOLDS` grew to four paths and the README kept
+  // naming three. Parsed as text, not imported — importing the script would
+  // run its top-level checklist print (and a possible process.exit) as a
+  // side effect of loading the test file.
+  const scriptSource = fs.readFileSync(SCRIPT, "utf8");
+  const scaffoldsMatch = scriptSource.match(/const SCAFFOLDS = \[([\s\S]*?)\];/);
+  assert.ok(scaffoldsMatch, "could not find the SCAFFOLDS array in prepublish-check.js");
+  const scaffolds = [...scaffoldsMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(scaffolds.length > 0, "parsed zero scaffold paths out of SCAFFOLDS");
+
+  const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+  const sectionStart = readme.indexOf("### Before publishing");
+  const sectionEnd = readme.indexOf("\n## ", sectionStart);
+  assert.ok(sectionStart !== -1, "README.md has no '### Before publishing' section");
+  const section = readme.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd);
+
+  for (const scaffold of scaffolds) {
+    assert.ok(
+      section.includes(scaffold),
+      `README's "Before publishing" section does not name ${scaffold}, but ` +
+        `prepublish-check.js's SCAFFOLDS does`
+    );
+  }
 });
 
 test("npm runs the gate on publish, and it is runnable by hand for the PyPI release", () => {

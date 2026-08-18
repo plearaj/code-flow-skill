@@ -17,6 +17,8 @@ EXPECTED_IN_WHEEL = (
     "code_flow_skill/templates/shared/viewer.template.html",
     "code_flow_skill/templates/shared/report.template.html",
     "code_flow_skill/templates/shared/index.template.html",
+    "code_flow_skill/templates/shared/theme.css",
+    "code_flow_skill/templates/shared/bundle.template.html",
     "code_flow_skill/templates/shared/code-flow-map/SKILL.md",
     "code_flow_skill/templates/shared/code-flow-map/agents/openai.yaml",
     "code_flow_skill/templates/shared/code-flow-quality/SKILL.md",
@@ -85,8 +87,8 @@ def _declared_version(repo_root: Path) -> str:
     return npm_version
 
 
-def test_package_versions_match_and_are_1_0_0(repo_root: Path) -> None:
-    assert _declared_version(repo_root) == "1.0.0"
+def test_package_versions_match_and_are_1_1_0(repo_root: Path) -> None:
+    assert _declared_version(repo_root) == "1.1.0"
 
 
 def test_changelog_leads_with_the_version_being_shipped(repo_root: Path) -> None:
