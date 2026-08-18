@@ -256,7 +256,7 @@ one from the skill — not a duplicate entry. Either should work; this package i
 both because VS Code Chat has only the first and Codex, Antigravity and Gemini CLI have
 only the second.
 
-**If you don't use Copilot in VS Code**, assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
+**If you use neither Copilot surface** — not VS Code Chat, not the CLI — assume the prompt file does nothing for you. Instead, paste the body of `templates/copilot/code-flow.map.prompt.md` — everything below the `---` frontmatter — into `.github/copilot-instructions.md` under a `## Code Flow` heading; that file is read across Copilot surfaces. Upgrading from 0.x, you already have such a section: **keep it** instead of deleting it.
 
 In all three, the assistant writes its output to `Code_Flows/<feature_name>.md`, `Code_Flows/<feature_name>.html`, and `Code_Flows/<feature_name>.json` at the project root, creates or updates the shared `Code_Flows/index.json` registry, and rebuilds `Code_Flows/index.html` from it.
 
