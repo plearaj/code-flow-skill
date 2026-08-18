@@ -308,7 +308,7 @@ def test_skill_disables_implicit_invocation_on_codex(
 @pytest.mark.parametrize(
     "skill_dir,flags",
     (
-        ("code-flow-map", ("--whole-code-base", "--detail")),
+        ("code-flow-map", ("--whole-code-base", "--detail", "--output")),
         ("code-flow-quality", ("--read-code",)),
     ),
 )

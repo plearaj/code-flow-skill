@@ -7,7 +7,7 @@ Analyze the codebase and document the execution flow of the requested functional
 
 Follow these steps exactly:
 
-1. **Read the request for option flags first.** `--whole-code-base` maps the whole repository instead of one feature — if it is there, ignore steps 2-7 and follow "Whole-codebase mode" at the end of this prompt. `--detail thin|standard|verbose` sets how much evidence each catalogued function carries, default `standard`; it only matters in whole-codebase mode, so accept it silently otherwise, and if its value is not one of those three, say what you read, use `standard`, and carry on. `--output files|bundle|both` chooses which HTML gets written, default `files`: `files` writes `index.html`, one page per flow, and the quality report page, exactly as before; `both` adds `Code_Flows/code-flow.html`, a single self-contained page carrying every flow; `bundle` writes that page and no other HTML. If its value is not one of those three, say what you read, use `files`, and carry on. **`--output` never suppresses the JSON artifacts** — `index.json`, `<functionality_name>.json` and `inventory.json` are written in every mode, because `/code-flow.quality` reads them and a run that skipped them would break it silently. Flags are options, not part of the feature name — strip them out. Then **identify the target flow** from what is left and derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further. Steps 2-7 are feature mode, the default.
+1. **Read the request for option flags first.** `--whole-code-base` maps the whole repository instead of one feature — if it is there, ignore steps 2-7 and follow "Whole-codebase mode" at the end of this prompt. `--detail thin|standard|verbose` sets how much evidence each catalogued function carries, default `standard`; it only matters in whole-codebase mode, so accept it silently otherwise, and if its value is not one of those three, say what you read, use `standard`, and carry on. `--output files|bundle|both` chooses which HTML gets written, default `files`: `files` writes `index.html`, one page per flow, and the quality report page, exactly as before; `both` adds `Code_Flows/code-flow.html`, a single self-contained page carrying every flow; `bundle` writes that page and no other HTML. If its value is not one of those three, say what you read, use `files`, and carry on. **`--output` never suppresses the JSON artifacts** — `index.json`, `<functionality_name>.json` and `inventory.json` are written in every mode, because `/code-flow.quality` reads them and a run that skipped them would break it silently. Unlike `--detail`, `--output` changes behavior in both modes: in whole-codebase mode it governs the bundle exactly as it does here — see "Whole-codebase mode" below, Pass 1 and Pass 2, for where that applies. Flags are options, not part of the feature name — strip them out. Then **identify the target flow** from what is left and derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further. Steps 2-7 are feature mode, the default.
 2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain. Trace the full execution path from entry point through to the final output, and include every function that participates in the flow.
 3. **Document undocumented functions** — add docstrings to any function in the flow that lacks one.
 4. **Generate `Code_Flows/<functionality_name>.md`** containing:
@@ -207,7 +207,10 @@ same rule as feature mode applies: if `index.json` exists but does not parse,
 The index page applies here too: having written `index.json`, rewrite
 `Code_Flows/index.html` from it. After pass 1 that page shows the census and says
 plainly that no flows have been traced yet — which is what a half-finished map
-should look like.
+should look like. The bundle applies here too, on the same condition: if
+`--output` is `bundle` or `both`, rebuild `Code_Flows/code-flow.html` from the
+census now — `flows` will be empty until pass 2 traces some, which is a correct
+rendering of a half-finished map, not an error.
 
 `filesScanned` and `functionsCatalogued` describe the whole catalog, including files
 carried forward unchanged from an earlier run — not only what this session re-read.
@@ -247,7 +250,10 @@ below `entryPointsFound` means the map is partial.
 and 6 exactly as written, treating that entry point as the requested flow — but
 **skip step 3**: this mode does not edit source. Each flow produces its own
 `Code_Flows/<slug>.md`, `.html` and `.json`, and its own entry in `index.json`'s
-`flows` array. Derive the slug from the entry point's own name.
+`flows` array. Derive the slug from the entry point's own name. **The bundle
+applies here too** — after step 6 updates `index.json` for this flow, rebuild
+`Code_Flows/code-flow.html` under the same `--output` condition as "The bundle"
+above, so it stays current as each flow is traced.
 
 Step 6 must leave `meta.mode` at `whole-code-base` and `meta.detail` as pass 1 set
 them — it is the only step here that writes `meta`, and this mode depends on those

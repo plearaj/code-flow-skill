@@ -1,7 +1,7 @@
 ---
 name: code-flow-map
 description: Analyze and document the flow of a code feature, generating a markdown file and an interactive HTML page with flow diagrams and function reference tables.
-argument-hint: "[functionality name] [--whole-code-base] [--detail thin|standard|verbose]"
+argument-hint: "[functionality name] [--whole-code-base] [--detail thin|standard|verbose] [--output files|bundle|both]"
 disable-model-invocation: true
 ---
 
@@ -20,8 +20,8 @@ an edit to the user's code.
 
 ### User Input
 
-The user's request says what to map, and may carry two option flags —
-`--whole-code-base` and `--detail thin|standard|verbose`. Step 1 reads them.
+The user's request says what to map, and may carry three option flags —
+`--whole-code-base`, `--detail thin|standard|verbose`, and `--output files|bundle|both`. Step 1 reads them.
 
 ### Instructions
 
@@ -47,7 +47,9 @@ derive any filename from what is left.
   and carry on. **`--output` never suppresses the JSON artifacts** —
   `index.json`, `<functionality_name>.json` and `inventory.json` are written in
   every mode, because `/code-flow-quality` reads them and a run that skipped
-  them would break it silently.
+  them would break it silently. Unlike `--detail`, it changes behavior in both
+  modes: in whole-codebase mode it governs the bundle exactly as it does here —
+  see Whole-Codebase Mode's Pass 1 and Pass 2 for where that applies.
 
 Everything from here through step 7 is **feature mode**, the default.
 
@@ -374,7 +376,11 @@ same rule as feature mode applies: if `index.json` exists but does not parse,
 
 Step 6c applies here too: having written `index.json`, rewrite `Code_Flows/index.html`
 from it. After pass 1 that page shows the census and says plainly that no flows have
-been traced yet — which is what a half-finished map should look like.
+been traced yet — which is what a half-finished map should look like. **Step 6d
+applies here too**, on the same condition: if `--output` is `bundle` or `both`,
+rebuild `Code_Flows/code-flow.html` from the census now — `flows` will be empty
+until pass 2 traces some, which is a correct rendering of a half-finished map, not
+an error.
 
 `filesScanned` and `functionsCatalogued` describe the whole catalog, including files
 carried forward unchanged from an earlier run — not only what this session re-read.
