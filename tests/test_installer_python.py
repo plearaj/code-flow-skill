@@ -117,17 +117,19 @@ def test_installs_viewer_scaffold(tmp_path: Path, run_python_installer) -> None:
     assert "__FLOW_DATA__" in viewer.read_text(encoding="utf-8")
 
 
-def test_both_shared_scaffolds_are_installed_regardless_of_tool(
+def test_all_shared_files_are_installed_regardless_of_tool(
     tmp_path: Path, run_python_installer
 ) -> None:
-    """The scaffolds are tool-agnostic: every command template references one
-    of them, so selecting a single host must still install both."""
+    """The four scaffolds and the theme are tool-agnostic: every command
+    template references one of the scaffolds and every scaffold inlines the
+    theme, so selecting a single host must still install all five."""
     run_python_installer(tmp_path, tool="claude")
     for name in (
         "viewer.template.html",
         "report.template.html",
         "index.template.html",
         "bundle.template.html",
+        "theme.css",
     ):
         assert (tmp_path / ".code-flow" / name).is_file(), f"{name} was not installed"
 
