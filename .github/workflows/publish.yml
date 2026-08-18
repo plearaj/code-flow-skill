@@ -1,0 +1,111 @@
+# Publishes the Python package to PyPI via Trusted Publishing (OIDC) — no API
+# token is stored anywhere.
+#
+# Deliberately `workflow_dispatch` only, not `on: release`. The npm side has a
+# prepublishOnly hook that blocks until a human acknowledges the manual browser
+# pass (scripts/prepublish-check.js); `uv publish` has no equivalent, and a
+# workflow that fired automatically on every release would mean the PyPI
+# artifact never gets that pass at all. The `release_checked` input below is the
+# same gate, spelled the only way CI can spell it: a human types the
+# acknowledgement.
+#
+# PyPI matches this workflow by FILENAME. If the pending publisher on PyPI was
+# registered with a different filename, either rename this file or edit the
+# publisher — they must agree exactly or the upload is rejected.
+
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_checked:
+        description: 'Type "yes" to confirm you ran `npm run release-check` and worked through it by hand'
+        required: true
+        default: "no"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    # Delete these two lines if the pending publisher on PyPI was configured
+    # WITHOUT an environment. If it names one, this must match it exactly.
+    environment:
+      name: pypi
+
+    permissions:
+      # Required for Trusted Publishing: mints the short-lived OIDC token PyPI
+      # exchanges for an upload token. Nothing else needs write access.
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Refuse to publish an unacknowledged release
+        if: inputs.release_checked != 'yes'
+        run: |
+          echo "::error::release_checked was '${{ inputs.release_checked }}', not 'yes'."
+          echo "No test in this repository renders any HTML scaffold or loads a skill"
+          echo "on a real host. Run 'npm run release-check' and work through it before"
+          echo "publishing. See README.md > Publishing > Before publishing."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.11'
+
+      # Both suites, on the exact tree being published. Zero dependencies in
+      # either, so there is nothing to install for the Node side.
+      - name: Node tests
+        run: npm test
+
+      - name: Python tests
+        run: uv run --group dev pytest -q
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      # Guards the one failure this package cannot survive: it exists to copy
+      # template files, so a template missing from the wheel is a broken product
+      # that every test above would still call green.
+      - name: Verify every template reached the wheel intact
+        run: |
+          python - <<'PY'
+          import hashlib, sys, zipfile
+          from pathlib import Path
+
+          wheels = list(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              sys.exit(f"expected exactly one wheel, found {wheels}")
+          zf = zipfile.ZipFile(wheels[0])
+          names = set(zf.namelist())
+
+          def digest(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          problems = 0
+          checked = 0
+          for path in sorted(Path("templates").rglob("*")):
+              if not path.is_file():
+                  continue
+              entry = f"code_flow_skill/templates/{path.relative_to('templates').as_posix()}"
+              if entry not in names:
+                  print(f"MISSING from wheel: {entry}")
+                  problems += 1
+              elif digest(zf.read(entry)) != digest(path.read_bytes()):
+                  print(f"DIFFERS from source: {entry}")
+                  problems += 1
+              else:
+                  checked += 1
+
+          print(f"{checked} templates byte-identical, {problems} problems")
+          if problems or checked == 0:
+              sys.exit(1)
+          PY
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
