@@ -599,8 +599,9 @@ Everything 1.0 adds is listed in [CHANGELOG.md](CHANGELOG.md).
 ### Before publishing
 
 No test in this repository executes any scaffold's rendering — `templates/shared/viewer.template.html`,
-`templates/shared/report.template.html` and `templates/shared/index.template.html` are checked for what
-their prompt-filled content says, never for how a browser draws it. That gap is accepted (see
+`templates/shared/report.template.html`, `templates/shared/index.template.html` and
+`templates/shared/bundle.template.html` are checked for what their prompt-filled content says,
+never for how a browser draws it. That gap is accepted (see
 `docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md`, Decision 1), on the
 condition that a human closes it by hand before every release:
 
@@ -608,11 +609,18 @@ condition that a human closes it by hand before every release:
    `Code_Flows/index.html`, `Code_Flows/<flow>.html` and `Code_Flows/quality-report.html` in a
    browser. Confirm each renders its registry, diagram or findings instead of a blank page or a
    raw JSON dump, and that the index's flow cards and the pages' `Flows` links actually navigate.
-2. Corrupt one of the two files' embedded JSON (edit a character inside the
+   Then run again with `--output both` or `--output bundle`, open the resulting
+   `Code_Flows/code-flow.html`, and confirm it does the same three things in one document: its
+   landing view lists the same flows as `index.html`, opening a flow shows its graph, and the
+   quality report is reachable from the same page.
+2. Corrupt one of the four files' embedded JSON (edit a character inside the
    `<script type="application/json">` block so it no longer parses) and reload it. Confirm
    the page shows the red error card instead of a blank page or a silent failure.
+3. Uncomment one property in a generated project's `.code-flow/theme.css`, regenerate any page,
+   and confirm the colour changed in both light and dark. A user's CSS is inlined verbatim and
+   nothing in either suite validates it, so this is the only check theming ever gets.
 
-Do this for both files, every release — a change to either scaffold's rendering re-opens the
+Do this for all four files, every release — a change to any scaffold's rendering re-opens the
 gap and the test suite will not tell you.
 
 Add the release's entry to [CHANGELOG.md](CHANGELOG.md) before bumping the version.
