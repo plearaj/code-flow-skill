@@ -758,7 +758,7 @@ def test_template_inlines_the_theme(repo_root: Path, host: str, name: str) -> No
 
 Run: `uv run --group dev pytest tests/test_template_contracts.py -k "output_flag or json_artifacts or inlines_the_theme" -v`
 
-Expected: 14 failures — 3 hosts × 1 map-only test, plus 6 hosts-and-commands × 2.
+Expected: 15 failures — 3 hosts × 1 map-only test, plus 6 hosts-and-commands × 2.
 
 - [ ] **Step 3: Write the rules into Claude's map template**
 
