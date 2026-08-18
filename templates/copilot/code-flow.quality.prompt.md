@@ -21,7 +21,11 @@ Follow these steps exactly:
    not treat it as a filter, a path, or a flow name.
 2. **Load the map.** Read `Code_Flows/index.json` (coverage, file census, flow
    registry), then `Code_Flows/inventory.json` (the function catalog), then each
-   `Code_Flows/<slug>.json` named in the index's `flows` array. **The gating rule,
+   `Code_Flows/<slug>.json` named in the index's `flows` array. However
+   `/code-flow.map` was run, these three exist: **`--output` never suppresses the JSON artifacts** —
+   `index.json`, `<functionality_name>.json` and `inventory.json` are written
+   in every mode, including `bundle`, because this command depends on them.
+   **The gating rule,
    which governs everything below:** a detector that cannot produce its required
    evidence does not run, and the report names it and says why — never substitute
    a weaker signal for a missing one. If `index.json` is absent, **stop** and tell
@@ -207,7 +211,9 @@ Follow these steps exactly:
 
    Last, write `Code_Flows/quality-report.html`: read `.code-flow/report.template.html`
    and replace its single `__REPORT_DATA__` token with the exact JSON you just wrote,
-   changing nothing else. Escape every literal `</` in that JSON as `<\/` first —
+   and its `__THEME_CSS__` token with the contents of `.code-flow/theme.css`, or an
+   empty string if that file does not exist or cannot be read, changing nothing else.
+   Escape every literal `</` in that JSON as `<\/` first —
    findings carry source snippets, and an unescaped `</` closes the script block early,
    leaving the page rendered as plain text with nothing to explain why. All three files
    render the same data and none may contradict another. If the scaffold cannot be read,
