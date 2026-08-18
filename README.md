@@ -84,8 +84,14 @@ mapped flow and the quality report. One file, no server, opens from `file://`. U
 `--output bundle` to write that page and no other HTML.
 
 ```text
-/code-flow.map --output both
+/code-flow.map user login --output both
+/code-flow.map user login --output bundle
+/code-flow.map --whole-code-base --output both
 ```
+
+The first writes the loose pages and the bundle; the second writes the bundle alone;
+the third bundles a whole-codebase map. Omit `--output` and you get `files`, exactly
+what earlier versions wrote.
 
 The bundle is rebuilt from `Code_Flows/`'s JSON artifacts every run, so it is never
 stale — and **no `--output` mode ever skips those artifacts**, because `/code-flow.quality`
