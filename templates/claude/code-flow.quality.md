@@ -1,5 +1,5 @@
 ---
-description: Report DRY, KISS and YAGNI findings from the persisted code-flow map, with file:line evidence and honest coverage.
+description: Report DRY, KISS and YAGNI findings, plus violations of rules the project has already written down, from the persisted code-flow map, with file:line evidence and honest coverage.
 ---
 
 ## User Input
@@ -25,12 +25,20 @@ Follow these steps exactly.
 
 #### 1. Read the Arguments
 
-The user's input (`$ARGUMENTS`) carries at most one flag:
+The user's input (`$ARGUMENTS`) carries two optional flags:
 
 - `--read-code` — after deriving candidate findings from the map, open the files
   those candidates cite and confirm each against current source. Off by default.
   It requires the source tree to be present and current, not merely the artifacts
   under `Code_Flows/`.
+- `--rules [source ...]` — also check the map against rules this project has
+  already written down. Off by default. A source is a path to a document, the
+  word `auto`, or a rule written inline in quotes; several may be given,
+  separated by spaces or commas, and `--rules` with no value means `auto`. Step 2
+  loads them and step 3's fifth detector checks them. This is how a project's own
+  standard — a `CLAUDE.md`, an `AGENTS.md`, a Spec Kit constitution, a team style
+  guide — gets reported with the same evidence and the same honesty as DRY, KISS
+  and YAGNI, instead of being a thing everyone agreed to and nobody checks.
 
 There is no feature name to parse: this command analyzes the whole map. If the
 input contains anything else, say what you read, ignore it, and carry on — do not
@@ -39,7 +47,8 @@ treat it as a filter, a path, or a flow name.
 #### 2. Load the Map
 
 Read three kinds of artifact, in this order. Each detector in step 3 draws on
-some of them, and which ones are readable decides which detectors run.
+some of them, and which ones are readable decides which detectors run. The rules
+`--rules` names are a fourth kind, loaded at the end of this step.
 
 1. `Code_Flows/index.json` — coverage, the file census, and the flow registry.
 2. `Code_Flows/inventory.json` — the function catalog.
@@ -82,6 +91,52 @@ findings require. Record it as skipped and name both remedies: re-run with
 `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
 The other three detectors are unaffected and still run.
 
+**Load the rules, if `--rules` was passed.** Skip all of this when it was not:
+an unrequested detector is not a gap, and it is never listed as skipped.
+
+Resolve each source in turn. A source that names a readable file is a rule
+document. A source that is not a readable path is an inline rule, taken as its own
+single rule with the source `--rules`. `auto` means look for these, in this order,
+and use every one that exists:
+
+`CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
+`.github/copilot-instructions.md`, `.specify/memory/constitution.md`,
+`memory/constitution.md`, `CONVENTIONS.md`, `.code-flow/rules.md`.
+
+Read each document and split it into discrete rules. One rule is one statement a
+reader could be shown a counter-example to. A heading, a rationale, an example and
+a sentence of encouragement are not rules; a sentence saying what code must,
+should or must never do is. Record for each:
+
+- `ruleId` — `R-01`, `R-02`, in the order you read them, counting across all
+  sources so no two rules share an id.
+- `text` — the rule as written, quoted, not paraphrased. Never invent a rule, and
+  never sharpen a soft one: a report that cites the project's own words is
+  arguable; one that cites your summary of them is not.
+- `source` — `file:line` of the sentence, or `--rules` for an inline rule.
+- `severity` — from the rule's own wording, as a rule and not a judgement:
+  `must`, `never`, `always`, `required`, `do not` mean `high`; `should`,
+  `prefer`, `avoid`, `expected` mean `medium`; `consider`, `may`, `where
+  possible`, `ideally` mean `low`. When the wording carries no such word, use
+  `medium`.
+- `checkable` — whether the map carries the evidence this rule needs. A rule
+  about naming, file placement, layering, duplication, function size, docstring
+  presence, dependency direction or what may call what is checkable against the
+  inventory and the flow graphs. A rule about runtime behavior, review process,
+  commit messages, dependency licences, CI configuration or the intent behind a
+  design is not — the map has no evidence about any of it. When it is not, record
+  why in one clause.
+
+**Say what you did not check.** A rule marked not-checkable is reported as
+not-checked in step 6, never as passing and never silently dropped. Reporting a
+rule as clean because there was no evidence either way is the confident-wrong
+outcome this whole command is arranged to avoid, and it is worse here than
+anywhere else: the user asked specifically about that rule.
+
+**If `--rules` was passed and no source could be read**, do not stop. Skip the
+rule-violation detector, record it in `detectorsSkipped`, and name every path you
+tried — the other four detectors are unaffected.
+
 Note what is *not* a stop condition. `coverage.flowsTraced` below
 `coverage.entryPointsFound` means the trace pass never finished, and that is
 normal on a large repository. Analyze what was traced and let the banner in step 6
@@ -89,8 +144,8 @@ say how much that was.
 
 #### 3. Run the Detectors
 
-Four detectors. Step 2's gating rule has already decided which of them run; run
-those, and only those.
+Four detectors, and a fifth when `--rules` was passed. Step 2's gating rule has
+already decided which of them run; run those, and only those.
 
 Every severity below is a **rule**, not a judgement. Apply the number. If a
 finding does not clear a threshold, it is not a finding of lower severity — it is
@@ -130,6 +185,26 @@ Severity is `high` only when the entry is `unreached`, is not `exported`, and is
 not test-only. Anything whose `exported` is true is capped at `low`, because a
 public API surface has callers this repository cannot see.
 
+**e. rule-violation (RULES).** Runs only when step 2 loaded at least one rule.
+For each rule marked `checkable`, search the inventory and the flow graphs for
+evidence that contradicts it, and cite that evidence the way every other detector
+does: `file`, `line`, `symbol`, snippet where the map carries one. Severity is
+the rule's own severity from step 2 — the rule's wording decided it, not you.
+
+**One rule, one finding.** Every site that breaks the same rule belongs to that
+rule's finding, however many there are. Fifteen files breaking a naming rule is
+one finding with fifteen sites.
+
+A rule with no violating site is not a finding. It is reported as checked and
+clean, in the banner — which is the only place a reader can tell "checked, clean"
+apart from "never checked".
+
+Cite the rule as well as the code. Every finding here carries `rule` (the rule's
+text, quoted from step 2), `ruleId` and `ruleSource`, so a reader can go and read
+the sentence the finding rests on. A rule-violation finding whose evidence is
+your reading of the project's intent rather than its written words is not a
+finding — drop it.
+
 **unreached is a candidate, never a verdict.** Tracing here is search and reading,
 not a compiler's view: it cannot see reflection, `getattr`, dependency injection,
 framework hooks, decorator registration, or entry points declared in
@@ -161,10 +236,11 @@ helper is one finding with three sites, not three findings.
 }
 ```
 
-`principle` is `DRY`, `KISS` or `YAGNI`. `severity` is `high`, `medium` or `low`.
-`confidence` is `unverified` unless step 4 verified the finding. `effort` is
-`small`, `medium` or `large`. `id` is the principle, a hyphen, and a two-digit
-counter that restarts per principle: `DRY-01`, `DRY-02`, `KISS-01`, `YAGNI-01`.
+`principle` is `DRY`, `KISS`, `YAGNI` or `RULES`. `severity` is `high`, `medium`
+or `low`. `confidence` is `unverified` unless step 4 verified the finding.
+`effort` is `small`, `medium` or `large`. `id` is the principle, a hyphen, and a
+two-digit counter that restarts per principle: `DRY-01`, `DRY-02`, `KISS-01`,
+`YAGNI-01`, `RULES-01`.
 **The counter is assigned in step 5, after step 4's drops** — not here — so do not
 number findings as you emit them, and read the `DRY-01` above as the shape rather
 than as a number already spent. Once assigned, ids are stable within the run,
@@ -178,6 +254,8 @@ these, and nothing else:
 - `unreached` adds `exported`, copied from the inventory entry, and `reachedBy`,
   whose only two values are `"none"` (reached by nothing) and `"tests"` (reached
   only by test-role callers, which is what `production-unreached` means).
+- `rule-violation` adds `rule` — the rule's text, quoted — plus `ruleId` and
+  `ruleSource`, the `file:line` it was read from.
 
 #### 4. Verify Against Source
 
@@ -259,13 +337,23 @@ dropped never consumed a number, so each principle's counter reads `01`, `02`,
   "coverage": { "flowsTraced": 14, "entryPointsFound": 17,
                 "functionsCatalogued": 1180, "flowsUnreadable": 0,
                 "filesChanged": 6, "findingsDropped": 2,
-                "detectorsSkipped": ["duplicate-intent"] },
+                "detectorsSkipped": ["duplicate-intent"],
+                "rulesLoaded": 12, "rulesChecked": 9,
+                "rulesNotCheckable": 3 },
+  "rules": [
+    { "ruleId": "R-01", "text": "Every public function must carry a docstring.",
+      "source": "CLAUDE.md:14", "severity": "high", "checkable": true,
+      "reason": "" }
+  ],
   "findings": []
 }
 ```
 
-`meta.root` is the one absolute path in the file; every path inside `findings`
-is repo-relative with forward slashes. `mapGenerated`, `mapMode` and `mapDetail`
+`rules` is every rule step 2 loaded, checkable or not, each with the `reason` it
+could not be checked where that applies — an empty array when `--rules` was not
+passed. The three `rules*` counts describe that array, and a reader can reconcile
+them against it. `meta.root` is the one absolute path in the file; every path
+inside `findings` is repo-relative with forward slashes. `mapGenerated`, `mapMode` and `mapDetail`
 are copied from the map's own `index.json` `meta`, so the report records which map
 it read. `detectorsSkipped` lists detector names step 2 gated off, and is an empty
 array when all four ran.
@@ -280,6 +368,11 @@ first thing under the title is a banner stating: how many of `entryPointsFound`
 entry points were traced (`flowsTraced`), how many functions were catalogued, how
 many flows were unreadable, how many mapped files have changed since mapping, how
 many findings were dropped as stale, and which detectors were skipped and why.
+
+When `--rules` was passed, the banner also states how many rules were loaded,
+how many were checked, and how many could not be — naming each of those and its
+reason. A rule the report never mentions reads as a rule that passed, which is
+the one thing this detector must never imply.
 
 The changed-file count is step 4's whole file census, not its cited-file subset; say
 "of the N files the map recorded" so no reader takes it for the smaller number.

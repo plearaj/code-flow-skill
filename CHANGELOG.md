@@ -7,6 +7,82 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Both
 package (`@htst/code-flow-skill`) and the Python package (`htst-code-flow-skill`) ship
 from this repository at the same version.
 
+## [1.2.0]
+
+### Added — automated tracing
+
+- **Two static tracers**, installed to `.code-flow/tracers/`: `trace_python.py` (any
+  CPython 3.9+) and `trace_typescript.mjs` (any Node 18+, covering `.ts`, `.tsx`,
+  `.js`, `.jsx`, `.mjs`, `.cjs`, `.vue` and `.svelte`). Each reads a repository in one
+  pass and writes one JSON document — every function with its `file:line`, signature,
+  purpose, role and export status; the resolved call graph between them; the entry
+  points execution arrives through; and, for the TypeScript one, the component tree and
+  the routes.
+- **`/code-flow.map` runs them before it traces anything** and walks the resulting graph
+  instead of re-reading the repository once per entry point. That is the difference
+  between finishing a whole-codebase map in one pass and finishing it in four: a run
+  that previously traced 10 of 118 flows before running out of room now traces them all.
+- **`--tracer auto|on|off`** on `/code-flow.map`, default `auto`: run each tracer whose
+  language the repository contains and whose interpreter the machine has, and read
+  source where none applies. `on` says so and stops when none could run; `off` never
+  runs one, and every step still works by reading, only slower.
+- Both tracers are **zero-dependency** — no `typescript` package, no `node_modules`, no
+  compiler — because they run inside your repository, not this one. The TypeScript one
+  lexes rather than parses: comments, string bodies, template text and regex literals
+  are blanked in place, so a `{` inside a string cannot move a function's boundary.
+- **Honest resolution.** Every call carries `exact` or `heuristic`; calls that could mean
+  several things are listed with their candidates rather than guessed into edges; calls
+  that leave the repository are listed separately; and each tracer states what static
+  analysis cannot see at all. The map confirms heuristic edges against source before
+  drawing them, and never presents a traced map as complete.
+
+### Added — frontend component mapping
+
+- **`--frontend auto|react|vue|angular|svelte|off`** on `/code-flow.map`, default
+  `auto`. A repository with a UI is two graphs — functions call functions, components
+  render components — and mapping only the calls left the half a user touches
+  undocumented.
+- Components are recognized per framework by declaration shape: a capitalized
+  JSX-returning function or class (React, Preact, Solid), a `.vue` file or options
+  object with a `template`, a class decorated `@Component` (Angular), a `.svelte` file.
+  Children come from JSX tags resolved through the file's imports, from the
+  `<template>` block, or from the selectors an Angular template uses.
+- Each component is catalogued in `inventory.json` with its props, events, lifecycle
+  hooks, the hooks, composables, stores or services it depends on, the route that
+  reaches it, and the components it renders. Custom hooks, composables and injectable
+  services get their own kind — `hook`, `service`, `store` — rather than distorting the
+  tree as components.
+- **New node kind `component` and new edge kind `render`**, rendered distinctly by the
+  interactive viewer and the bundle, with matching entries in `.code-flow/theme.css`.
+
+### Added — checking your own rules
+
+- **`--rules [source ...]`** on `/code-flow.quality`, off by default. A source is a path
+  to a document, the word `auto`, or a rule written inline. `auto` looks for `CLAUDE.md`,
+  `.claude/CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.github/copilot-instructions.md`,
+  `.specify/memory/constitution.md` (Spec Kit), `memory/constitution.md`,
+  `CONVENTIONS.md` and `.code-flow/rules.md`.
+- **A fifth detector, `rule-violation`, under a fourth principle, `RULES`.** Findings
+  carry the same `file:line` evidence as every other finding, plus the rule they rest on
+  — quoted, not paraphrased — and the `file:line` it was read from. One rule is one
+  finding however many sites break it, and severity comes from the rule's own wording
+  (`must`/`never`/`always` are high, `should`/`prefer` medium, `consider`/`may` low)
+  rather than from the report's opinion of it.
+- **A rule the map has no evidence about is reported as not checked, never as passing.**
+  `quality-report.json` gains a `rules` array carrying every rule loaded, checkable or
+  not, with the reason where it was not, plus `rulesLoaded`, `rulesChecked` and
+  `rulesNotCheckable` in `coverage` so the banner reconciles with the array behind it.
+
+### Changed
+
+- `inventory.json` function entries may now carry `calls` — the resolved call graph a
+  tracer established, each with its confidence. Present when a tracer produced it,
+  absent otherwise; it is what makes pass 2 a graph walk rather than a second reading of
+  the repository.
+- `inventory.json` may now carry a `components` array alongside `functions`.
+- The interactive viewer, the bundle and the quality report accept the new kinds and the
+  new principle; existing artifacts render unchanged.
+
 ## [1.1.0]
 
 ### Added

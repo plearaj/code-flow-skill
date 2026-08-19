@@ -16,12 +16,13 @@
   --text:#e9e9ed; --dim:#9397ab; --faint:#75798c;
   --accent:#9184d9; --accent-soft:#b5abfc; --accent-dim:#5d5294; --err:#d98a95; --ok:#b5abfc;
   --grid:#1e2130; --edge:#75798c; --edge-soft:#454956;
-  /* four node kinds separated by lightness inside one low-chroma family, since
+  /* five node kinds separated by lightness inside one low-chroma family, since
      this system carries a single accent -- every card also prints its kind */
   --node-entry:#2b2741; --node-entry-s:#5d5294; --node-entry-a:#b5abfc;
   --node-step:#232532;  --node-step-s:#3f424d;  --node-step-a:#9397ab;
   --node-ext:#262a60;   --node-ext-s:#4c5397;   --node-ext-a:#a7a1db;
   --node-io:#292b31;    --node-io-s:#595d6c;    --node-io-a:#cfd3e5;
+  --node-component:#2f2839; --node-component-s:#6b5aa0; --node-component-a:#c9b8f2;
   --lane:rgba(233,233,237,.02); --lane-line:rgba(233,233,237,.06);
   --shadow:0 0 0 1px #3f424d, 0 6px 18px rgba(0,0,0,.55);
   --glow:0 0 0 1px rgba(145,132,217,.4), 0 6px 24px rgba(145,132,217,.14);
@@ -37,6 +38,7 @@
   --node-step:#eceffb;  --node-step-s:#cfd3e5;  --node-step-a:#75798c;
   --node-ext:#e3e5f6;   --node-ext-s:#9690c9;   --node-ext-a:#423a6a;
   --node-io:#e9ebf6;    --node-io-s:#b2b6ca;    --node-io-a:#3f424d;
+  --node-component:#efe9fb; --node-component-s:#c3b2ef; --node-component-a:#4a3d7a;
   --lane:rgba(41,43,49,.025); --lane-line:rgba(41,43,49,.07);
   --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08);
   --glow:0 0 0 1px rgba(93,82,148,.35), 0 6px 20px rgba(93,82,148,.12);
@@ -129,6 +131,7 @@ header .spacer{flex:1}
 .edge path.ln{fill:none; stroke:var(--edge-soft); stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round;
   marker-end:url(#ar)}
 .edge.async path.ln,.edge.backe path.ln{stroke-dasharray:5 5}
+.edge.render path.ln{stroke-dasharray:2 4}
 .edge path.ov{fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
   stroke-dasharray:7 9; opacity:0; pointer-events:none}
 .edge.hot path.ln{stroke:var(--edge); marker-end:url(#arh)}
@@ -155,6 +158,8 @@ header .spacer{flex:1}
 .node.k-external .bar,.node.k-external .kb{fill:var(--node-ext-a)}
 .node.k-io .card{fill:var(--node-io); stroke:var(--node-io-s)}
 .node.k-io .bar,.node.k-io .kb{fill:var(--node-io-a)}
+.node.k-component .card{fill:var(--node-component); stroke:var(--node-component-s)}
+.node.k-component .bar,.node.k-component .kb{fill:var(--node-component-a)}
 .node:hover .card{stroke:var(--accent)}
 .node.sel .card{stroke:var(--accent); stroke-width:1.75; filter:drop-shadow(0 3px 14px rgba(145,132,217,.32))}
 .node.match .card{stroke:var(--accent)}
@@ -407,7 +412,7 @@ if (!v.ok){ fail(v.title, v.lines); return; }
 var data = v.data, meta = v.meta, nodes = v.nodes, edges = v.edges, byId = v.byId;
 
 var SVGNS = "http://www.w3.org/2000/svg";
-var KINDS = ["entry","step","external","io"];
+var KINDS = ["entry","step","external","io","component"];
 function kindOf(n){ return KINDS.indexOf(n.kind) >= 0 ? n.kind : "step"; }
 function basename(p){ return String(p || "").split("/").pop(); }
 function moduleOf(n){
@@ -677,7 +682,7 @@ function render(){
   edges.forEach(function(e){
     if (!visible.has(e.from) || !visible.has(e.to)) return;
     var a = byId.get(e.from), b = byId.get(e.to);
-    var kind = e.back ? "backe" : (e.kind === "async" ? "async" : (e.kind === "conditional" ? "cond" : "call"));
+    var kind = e.back ? "backe" : (e.kind === "async" ? "async" : (e.kind === "conditional" ? "cond" : (e.kind === "render" ? "render" : "call")));
     var g = sEl("g", { "class": "edge " + kind }, eLayer);
     var d = anchors(a, b, e.back, bounds).d;
     sEl("path", { "class": "ln", d: d }, g);
@@ -984,7 +989,7 @@ function renderPanel(){
     var s2 = el("div", "sec", null, bd);
     el("h3", null, "Node kinds", s2);
     var lg = el("div", "legend", null, s2);
-    [["entry","entry point"],["step","internal step"],["external","third party"],["io","i/o boundary"]].forEach(function(k){
+    [["entry","entry point"],["step","internal step"],["external","third party"],["io","i/o boundary"],["component","UI component"]].forEach(function(k){
       var row = el("div", null, null, lg);
       var sw = el("span", "sw", null, row);
       sw.style.background = "var(--node-" + (k[0] === "external" ? "ext" : k[0]) + ")";
@@ -994,7 +999,7 @@ function renderPanel(){
     var s3 = el("div", "sec", null, bd);
     el("h3", null, "Edge kinds", s3);
     var le = el("div", "legend", null, s3);
-    [["call","solid"],["async","dashed"],["conditional","labelled"],["back / cycle","dashed, routed around"]].forEach(function(k){
+    [["call","solid"],["async","dashed"],["conditional","labelled"],["render","dotted"],["back / cycle","dashed, routed around"]].forEach(function(k){
       var row = el("div", null, null, le);
       var sv = document.createElementNS(SVGNS, "svg"); sv.setAttribute("viewBox", "0 0 22 8");
       var ln = document.createElementNS(SVGNS, "line");

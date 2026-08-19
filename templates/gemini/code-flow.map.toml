@@ -13,7 +13,7 @@ The user specified: $ARGUMENTS
 
 #### 1. Identify the Target Flow
 
-The user's input (`$ARGUMENTS`) says what to document. Read it first for two option
+The user's input (`$ARGUMENTS`) says what to document. Read it first for its option
 flags. They are options, not part of the feature name — strip them out before you
 derive any filename from what is left.
 
@@ -36,6 +36,20 @@ derive any filename from what is left.
   them would break it silently. Unlike `--detail`, it changes behavior in both
   modes: in whole-codebase mode it governs the bundle exactly as it does here —
   see Whole-Codebase Mode's Pass 1 and Pass 2 for where that applies.
+- `--frontend auto|react|vue|angular|svelte|off` — whether to map UI components
+  as well as functions. Default `auto`: detect the frameworks this repository
+  actually uses and map their components too. Naming one forces that framework;
+  `off` maps functions only. **Frontend Component Mapping** below says what it
+  changes. If its value is not one of those, say what you read, use `auto`, and
+  carry on.
+- `--tracer auto|on|off` — whether to run the installed static tracers before
+  tracing anything. Default `auto`: run each tracer whose language this
+  repository contains and whose interpreter this machine has, and read source
+  yourself where none applies. `on` means say so and stop when no tracer could
+  run, since a user who asked for a traced map would otherwise get a slower one
+  silently. `off` never runs one. **Automated Tracing** below says what they
+  produce and how far to trust it. If its value is not one of those three, say
+  what you read, use `auto`, and carry on.
 
 Everything from here through step 7 is **feature mode**, the default.
 
@@ -52,6 +66,12 @@ Find all code related to the target flow:
 - Search for relevant files by name pattern
 - Search for functions, classes, keywords, and entry points related to the flow
 - Read discovered files to trace the call chain
+
+If a tracer ran, start from its output instead of from search: find this flow's
+entry function in `entryPoints[]` or `functions[]`, then walk `calls[]`
+transitively to collect the flow. Read the source of every function you collect —
+the tracer says what calls what, and you are describing what it does — and follow
+`ambiguousCalls[]` by hand wherever the chain passes through one.
 
 Trace the full execution path — follow function calls from entry point through to the final output. Include every function that participates in the flow.
 
@@ -125,9 +145,9 @@ Rules — follow these exactly, or the page will refuse to render:
 - `id` is derived from the node's own `file` and function name, so that the same function always gets the same `id` in every flow and downstream tools can join flow nodes against a function catalog. Derive it exactly like this: **(1)** take the repo-relative `file` path and drop the extension from its **last segment only** — the final `.` in the filename and everything after it, so `src/v2.1/handler.py` → `src/v2.1/handler`, and a filename with no dot loses nothing; **(2)** append `_` followed by the function's **unqualified** name — `authenticate`, never `User.authenticate` — which is the same name a function catalog records for it; **(3)** lowercase the whole string, replace every remaining character outside `[a-z0-9_]` (path separators, dots, dashes, spaces, anything else) with `_`, collapse each run of `_` into a single `_`, and trim any leading or trailing `_`. Example: `src/web/views.py` + `login_view` → `src_web_views_login_view`. If **the file itself** defines more than one function with that name — same-named methods on two classes, or an overload — append `_l` and the line number of the function's own definition keyword — the
 `def`, `function`, `func` or `fn` line itself, never a decorator, annotation or
 comment line above it: `src_jobs_worker_run_l31` and `src_jobs_worker_run_l88`. Decide that from the file's own contents, never from which nodes happen to be in this flow: an `id` must not change depending on what else you mapped.
-- `kind` on a **node** is one of `entry` | `step` | `external` | `io` (default `step`). `entry` = where the flow starts; `external` = a third-party/library boundary; `io` = a DB/network/file side effect. This drives node color.
+- `kind` on a **node** is one of `entry` | `step` | `external` | `io` | `component` (default `step`). `entry` = where the flow starts; `external` = a third-party/library boundary; `io` = a DB/network/file side effect; `component` = a UI component rather than a plain function. This drives node color.
 - **Exactly one** node MUST have `kind: entry`. If the flow has several plausible roots — two HTTP handlers, say — pick the one the user asked about, make that the `entry`, and mark the others `step`.
-- `kind` on an **edge** is one of `call` | `async` | `conditional` (default `call`). Set `"back": true` on any edge that closes a loop or recursion (points back to an ancestor) so it is drawn as a routed dashed curve.
+- `kind` on an **edge** is one of `call` | `async` | `conditional` | `render` (default `call`). `render` is a parent component drawing a child. Set `"back": true` on any edge that closes a loop or recursion (points back to an ancestor) so it is drawn as a routed dashed curve.
 - All file paths use **forward slashes**, repo-relative. `meta.root` is the absolute project root with forward slashes (used only to build editor links).
 - `snippet` is optional — a short excerpt (up to ~40 lines). **Inside every `snippet` string, replace each `</` with `<\/`** (a literal `</script>` would terminate the data block). No trailing commas anywhere.
 
@@ -254,6 +274,112 @@ There is no fallback page here.
   the page that lists every mapped flow, and mention that the JSON artifacts were
   updated
 
+## Automated Tracing
+
+Reading a repository function by function is what leaves a large map
+half-finished. The installed tracers do that reading in one pass, and they are
+the difference between a hundred flows traced in one session and ten.
+
+Run them unless `--tracer off`. Nothing below depends on their being there: when
+no tracer applies, every step still works by reading source, only slower.
+
+### Which tracer, and how
+
+`.code-flow/tracers/` holds one tracer per supported language. Run the ones whose
+language this repository contains:
+
+| Language | Command |
+|---|---|
+| Python | `python .code-flow/tracers/trace_python.py --root . --detail <detail> --out Code_Flows/trace-python.json` |
+| TypeScript, JavaScript | `node .code-flow/tracers/trace_typescript.mjs --root . --detail <detail> --out Code_Flows/trace-typescript.json` |
+
+Pass the `--detail` value the user passed you, so one flag governs snippet size
+everywhere. A repository written in both languages runs both, into two files;
+nothing merges them, and everything else here reads them as one catalog.
+
+A tracer that is missing, exits non-zero, or needs an interpreter this machine
+does not have is not an error under `--tracer auto`: say which one did not run
+and why, and carry on reading source for that language.
+
+`.code-flow/tracers/README.md` documents the output in full. What matters here:
+
+- `functions[]` — one entry per function, already shaped like an inventory entry:
+  the same `id` rule, and the same `role`, `exported`, `loc`, `signature`,
+  `purpose` and `snippet` fields.
+- `functions[].calls[]` — the call graph. `to` is another function's `id`, and
+  `confidence` is `exact` or `heuristic`.
+- `entryPoints[]` — where execution enters: routes, CLI commands, jobs, handlers,
+  mounted applications. Each names an `id` and a `kind`.
+- `components[]` and `routes[]` — the UI half, empty for a language with no UI.
+- `ambiguousCalls[]` — the calls the tracer refused to guess, with their
+  candidates. `externalCalls[]` — the ones that leave the repository. `limits` —
+  what it cannot see at all.
+
+### How far to trust it
+
+A tracer is evidence, not the map. Three rules:
+
+1. **Read the source of anything you describe.** A `purpose` the tracer inferred
+   is where a flow description starts, not what it says.
+2. **An `exact` call is a fact; a `heuristic` call is a claim.** Confirm a
+   heuristic edge against the source before you draw it, and drop it when the
+   source disagrees.
+3. **What the tracer could not resolve is still there.** `ambiguousCalls` and
+   `limits` name real calls, so a chain that passes through one is unfinished
+   rather than finished. Follow it by reading, and say in your report where you
+   could not.
+
+Never present a traced map as complete. Say **catalogued** and **found**, never
+"all" — a tracer is static analysis, and it sees no more of reflection, dynamic
+dispatch or configuration-declared routes than search does.
+
+## Frontend Component Mapping
+
+A repository with a UI is two graphs, not one. Functions call functions;
+components render components; the two meet where a handler or a hook calls into
+the rest of the system. Mapping only the calls leaves the half of the system a
+user actually touches undocumented.
+
+This applies unless `--frontend off`, and only to the frameworks the repository
+really uses — decided from `package.json` dependencies, then the config files
+present, then the file extensions on disk. Under `--frontend auto` detect them;
+when the user named one, use that one and say so if the repository disagrees.
+
+### What a component is, per framework
+
+| Framework | A component is | Its children come from | Its inputs are |
+|---|---|---|---|
+| React, Preact, Solid | a capitalized function or class that returns markup | the JSX tags in its body, resolved through the file's imports | destructured props, or the props type |
+| Vue | a `.vue` file, or an options object carrying a `template` | the tags in its `<template>` block | `defineProps`, or the `props` option |
+| Angular | a class decorated `@Component` | the selectors its template uses, inline or in `templateUrl` | `@Input()` members |
+| Svelte | a `.svelte` file | the capitalized tags in its markup | `export let` declarations |
+
+Record alongside each one: its outputs — `@Output()`s, emits, or callback props;
+its lifecycle hooks and effects; the hooks, composables, stores or services it
+depends on; and the route that reaches it, if any.
+
+A custom hook, a composable and an injectable service are none of them
+components, and filing them as components distorts the tree. Give them their own
+`kind` — `hook`, `service`, `store` — and keep them in the graph, because that is
+where a component's behavior actually lives.
+
+### What to write
+
+Components are catalogued in `inventory.json` by pass 1's step 1.2b, and drawn in
+flows as nodes of `kind: "component"` joined by edges of `kind: "render"`.
+Everything else about a flow is unchanged: one node per thing, ids by the same
+rule, `file:line` on every node.
+
+A UI flow is worth its own flow when it starts at a route or at a mounted
+application root. Trace it as any other flow is traced — route, page component,
+the components it renders, the hooks and handlers those call, and on into the
+services and requests they reach — so that one flow shows a click arriving at the
+server.
+
+Where a tracer ran it has already done this: `components[]` carries each
+component with its `children`, `inputs`, `outputs` and `hooks`, and `routes[]`
+pairs a path with the component it renders.
+
 ## Whole-Codebase Mode
 
 Reached only when the user passed `--whole-code-base`. Two passes: catalogue what
@@ -281,6 +407,11 @@ but could not read structure from. A `.gitignore` match is not itself a reason �
 give the file the reason that fits what it is. If two fit, use the one listed
 first here, so two runs over the same repository produce the same counts.
 
+If a tracer ran, its `files[]` and `skipped[]` arrays are this census already —
+same paths, same sizes, same hashes, same four skip reasons. Take them, and add
+only what no tracer covered: a second language, and any file a tracer could not
+parse.
+
 **1.2 Catalogue the functions.** Write `Code_Flows/inventory.json` with one entry
 per function or method you find:
 
@@ -298,6 +429,9 @@ per function or method you find:
       "purpose": "Return True if value looks like an email address.",
       "role": "source",
       "exported": false,
+      "calls": [
+        { "to": "src_auth_normalize_normalize", "confidence": "exact" }
+      ],
       "snippet": "def validate_email(value):\n    ..."
     }
   ]
@@ -326,6 +460,12 @@ per function or method you find:
   Go. **When the language or the convention is unclear, use `true`** — wrongly
   calling something private produces a false dead-code claim later, which is the
   more expensive mistake.
+- `calls` — the functions this one calls, each an `id` in this same catalog and
+  a `confidence` of `exact` or `heuristic`. Present when a tracer produced it,
+  absent otherwise: it is a fact the tracer establishes, not something to infer
+  by reading. It is also what makes pass 2 a graph walk instead of a second
+  reading of the whole repository, which is the difference between finishing a
+  large map and abandoning one.
 - `snippet` — governed by `--detail`:
 
 | `--detail` | `snippet` |
@@ -335,6 +475,57 @@ per function or method you find:
 | `verbose` | include the full body, uncapped |
 
   Inside every `snippet`, replace each `</` with `<\/`, exactly as in step 5a.
+
+If a tracer ran, this catalog is its `functions[]` array: copy `id`, `name`,
+`file`, `line`, `loc`, `signature`, `purpose`, `role`, `exported`, `calls` and
+`snippet` straight across rather than deriving them again. Read source only for
+the entries you are about to describe in a flow, and for anything the tracer's
+`limits` say it could not see. Catalogue what the tracer found *and* what it
+says it missed; never report the first as if it were both.
+
+**1.2b Catalogue the components.** Skip this if `--frontend off`, or if the
+repository has no UI. Otherwise add a `components` array to the same
+`inventory.json`, one entry per component, hook, store or service — see
+**Frontend Component Mapping** for what counts as which, per framework:
+
+```json
+{
+  "schema": 1,
+  "functions": [],
+  "components": [
+    {
+      "id": "src_pages_userlistpage_userlistpage",
+      "name": "UserListPage",
+      "file": "src/pages/UserListPage.tsx",
+      "line": 6,
+      "framework": "react",
+      "kind": "page",
+      "selector": null,
+      "inputs": ["userId"],
+      "outputs": ["onSelect"],
+      "hooks": ["useUsers", "useEffect"],
+      "children": ["src_components_usercard_usercard"],
+      "exported": true
+    }
+  ]
+}
+```
+
+- `id` — derived by the same rule as a function's, from the component's own
+  `file` and unqualified name, so a component that is also a function (React,
+  Vue, Svelte) carries one `id` in both arrays rather than two identities.
+- `framework` — `react`, `vue`, `angular`, `svelte`, `solid` or `preact`,
+  decided per file rather than per repository: a monorepo with an Angular admin
+  app and a React storefront is one repository with two answers.
+- `kind` — `component`, `page`, `layout`, `hook`, `service`, `store`,
+  `directive`, `pipe` or `module`.
+- `selector` — the Angular selector, or `null` where the framework has none.
+- `inputs`, `outputs` — props and events, in the framework's own terms.
+- `hooks` — lifecycle hooks, effects and the composables or services it depends on.
+- `children` — the `id` of every component this one renders. This is the tree.
+
+If a tracer ran, this is its `components[]` array, copied across, and its
+`routes[]` array pairs a path with the component it renders.
 
 **1.3 Record the file census.** In `Code_Flows/index.json`, set `meta.mode` to
 `"whole-code-base"` and `meta.detail` to the level you used, then record one entry
@@ -398,13 +589,24 @@ Use the inventory you just built — `exported` is a strong hint — plus the fr
 conventions the repository actually uses (route decorators, a router table, an
 `argv` parser, a job registry).
 
+If a tracer ran, `entryPoints[]` is this list: take it, and add anything the
+conventions above show it missed. Its `routes[]` are entry points too — a route
+is where a user enters the system.
+
 Record how many you found as `coverage.entryPointsFound` **before you trace any of
 them**. Recording it first is what makes an unfinished run visible: `flowsTraced`
 below `entryPointsFound` means the map is partial.
 
 **2.2 Trace each one.** For every entry point not already mapped, run feature mode's
 steps 2, 4, 5 and 6 exactly as written, treating that entry point as the requested
-flow — but **skip step 3**: this mode does not edit source. Each flow produces its
+flow — but **skip step 3**: this mode does not edit source.
+
+Where the inventory carries `calls`, step 2 is a walk of that graph from the entry
+point rather than a fresh read of the repository: the nodes are the functions you
+reach, the edges are the calls you walked, and the reading you do is of the
+functions you are about to describe. That is what makes tracing every entry point
+in one pass possible; without it, a repository of any size runs out of room
+part-way through and has to be finished by re-running. Each flow produces its
 own `Code_Flows/<slug>.md`, `.html` and `.json`, and its own entry in `index.json`'s
 `flows` array. Derive the slug from the entry point's own name.
 

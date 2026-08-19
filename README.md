@@ -45,6 +45,9 @@ the table above is the one to trust.
 
 Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), the assistant will:
 
+0. **Trace the repository statically**, where a tracer applies — see
+   [Automated tracing](#automated-tracing). The rest of the steps then start from
+   a call graph rather than from search.
 1. **Discover** the relevant files and functions using glob + grep searches.
 2. **Trace the call chain** from entry point to final output, following every function that participates in the flow.
 3. **Docstring any undocumented functions** encountered along the way, editing them in place.
@@ -237,19 +240,25 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 | `/code-flow.map <flow name>` | Traces one flow and writes its markdown, HTML and JSON |
 | `/code-flow.map` (no argument) | Surveys the project and suggests 3–5 flows to pick from |
 | `/code-flow.quality` | Reports DRY, KISS and YAGNI findings from what the map recorded |
+| `/code-flow.quality --rules auto` | The same, plus violations of the rules your project already wrote down |
 
 | Flag | On | Default | Does |
 |---|---|---|---|
 | `--whole-code-base` | map | off | Catalogues every function, then discovers entry points and traces flows from them. [Details](#whole-codebase-mode) |
 | `--detail thin\|standard\|verbose` | map | `standard` | How much evidence the function catalogue carries. Only affects whole-codebase mode. [Details](#whole-codebase-mode) |
 | `--output files\|bundle\|both` | map | `files` | Which HTML gets written. `both` adds the single-file bundle; `bundle` writes only it. Never skips the JSON. [Details](#one-file-you-can-send-someone) |
+| `--frontend auto\|react\|vue\|angular\|svelte\|off` | map | `auto` | Whether to map UI components as well as functions. [Details](#frontend-component-mapping) |
+| `--tracer auto\|on\|off` | map | `auto` | Whether to run the installed static tracers before tracing anything. [Details](#automated-tracing) |
 | `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. [Details](#quality-reporting) |
+| `--rules [source ...]` | quality | off | Also checks the map against rules your project has already written down. [Details](#checking-your-own-rules) |
 
 ```text
 /code-flow.map user login
 /code-flow.map user login --output both
 /code-flow.map --whole-code-base --detail verbose
+/code-flow.map --whole-code-base --tracer on
 /code-flow.quality --read-code
+/code-flow.quality --rules auto
 ```
 
 Flags work identically in the command and skill forms — see
@@ -338,6 +347,79 @@ Control how much evidence the catalog carries with `--detail`:
 Discovery is search and reading, not a compiler's view of your code. The artifacts
 say "catalogued", never "all", and they mean it.
 
+### Automated tracing
+
+Reading a repository function by function is what leaves a large map
+half-finished — the run gets to flow 10 of 118 and stops. Two static tracers
+install alongside the templates and do that reading in one pass:
+
+| Language | Tracer | Needs |
+|---|---|---|
+| Python | `.code-flow/tracers/trace_python.py` | any CPython 3.9+ |
+| TypeScript, JavaScript, JSX/TSX, Vue, Svelte | `.code-flow/tracers/trace_typescript.mjs` | any Node 18+ |
+
+Each writes one JSON document: every function with its `file:line`, signature,
+purpose, role and export status; the resolved call graph between them; the entry
+points execution arrives through; and, for the TypeScript one, the component tree
+and the routes. The map then walks that graph instead of re-reading the
+repository once per entry point, which is the difference between finishing a
+large map in one pass and finishing it in four.
+
+They are zero-dependency by design — no `typescript` package, no `node_modules`,
+no compiler — because they run inside your repository, not this one.
+
+`--tracer auto` (the default) runs each tracer whose language your repository
+contains and whose interpreter your machine has, and falls back to reading source
+where none applies. `--tracer on` says so and stops if none could run. `--tracer
+off` never runs one; everything still works, only slower.
+
+A tracer is evidence, not the map. Every resolved call carries a confidence —
+`exact` where an import, a `self.`/`this.` receiver or a same-file definition made
+the target certain, `heuristic` where a unique name match was the only evidence —
+and calls it could not resolve are listed with their candidates rather than
+guessed into edges. The map confirms heuristic edges against source before drawing
+them. `.code-flow/tracers/README.md` documents the output and, just as important,
+what static analysis cannot see: reflection, dependency injection by token,
+registries populated at runtime, and entry points declared in configuration.
+
+You can run one yourself, without the map:
+
+```bash
+python .code-flow/tracers/trace_python.py --root . --out trace.json
+node .code-flow/tracers/trace_typescript.mjs --root . --out trace.json
+```
+
+### Frontend component mapping
+
+A repository with a UI is two graphs, not one: functions call functions, and
+components render components. Mapping only the calls leaves the half of the system
+a user actually touches undocumented.
+
+`--frontend auto` (the default) detects the frameworks your repository actually
+uses — from `package.json`, then the config files present, then the file
+extensions — and maps their components too. Name one to force it, or `off` to map
+functions only.
+
+| Framework | A component is | Its children come from |
+|---|---|---|
+| React, Preact, Solid | a capitalized function or class that returns markup | the JSX tags in its body, resolved through the file's imports |
+| Vue | a `.vue` file, or an options object carrying a `template` | the tags in its `<template>` block |
+| Angular | a class decorated `@Component` | the selectors its template uses, inline or in `templateUrl` |
+| Svelte | a `.svelte` file | the capitalized tags in its markup |
+
+Each component is catalogued with its props and events, its lifecycle hooks and
+effects, the hooks, composables, stores or services it depends on, the route that
+reaches it, and the components it renders. Custom hooks, composables and injectable
+services get their own kind — `hook`, `service`, `store` — rather than being filed
+as components, because a hook filed as a component makes every component that uses
+it look like its parent.
+
+In a flow, a component is a node of kind `component` and the composition between
+two of them is an edge of kind `render`, so the viewer paints and dashes them
+distinctly. A UI flow traced from a route runs route → page → components → hooks
+and handlers → services and requests, so one flow shows a click arriving at the
+server.
+
 ### Quality reporting
 
 Once a whole-codebase map exists, analyze it:
@@ -354,7 +436,7 @@ renderings of it, and none of the three may contradict another. The `.html` is a
 single self-contained page — no server, no build step, no internet required —
 that you open straight from disk, with the same coverage banner, the same
 "catalogued, never all" wording, and filters by severity and principle. Four
-detectors run:
+detectors run, and a fifth when you pass `--rules`:
 
 | Detector | Principle | Reports |
 |---|---|---|
@@ -362,6 +444,7 @@ detectors run:
 | repeated-sequence | DRY | Call chains repeated across flows |
 | complexity-hotspot | KISS | High fan-out, deep nesting, very long functions |
 | unreached | YAGNI | Catalogued functions no mapped flow reaches |
+| rule-violation | RULES | Code contradicting a rule you pointed it at — only with `--rules` |
 
 Severity is rule-based — thresholds, not impressions — so findings do not all
 drift toward "medium".
@@ -393,6 +476,45 @@ and counted in the banner.
 On a `--detail thin` map, duplicate-intent is skipped unless you pass
 `--read-code`: a thin map carries no code snippets, so that detector has no
 evidence to cite.
+
+#### Checking your own rules
+
+DRY, KISS and YAGNI are everybody's rules. `--rules` checks yours:
+
+```text
+/code-flow.quality --rules auto
+/code-flow.quality --rules .specify/memory/constitution.md
+/code-flow.quality --rules CLAUDE.md,docs/style.md --read-code
+/code-flow.quality --rules "Validation belongs in src/auth/ and nowhere else"
+```
+
+A source is a path to a document, the word `auto`, or a rule written inline.
+`auto` looks for the files a project usually keeps its rules in: `CLAUDE.md`,
+`.claude/CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
+`.github/copilot-instructions.md`, `.specify/memory/constitution.md` (Spec Kit),
+`memory/constitution.md`, `CONVENTIONS.md` and `.code-flow/rules.md`.
+
+Each document is split into discrete rules, and each rule gets an id, its text
+**quoted rather than paraphrased**, the `file:line` it came from, and a severity
+taken from its own wording — `must`, `never` and `always` mean high; `should` and
+`prefer` mean medium; `consider` and `may` mean low. The rule's words decide the
+severity, not the report's opinion of them.
+
+Findings look like every other finding — `file:line` sites, snippets, a
+suggestion, an effort — plus the rule they rest on and where to read it. One rule
+is one finding however many sites break it.
+
+**A rule the map has no evidence about is reported as not checked, never as
+passing.** Naming, file placement, layering, duplication, function size, docstring
+presence, dependency direction and what may call what are all checkable against
+the map. Review process, commit messages, runtime behavior, dependency licences
+and CI configuration are not — the map holds no evidence about any of them, so
+those rules are listed in the banner with the reason they could not be checked.
+Silence about a rule you asked about would read exactly like a rule that passed,
+which is the one thing this must never imply.
+
+`quality-report.json` carries the whole rule set it loaded — checkable or not — so
+the banner's counts can be reconciled against the array behind them.
 
 ### Example map output
 
@@ -576,6 +698,9 @@ code-flow-skill --tool gemini
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 | _All tools_ | — | `.code-flow/theme.css` (your theme) |
 | _All tools_ | — | `.code-flow/bundle.template.html` (single-file bundled viewer scaffold) |
+| _All tools_ | — | `.code-flow/tracers/trace_python.py` (static call-graph tracer) |
+| _All tools_ | — | `.code-flow/tracers/trace_typescript.mjs` (static call-graph and component tracer) |
+| _All tools_ | — | `.code-flow/tracers/README.md` (what the tracers emit, and what they cannot see) |
 
 Every path this installer can write is listed above. The two `.gemini/` rows are the
 exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
@@ -658,6 +783,11 @@ condition that a human closes it by hand before every release:
 3. Uncomment one property in a generated project's `.code-flow/theme.css`, regenerate any page,
    and confirm the colour changed in both light and dark. A user's CSS is inlined verbatim and
    nothing in either suite validates it, so this is the only check theming ever gets.
+4. Run both tracers against a real repository that is not this one and read the stats line. The
+   suites run them against fixtures this repository wrote, which prove the contract and prove
+   nothing about the heuristics — a resolver that resolves nothing still emits a valid,
+   well-shaped, empty-graph document. Confirm `entryPointsFound` is not zero, `callEdges` is in
+   the thousands rather than the dozens, and `componentsFound` matches roughly what the app has.
 
 Do this for all four files, every release — a change to any scaffold's rendering re-opens the
 gap and the test suite will not tell you.

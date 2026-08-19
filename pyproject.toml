@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "htst-code-flow-skill"
-version = "1.1.0"
+version = "1.2.0"
 description = "Installable Code Flow skill and command templates for Claude Code, GitHub Copilot, OpenAI Codex, Antigravity and Gemini CLI."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -26,6 +26,11 @@ dev = ["pytest>=8.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/fixtures/ holds sample repositories for the tracers to read, not tests of
+# this project. One of them is a `test_*.py` importing a package that exists only
+# inside that fixture — the Python tracer has to prove it marks test-role
+# functions — so collection has to stay out rather than try to import it.
+norecursedirs = ["fixtures"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/code_flow_skill"]

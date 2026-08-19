@@ -15,6 +15,9 @@ _SHARED = [
     ".code-flow/index.template.html",
     ".code-flow/report.template.html",
     ".code-flow/theme.css",
+    ".code-flow/tracers/README.md",
+    ".code-flow/tracers/trace_python.py",
+    ".code-flow/tracers/trace_typescript.mjs",
     ".code-flow/viewer.template.html",
 ]
 _CLAUDE = [

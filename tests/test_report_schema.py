@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-PRINCIPLES = {"DRY", "KISS", "YAGNI"}
+PRINCIPLES = {"DRY", "KISS", "YAGNI", "RULES"}
 SEVERITIES = {"high", "medium", "low"}
 CONFIDENCES = {"verified", "unverified"}
 EFFORTS = {"small", "medium", "large"}
@@ -26,6 +26,7 @@ DETECTORS = {
     "repeated-sequence",
     "complexity-hotspot",
     "unreached",
+    "rule-violation",
 }
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
@@ -58,6 +59,11 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     # prose — unassertable here, and unrenderable by the phase 3b viewer that
     # will consume this same JSON.
     "unreached": frozenset({"exported", "reachedBy"}),
+    # A rule-violation finding rests on a sentence somebody wrote down, so it
+    # carries that sentence and where it came from. Without `rule` and
+    # `ruleSource` a reader cannot tell a real violation from a misreading of
+    # the rule, which is the failure mode this detector is most exposed to.
+    "rule-violation": frozenset({"rule", "ruleId", "ruleSource"}),
 }
 
 # Step 3: `reachedBy` has exactly two values. `"tests"` is the
@@ -76,7 +82,7 @@ _INSTRUCTS_DELETION = re.compile(r"\b(delete|remove|drop)\b", re.IGNORECASE)
 # check alone would miss it entirely.
 _DRIVE_LETTER_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 
-_ID = re.compile(r"^(DRY|KISS|YAGNI)-\d{2}$")
+_ID = re.compile(r"^(DRY|KISS|YAGNI|RULES)-\d{2}$")
 
 
 # Every example report this repository ships. The fixture below is
@@ -105,8 +111,11 @@ def report(request: pytest.FixtureRequest, repo_root: Path) -> dict:
     )
 
 
-def test_report_has_the_four_top_level_keys(report: dict) -> None:
-    assert set(report) == {"schema", "meta", "coverage", "findings"}
+def test_report_has_the_five_top_level_keys(report: dict) -> None:
+    """`rules` is present in every report, empty when `--rules` was not passed.
+    Emitting it unconditionally is what stops a consumer having to know how the
+    command was invoked before it can read the file."""
+    assert set(report) == {"schema", "meta", "coverage", "findings", "rules"}
     assert report["schema"] == 1
 
 
@@ -147,6 +156,9 @@ def test_coverage_carries_every_banner_number(report: dict) -> None:
         "filesChanged",
         "findingsDropped",
         "detectorsSkipped",
+        "rulesLoaded",
+        "rulesChecked",
+        "rulesNotCheckable",
     }
 
 
@@ -345,4 +357,65 @@ def test_findings_carry_exactly_their_detectors_evidence_fields(report: dict) ->
         assert present == required, (
             f"{finding['id']} ({detector}) carries evidence fields {sorted(present)}, "
             f"expected exactly {sorted(required)}"
+        )
+
+
+# --- the rules array -------------------------------------------------------
+
+
+RULE_FIELDS = {"ruleId", "text", "source", "severity", "checkable", "reason"}
+
+
+def test_every_loaded_rule_carries_the_fields_step_2_records(report: dict) -> None:
+    """A rule the report cannot show is a rule the reader has to take on trust,
+    and this detector's whole claim is that it cites the project's own words."""
+    for rule in report["rules"]:
+        assert set(rule) == RULE_FIELDS, f"{rule.get('ruleId')} has fields {sorted(rule)}"
+        assert rule["text"].strip(), f"{rule['ruleId']} has no text"
+        assert rule["severity"] in SEVERITIES
+        assert isinstance(rule["checkable"], bool)
+
+
+def test_a_rule_that_could_not_be_checked_says_why(report: dict) -> None:
+    """Step 2: a not-checkable rule is reported as not-checked, never as
+    passing. A reason-less one is indistinguishable from a clean one."""
+    for rule in report["rules"]:
+        if not rule["checkable"]:
+            assert rule["reason"].strip(), (
+                f"{rule['ruleId']} is not checkable but gives no reason, so the "
+                f"report cannot tell a reader why it was not checked"
+            )
+
+
+def test_the_rule_counts_reconcile_with_the_rules_array(report: dict) -> None:
+    """Three numbers in the banner, one array they describe. A banner that
+    disagrees with its own evidence is worse than no banner."""
+    coverage = report["coverage"]
+    rules = report["rules"]
+    assert coverage["rulesLoaded"] == len(rules)
+    assert coverage["rulesChecked"] == sum(1 for rule in rules if rule["checkable"])
+    assert coverage["rulesNotCheckable"] == sum(1 for rule in rules if not rule["checkable"])
+
+
+def test_every_rule_violation_finding_cites_a_loaded_rule(report: dict) -> None:
+    """`ruleId` is the join between a finding and the sentence it rests on. A
+    finding naming a rule the report never loaded is a finding whose evidence
+    the reader cannot reach — and the most likely way to produce one is to
+    invent the rule, which step 3 forbids outright."""
+    loaded = {rule["ruleId"] for rule in report["rules"]}
+    for finding in report["findings"]:
+        if finding["detector"] != "rule-violation":
+            continue
+        assert finding["ruleId"] in loaded, (
+            f"{finding['id']} cites {finding['ruleId']}, which is not in `rules`"
+        )
+        cited = next(rule for rule in report["rules"] if rule["ruleId"] == finding["ruleId"])
+        assert finding["rule"] == cited["text"], (
+            f"{finding['id']} quotes the rule differently from `rules` — the "
+            f"finding must carry the rule as loaded, not a paraphrase of it"
+        )
+        assert finding["ruleSource"] == cited["source"]
+        assert finding["severity"] == cited["severity"], (
+            f"{finding['id']} rates {finding['severity']} where its rule is "
+            f"{cited['severity']}: the rule's wording decides the severity"
         )

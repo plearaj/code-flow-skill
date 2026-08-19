@@ -15,8 +15,21 @@
     "flowsUnreadable": 0,
     "filesChanged": 6,
     "findingsDropped": 2,
-    "detectorsSkipped": []
+    "detectorsSkipped": [],
+    "rulesLoaded": 3,
+    "rulesChecked": 2,
+    "rulesNotCheckable": 1
   },
+  "rules": [
+    { "ruleId": "R-01", "text": "Every public function must carry a docstring.",
+      "source": "CLAUDE.md:14", "severity": "high", "checkable": true, "reason": "" },
+    { "ruleId": "R-02", "text": "Validation belongs in src/auth/; nothing else may define it.",
+      "source": ".specify/memory/constitution.md:31", "severity": "high", "checkable": true,
+      "reason": "" },
+    { "ruleId": "R-03", "text": "Every change must be reviewed by a second engineer.",
+      "source": "CLAUDE.md:52", "severity": "high", "checkable": false,
+      "reason": "the map carries no evidence about review process" }
+  ],
   "findings": [
     {
       "id": "DRY-01",
@@ -55,6 +68,26 @@
       ],
       "flows": ["user_login", "password_reset"],
       "suggestion": "Extract the three-call sequence into one begin_session helper.",
+      "effort": "medium"
+    },
+    {
+      "id": "RULES-01",
+      "principle": "RULES",
+      "detector": "rule-violation",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "Validation defined outside src/auth/ in 2 places",
+      "rationale": "R-02 confines validation to src/auth/. Two catalogued functions define it elsewhere.",
+      "rule": "Validation belongs in src/auth/; nothing else may define it.",
+      "ruleId": "R-02",
+      "ruleSource": ".specify/memory/constitution.md:31",
+      "sites": [
+        { "file": "src/api/schemas.py", "line": 48, "symbol": "check_email",
+          "snippet": "def check_email(raw):\n    return EMAIL_PATTERN.fullmatch(raw) is not None" },
+        { "file": "src/admin/forms.py", "line": 91, "symbol": "is_valid_email",
+          "snippet": "def is_valid_email(s):\n    return re.match(r'[^@]+@[^@]+', s) is not None" }
+      ],
+      "suggestion": "Move both into src/auth/validators.py and import them where they are used.",
       "effort": "medium"
     },
     {

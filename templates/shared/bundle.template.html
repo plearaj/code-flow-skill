@@ -19,6 +19,7 @@
   --node-step:#232532;  --node-step-s:#3f424d;  --node-step-a:#9397ab;
   --node-ext:#262a60;   --node-ext-s:#4c5397;   --node-ext-a:#a7a1db;
   --node-io:#292b31;    --node-io-s:#595d6c;    --node-io-a:#cfd3e5;
+  --node-component:#2f2839; --node-component-s:#6b5aa0; --node-component-a:#c9b8f2;
   --lane:rgba(233,233,237,.02); --lane-line:rgba(233,233,237,.06);
   --high:#b5abfc; --medium:#796cbf; --low:#595d6c;
   --section:#262a60; --section-ghost:#4c5397;
@@ -36,6 +37,7 @@
   --node-step:#eceffb;  --node-step-s:#cfd3e5;  --node-step-a:#75798c;
   --node-ext:#e3e5f6;   --node-ext-s:#9690c9;   --node-ext-a:#423a6a;
   --node-io:#e9ebf6;    --node-io-s:#b2b6ca;    --node-io-a:#3f424d;
+  --node-component:#efe9fb; --node-component-s:#c3b2ef; --node-component-a:#4a3d7a;
   --lane:rgba(41,43,49,.025); --lane-line:rgba(41,43,49,.07);
   --high:#423a6a; --medium:#796cbf; --low:#75798c;
   --section:#d2cefd; --section-ghost:#9690c9;
@@ -346,6 +348,7 @@ html,body{height:100%; background:var(--bg)}
 #view-flow .edge path.ln{fill:none; stroke:var(--edge-soft); stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round;
   marker-end:url(#ar)}
 #view-flow .edge.async path.ln,#view-flow .edge.backe path.ln{stroke-dasharray:5 5}
+#view-flow .edge.render path.ln{stroke-dasharray:2 4}
 #view-flow .edge path.ov{fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
   stroke-dasharray:7 9; opacity:0; pointer-events:none}
 #view-flow .edge.hot path.ln{stroke:var(--edge); marker-end:url(#arh)}
@@ -370,6 +373,8 @@ html,body{height:100%; background:var(--bg)}
 #view-flow .node.k-external .bar,#view-flow .node.k-external .kb{fill:var(--node-ext-a)}
 #view-flow .node.k-io .card{fill:var(--node-io); stroke:var(--node-io-s)}
 #view-flow .node.k-io .bar,#view-flow .node.k-io .kb{fill:var(--node-io-a)}
+#view-flow .node.k-component .card{fill:var(--node-component); stroke:var(--node-component-s)}
+#view-flow .node.k-component .bar,#view-flow .node.k-component .kb{fill:var(--node-component-a)}
 #view-flow .node:hover .card{stroke:var(--accent)}
 #view-flow .node.sel .card{stroke:var(--accent); stroke-width:1.75; filter:drop-shadow(0 3px 14px rgba(145,132,217,.32))}
 #view-flow .node.match .card{stroke:var(--accent)}
@@ -836,7 +841,7 @@ function repFail(title, lines){
 }
 function checkReportShape(data){
   var SEVERITY = { high:1, medium:1, low:1 };
-  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1 };
+  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, RULES:1 };
   var CONFIDENCE = { unverified:1, verified:1 };
   var problems = [];
   if (data.schema !== 1) problems.push("`schema` must be 1, got " + JSON.stringify(data.schema) + ".");
@@ -854,7 +859,7 @@ function checkReportShape(data){
     if (Object.prototype.hasOwnProperty.call(seen, id)) problems.push("duplicate finding id \"" + id + "\".");
     seen[id] = 1;
     if (!SEVERITY[f.severity]) problems.push(id + " has severity " + JSON.stringify(f.severity) + "; want high, medium or low.");
-    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS or YAGNI.");
+    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS, YAGNI or RULES.");
     if (!CONFIDENCE[f.confidence]) problems.push(id + " has confidence " + JSON.stringify(f.confidence) + "; want unverified or verified.");
     if (!Array.isArray(f.sites) || !f.sites.length){
       problems.push(id + " must cite at least one site; a finding without file:line evidence is not reportable.");
@@ -995,7 +1000,7 @@ function renderReport(){
     var bySeverity = chooser("filter-severity", "Severity",
       [["", "any"], ["high", "high"], ["medium", "medium"], ["low", "low"]]);
     var byPrinciple = chooser("filter-principle", "Principle",
-      [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"]]);
+      [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"], ["RULES", "RULES"]]);
     var shownCount = el("div", "count", null, bar);
     el("div", "hint", "Findings appear in the order the analysis produced them — by severity, " +
       "then site count, then principle. The filters hide rows; they never reorder them.", section);
@@ -1026,6 +1031,11 @@ function renderReport(){
 
       var evidence = [];
       if (Array.isArray(f.flows) && f.flows.length) evidence.push(["flows", f.flows.join(", ")]);
+      // A rule-violation finding rests on a sentence somebody wrote down. Show
+      // that sentence and where it came from: a reader who cannot see the rule
+      // cannot tell a real violation from a misreading of it.
+      if (f.rule) evidence.push([f.ruleId ? "rule " + f.ruleId : "rule", String(f.rule)]);
+      if (f.ruleSource) evidence.push(["rule source", String(f.ruleSource)]);
       if (f.metric != null){
         evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "")]);
       } else if (f.value != null){
@@ -1118,7 +1128,7 @@ function checkFlowShape(data){
 }
 
 var SVGNS = "http://www.w3.org/2000/svg";
-var KINDS = ["entry","step","external","io"];
+var KINDS = ["entry","step","external","io","component"];
 function kindOf(n){ return KINDS.indexOf(n.kind) >= 0 ? n.kind : "step"; }
 function basename(p){ return String(p || "").split("/").pop(); }
 function trunc(s, n){ s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
@@ -1399,7 +1409,7 @@ function mountFlow(slug){
     edges.forEach(function(e){
       if (!visible.has(e.from) || !visible.has(e.to)) return;
       var a = byId.get(e.from), b = byId.get(e.to);
-      var kind = e.back ? "backe" : (e.kind === "async" ? "async" : (e.kind === "conditional" ? "cond" : "call"));
+      var kind = e.back ? "backe" : (e.kind === "async" ? "async" : (e.kind === "conditional" ? "cond" : (e.kind === "render" ? "render" : "call")));
       var g = sEl("g", { "class": "edge " + kind }, eLayerEl);
       var d = anchors(a, b, e.back, bounds).d;
       sEl("path", { "class": "ln", d: d }, g);
@@ -1693,7 +1703,7 @@ function mountFlow(slug){
       var s2 = elp("div", "sec", null, bd);
       elp("h3", null, "Node kinds", s2);
       var lg = elp("div", "legend", null, s2);
-      [["entry","entry point"],["step","internal step"],["external","third party"],["io","i/o boundary"]].forEach(function(k){
+      [["entry","entry point"],["step","internal step"],["external","third party"],["io","i/o boundary"],["component","UI component"]].forEach(function(k){
         var row = elp("div", null, null, lg);
         var sw = elp("span", "sw", null, row);
         sw.style.background = "var(--node-" + (k[0] === "external" ? "ext" : k[0]) + ")";
@@ -1703,7 +1713,7 @@ function mountFlow(slug){
       var s3 = elp("div", "sec", null, bd);
       elp("h3", null, "Edge kinds", s3);
       var le = elp("div", "legend", null, s3);
-      [["call","solid"],["async","dashed"],["conditional","labelled"],["back / cycle","dashed, routed around"]].forEach(function(k){
+      [["call","solid"],["async","dashed"],["conditional","labelled"],["render","dotted"],["back / cycle","dashed, routed around"]].forEach(function(k){
         var row = elp("div", null, null, le);
         var sv = document.createElementNS(SVGNS, "svg"); sv.setAttribute("viewBox", "0 0 22 8");
         var ln = document.createElementNS(SVGNS, "line");
