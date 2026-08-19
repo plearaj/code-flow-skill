@@ -48,13 +48,19 @@ jobs:
           echo "publishing. See README.md > Publishing > Before publishing."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      # Node 24, not the package's `engines` floor of 18. `npm test` runs
+      # `node --test "test/**/*.test.js"` and the glob is expanded by Node
+      # itself, which only learned to do that in 21 — on 20 the pattern is
+      # taken literally and the runner finds no tests at all. `engines` governs
+      # consumers running bin/install.js; test/ is not shipped, so the two
+      # floors are allowed to differ. They must not be confused.
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
         with:
           python-version: '3.11'
 
