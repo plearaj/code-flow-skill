@@ -196,7 +196,8 @@ function validate(raw, TOKEN){
   var SEVERITY = { high:1, medium:1, low:1 };
   var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, RULES:1 };
   var CONFIDENCE = { unverified:1, verified:1 };
-  var DETECTOR = { "duplicate-intent":1, "repeated-sequence":1, "complexity-hotspot":1, "unreached":1 };
+  var DETECTOR = { "duplicate-intent":1, "repeated-sequence":1, "complexity-hotspot":1,
+                   "unreached":1, "rule-violation":1 };
   var problems = [];
   if (!data || typeof data !== "object" || Array.isArray(data)){
     return { ok:false, title:"Report data failed validation", lines:["The document must be a JSON object."] };
@@ -327,7 +328,9 @@ if (count(coverage.flowsUnreadable)){
    hole is worse than an unexplained one. */
 var SKIP_REASONS = {
   "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
-    "re-run the quality command with --read-code, or re-map with --detail standard"
+    "re-run the quality command with --read-code, or re-map with --detail standard",
+  "rule-violation": "no rule could be read from the sources given to --rules, so there was " +
+    "nothing to check against — the other four detectors are unaffected"
 };
 var skipped = Array.isArray(coverage.detectorsSkipped) ? coverage.detectorsSkipped : [];
 if (skipped.length){

@@ -280,3 +280,83 @@ test("bundle validator accepts a report-less bundle", () => {
   const data = '{"index":{"flows":[]},"flows":[]}';
   assert.equal(bundleValidate(data, TOKEN).ok, true);
 });
+
+// --- the shipped examples, against the scaffolds that must accept them -------
+
+// Every test above feeds a validator something built to be rejected, which
+// proves the validator says no. Nothing proved it says *yes* to a real
+// document. `examples/` is the closest thing this repository has to real
+// output — it is what the README shows and what a reader copies — so it is the
+// right thing to put through the validators the scaffolds actually run.
+//
+// This gap shipped a bug: `--rules` added a fifth detector, `rule-violation`,
+// and the report scaffold's allowlist was never told about it. A quality
+// report produced with `--rules` failed validation and rendered as an error
+// page instead of findings. Every other test passed, because none of them
+// validated a document that had a rule-violation finding in it.
+const EXAMPLES = [
+  ["sample-flow.json", "viewer.template.html", "__FLOW_DATA__"],
+  ["sample-report.json", "report.template.html", "__REPORT_DATA__"],
+  ["sample-report-unverified.json", "report.template.html", "__REPORT_DATA__"],
+];
+
+for (const [example, scaffold, token] of EXAMPLES) {
+  test(`${scaffold} accepts examples/${example}`, () => {
+    const raw = fs.readFileSync(path.join(repoRoot, "examples", example), "utf8");
+    const validate = extractValidate(scaffold);
+    const v = validate(raw, token);
+    assert.equal(
+      v.ok,
+      true,
+      `examples/${example} was rejected by ${scaffold}: ` +
+        `${v.title || ""} ${(v.lines || []).join(" ")}`
+    );
+  });
+}
+
+test("report.template.html accepts every detector the quality command can emit", () => {
+  // Named individually rather than inferred from the examples, so that adding a
+  // detector to the templates without adding it here fails, instead of quietly
+  // depending on whether some example happens to use it.
+  const DETECTORS = [
+    "duplicate-intent",
+    "repeated-sequence",
+    "complexity-hotspot",
+    "unreached",
+    "rule-violation",
+  ];
+  const validate = extractValidate("report.template.html");
+  const base = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "examples", "sample-report.json"), "utf8")
+  );
+
+  for (const detector of DETECTORS) {
+    const doc = { ...base, findings: [{ ...base.findings[0], detector }] };
+    const v = validate(JSON.stringify(doc), "__REPORT_DATA__");
+    assert.equal(
+      v.ok,
+      true,
+      `the report scaffold rejects detector "${detector}": ` +
+        `${(v.lines || []).join(" ")}`
+    );
+  }
+});
+
+test("the bundle accepts a bundle built from the shipped examples", () => {
+  const flow = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "examples", "sample-flow.json"), "utf8")
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "examples", "sample-report.json"), "utf8")
+  );
+  const bundle = {
+    index: { flows: [{ slug: flow.meta.slug, feature: flow.meta.feature }] },
+    flows: [flow],
+    report,
+  };
+  const v = extractValidate("bundle.template.html")(
+    JSON.stringify(bundle),
+    "__BUNDLE" + "_DATA__"
+  );
+  assert.equal(v.ok, true, `${v.title || ""} ${(v.lines || []).join(" ")}`);
+});

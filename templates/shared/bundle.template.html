@@ -951,7 +951,9 @@ function renderReport(){
 
   var SKIP_REASONS = {
     "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
-      "re-run the quality command with --read-code, or re-map with --detail standard"
+      "re-run the quality command with --read-code, or re-map with --detail standard",
+    "rule-violation": "no rule could be read from the sources given to --rules, so there was " +
+      "nothing to check against — the other four detectors are unaffected"
   };
   var skipped = Array.isArray(coverage.detectorsSkipped) ? coverage.detectorsSkipped : [];
   if (skipped.length){
