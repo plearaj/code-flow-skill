@@ -60,7 +60,9 @@ jobs:
         with:
           node-version: '24'
 
-      - uses: astral-sh/setup-uv@v10
+      # Full version, not a bare major: astral-sh/setup-uv publishes no moving
+      # v10 tag the way actions/checkout publishes v7, so @v10 does not resolve.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           python-version: '3.11'
 
