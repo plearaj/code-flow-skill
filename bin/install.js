@@ -74,21 +74,30 @@ if (explicit) {
 }
 
 // Every scaffold here is tool-agnostic: every command template references one
-// of them, so all of them install regardless of --tool. This list and the one
-// in src/code_flow_skill/cli.py must stay in step; the installed-file-set
-// tests in both languages are what holds them there.
+// of them, so all of them install regardless of --tool. Names may carry a
+// subdirectory (the tracers do), and are written under `.code-flow/` verbatim.
+// This list and the one in src/code_flow_skill/cli.py must stay in step; the
+// installed-file-set tests in both languages are what holds them there.
 const sharedFiles = [
   ["viewer.template.html", "interactive viewer"],
   ["report.template.html", "quality report viewer"],
   ["index.template.html", "flow index"],
   ["theme.css", "your theme"],
   ["bundle.template.html", "bundled viewer"],
+  ["tracers/_common.py", "shared tracer core"],
+  ["tracers/trace_python.py", "Python tracer"],
+  ["tracers/trace_typescript.mjs", "TypeScript tracer"],
+  ["tracers/trace_rust.py", "Rust tracer"],
+  ["tracers/trace_java.py", "Java tracer"],
+  ["tracers/trace_c_family.py", "C/C++/Objective-C/C# tracer"],
+  ["tracers/README.md", "tracer contract"],
 ];
 
 function installShared() {
   for (const [name, label] of sharedFiles) {
-    const src = path.join(pkgRoot, "templates", "shared", name);
-    const dst = path.join(target, ".code-flow", name);
+    const parts = name.split("/");
+    const src = path.join(pkgRoot, "templates", "shared", ...parts);
+    const dst = path.join(target, ".code-flow", ...parts);
     fs.mkdirSync(path.dirname(dst), { recursive: true });
     fs.copyFileSync(src, dst);
     console.log(`Installed ${label} template: ${dst}`);

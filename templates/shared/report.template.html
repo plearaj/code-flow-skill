@@ -194,7 +194,7 @@ function validate(raw, TOKEN){
     ]};
   }
   var SEVERITY = { high:1, medium:1, low:1 };
-  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1 };
+  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, RULES:1 };
   var CONFIDENCE = { unverified:1, verified:1 };
   var DETECTOR = { "duplicate-intent":1, "repeated-sequence":1, "complexity-hotspot":1, "unreached":1 };
   var problems = [];
@@ -216,7 +216,7 @@ function validate(raw, TOKEN){
     if (Object.prototype.hasOwnProperty.call(seen, id)) problems.push("duplicate finding id \"" + id + "\".");
     seen[id] = 1;
     if (!SEVERITY[f.severity]) problems.push(id + " has severity " + JSON.stringify(f.severity) + "; want high, medium or low.");
-    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS or YAGNI.");
+    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS, YAGNI or RULES.");
     if (!DETECTOR[f.detector]) problems.push(id + " has detector " + JSON.stringify(f.detector) + ".");
     if (!CONFIDENCE[f.confidence]) problems.push(id + " has confidence " + JSON.stringify(f.confidence) + "; want unverified or verified.");
     if (!Array.isArray(f.sites) || !f.sites.length){
@@ -377,7 +377,7 @@ if (!findings.length){
   var bySeverity = chooser("filter-severity", "Severity",
     [["", "any"], ["high", "high"], ["medium", "medium"], ["low", "low"]]);
   var byPrinciple = chooser("filter-principle", "Principle",
-    [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"]]);
+    [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"], ["RULES", "RULES"]]);
   var shownCount = el("div", "count", null, bar);
   el("div", "hint", "Findings appear in the order the analysis produced them — by severity, " +
     "then site count, then principle. The filters hide rows; they never reorder them.", section);
@@ -408,6 +408,11 @@ if (!findings.length){
 
     var evidence = [];
     if (Array.isArray(f.flows) && f.flows.length) evidence.push(["flows", f.flows.join(", ")]);
+    // A rule-violation finding rests on a sentence somebody wrote down. Show
+    // that sentence and where it came from: a reader who cannot see the rule
+    // cannot tell a real violation from a misreading of it.
+    if (f.rule) evidence.push([f.ruleId ? "rule " + f.ruleId : "rule", String(f.rule)]);
+    if (f.ruleSource) evidence.push(["rule source", String(f.ruleSource)]);
     if (f.metric != null){
       evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "")]);
     } else if (f.value != null){

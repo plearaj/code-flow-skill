@@ -46,6 +46,9 @@ watches it load one.
 
 Step 5 covers the user theme, which nothing in either suite renders either.
 
+Step 6 covers the five tracers. Their contract is tested against fixtures; how
+well their heuristics do on somebody else's repository is not, and cannot be.
+
   1. Run /code-flow.map and /code-flow.quality against any project. Open the
      resulting Code_Flows/index.html, Code_Flows/<flow>.html and
      Code_Flows/quality-report.html in a browser. Confirm each draws its
@@ -100,6 +103,19 @@ Step 5 covers the user theme, which nothing in either suite renders either.
      either suite validates it, so this is the only check theming will ever
      get. Getting this step wrong looks like a broken light/dark toggle, not
      like an error.
+
+  6. Run every tracer against a real repository that is not this one — a
+     Django or FastAPI project for trace_python.py, a React, Vue or Angular
+     app for trace_typescript.mjs, a cargo workspace for trace_rust.py, a
+     Spring or Android project for trace_java.py, and something with headers
+     for trace_c_family.py — and read the stats line. The suites run
+     them against fixtures this repository wrote, which prove the contract and
+     prove nothing about the heuristics: a resolver that silently resolves
+     nothing still emits a valid, well-shaped, empty-graph document. Confirm
+     entryPointsFound is not zero, callEdges is in the thousands rather than
+     the dozens, and componentsFound matches roughly what the app has. Then
+     run /code-flow.map --whole-code-base --tracer on there and confirm the
+     map actually used the output rather than re-reading the tree.
 
 Do this for ALL FOUR files, and do step 4 for at least one host. A change to
 any scaffold's rendering — or to a skill's name or frontmatter — re-opens the

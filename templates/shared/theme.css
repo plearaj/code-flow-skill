@@ -41,6 +41,9 @@
   /* --node-io:#292b31; */
   /* --node-io-s:#595d6c; */
   /* --node-io-a:#cfd3e5; */
+  /* --node-component:#2f2839; */
+  /* --node-component-s:#6b5aa0; */
+  /* --node-component-a:#c9b8f2; */
   /* --lane:rgba(233,233,237,.02); */
   /* --lane-line:rgba(233,233,237,.06); */
   /* --shadow:0 0 0 1px #3f424d, 0 6px 18px rgba(0,0,0,.55); */
@@ -86,6 +89,9 @@
   /* --node-io:#e9ebf6; */
   /* --node-io-s:#b2b6ca; */
   /* --node-io-a:#3f424d; */
+  /* --node-component:#efe9fb; */
+  /* --node-component-s:#c3b2ef; */
+  /* --node-component-a:#4a3d7a; */
   /* --lane:rgba(41,43,49,.025); */
   /* --lane-line:rgba(41,43,49,.07); */
   /* --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08); */

@@ -302,8 +302,17 @@ def test_map_template_catalogues_tests_rather_than_skipping_them(
 
 
 def _iter_template_files(repo_root: Path) -> list[Path]:
-    """Every file the installer ships from templates/, recursively."""
-    return sorted(p for p in (repo_root / "templates").rglob("*") if p.is_file())
+    """Every file the installer ships from templates/, recursively.
+
+    `__pycache__` is excluded because it is not shipped: it is `.gitignore`d, and
+    the tracers set `sys.dont_write_bytecode` so they never create one inside a
+    user's repository either. Left in, a contributor who imported a tracer once
+    would see this module's line-ending check fail on a `.pyc`.
+    """
+    return sorted(
+        p for p in (repo_root / "templates").rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts
+    )
 
 
 def test_shipped_templates_have_no_crlf(repo_root: Path) -> None:
@@ -530,6 +539,10 @@ DETECTOR_PRINCIPLES = (
     ("repeated-sequence", "DRY"),
     ("complexity-hotspot", "KISS"),
     ("unreached", "YAGNI"),
+    # The fifth runs only when `--rules` was passed, but every host documents
+    # it unconditionally: a detector a template never describes is one no run
+    # can perform, whatever flag the user typed.
+    ("rule-violation", "RULES"),
 )
 
 FINDING_FIELD_NAMES = (
@@ -588,7 +601,7 @@ def _detector_header_pattern(detector: str, principle: str) -> re.Pattern[str]:
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
-def test_quality_template_names_all_four_detectors(
+def test_quality_template_names_every_detector(
     repo_root: Path, host: str, name: str
 ) -> None:
     region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
@@ -662,7 +675,7 @@ def test_quality_template_names_the_per_detector_evidence_fields(
     the schema does not name those fields, each run invents its own key for
     them and the report JSON stops being a stable shape."""
     region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
-    for field in ("flows", "metric", "value", "exported", "reachedBy"):
+    for field in ("flows", "metric", "value", "exported", "reachedBy", "rule", "ruleId", "ruleSource"):
         assert _field_reference(field).search(region), (
             f"{host} never names the evidence field {field!r}"
         )
@@ -1980,3 +1993,260 @@ def test_detail_panel_survives_to_at_least_720px(
         f"{name} hides the detail panel ({selector!r}) at {breakpoint_px}px; "
         f"it must survive down to at least 720px"
     )
+
+
+# --- tracers, components and rules -----------------------------------------
+#
+# Everything below covers the three additions that turn a map from something a
+# large repository defeats into something it does not: the tracers that read a
+# repository in one pass, the component graph a UI repository is half made of,
+# and the rules a project has already written down.
+
+
+TRACER_COMMANDS = (
+    ".code-flow/tracers/trace_python.py",
+    ".code-flow/tracers/trace_typescript.mjs",
+)
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_the_new_flags_in_step_1(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Scoped to step 1 for the same reason `test_map_template_documents_the_mode_flags`
+    is: both flags are named again in their own sections further down, so an
+    unscoped search would stay green with the whole flag-parsing block deleted."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    region = _section_region(text, _STEP1_START, _STEP1_END)
+    for flag in ("--frontend", "--tracer"):
+        assert flag in region, f"{host}/{name} step 1 never mentions {flag}"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_names_both_tracers_by_path(repo_root: Path, host: str, name: str) -> None:
+    """A tracer the template does not name by path is a tracer no run will
+    execute — the installer put it in `.code-flow/tracers/` and nothing else
+    points at it."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    for command in TRACER_COMMANDS:
+        assert command in text, f"{host}/{name} never names {command}"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_treats_tracer_output_as_evidence_not_as_the_map(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The failure this whole feature is exposed to: a tracer produces a
+    plausible graph fast, and a run that trusts it wholesale ships a map whose
+    confident edges nobody checked. Three named things — the confidence values,
+    the calls it refused to guess, and what it cannot see at all — are what let
+    a run tell the parts it may trust from the parts it may not.
+    """
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for token in ("`exact`", "`heuristic`", "ambiguousCalls", "`limits`"):
+        assert token in text, f"{host}/{name} never mentions {token}"
+    assert re.search(r"heuristic`? call is a claim|confirm a heuristic", text, re.IGNORECASE), (
+        f"{host}/{name} names the confidence values without saying a heuristic "
+        f"edge has to be confirmed before it is drawn"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_carries_on_when_a_tracer_cannot_run(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A tracer is an accelerator, not a dependency. A template that stopped
+    when one was absent would make a Ruby repository unmappable, and a machine
+    without Node a machine that cannot map TypeScript."""
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"not an error under `--tracer auto`", text), (
+        f"{host}/{name} never says a missing tracer is not an error"
+    )
+    assert re.search(r"carry on reading source", text), (
+        f"{host}/{name} never says to fall back to reading source"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_adds_calls_to_the_inventory(repo_root: Path, host: str, name: str) -> None:
+    """`calls` on an inventory entry is the whole reason a traced map finishes
+    in one pass: without it, pass 2 re-reads the repository once per entry
+    point, which is what leaves 108 of 118 flows untraced."""
+    region = _flatten(_inventory_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert _field_reference("calls").search(region), (
+        f"{host}/{name} pass 1 never names the inventory's `calls` field"
+    )
+    assert "`confidence`" in region, (
+        f"{host}/{name} records `calls` without its per-call confidence, so a "
+        f"guessed edge would be indistinguishable from a certain one"
+    )
+
+
+COMPONENT_FRAMEWORKS = ("React", "Vue", "Angular", "Svelte")
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_maps_components_for_every_framework(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A component means something different in each framework, and a template
+    that named only one would leave the others to be guessed at — which for
+    Angular means missing the template files where its whole tree lives."""
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    for framework in COMPONENT_FRAMEWORKS:
+        assert framework in text, f"{host}/{name} never mentions {framework}"
+    assert "@Component" in text, (
+        f"{host}/{name} never names Angular's `@Component` decorator, which is "
+        f"the only thing that makes an Angular component recognizable"
+    )
+    assert "`<template>`" in text or "template block" in text, (
+        f"{host}/{name} never says a Vue component's children come from its "
+        f"template block"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_catalogues_components_with_their_tree(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`children` is the component tree. Without it the inventory carries a
+    list of components and no relationship between any two of them."""
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for field in ("children", "inputs", "outputs", "framework"):
+        assert _field_reference(field).search(text), (
+            f"{host}/{name} never names the component field {field!r}"
+        )
+    assert "`components`" in text, f"{host}/{name} never names the inventory's `components` array"
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_keeps_hooks_and_services_out_of_the_component_tree(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A custom hook filed as a component makes every component that uses it
+    look like a parent of it, which is not what the tree means."""
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"`hook`, `service`, `store`", text), (
+        f"{host}/{name} never gives hooks, services and stores their own kind"
+    )
+
+
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_gives_components_a_node_and_edge_kind(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The viewer paints by node kind and dashes by edge kind. A template that
+    described the component graph without naming the two kinds would produce
+    flows the viewer draws as ordinary calls between ordinary functions."""
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"`component`.{0,120}\(default `step`\)", text), (
+        f"{host}/{name} never adds `component` to the node kinds"
+    )
+    assert re.search(r"`render`.{0,160}\(default `call`\)", text), (
+        f"{host}/{name} never adds `render` to the edge kinds"
+    )
+
+
+# --- the rules detector ----------------------------------------------------
+
+RULE_DOCUMENTS = ("CLAUDE.md", "AGENTS.md", "constitution.md")
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_documents_the_rules_flag(
+    repo_root: Path, host: str, name: str
+) -> None:
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    assert "--rules" in text, f"{host}/{name} never documents --rules"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_discovers_the_conventional_rule_documents(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`auto` is the value most users will pass, and it is only useful if it
+    finds the file their project already keeps its rules in."""
+    region = _load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    for document in RULE_DOCUMENTS:
+        assert document in region, f"{host}/{name} `--rules auto` never looks for {document}"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_derives_rule_severity_from_the_rules_own_wording(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Severity here is a rule, not a judgement — the same principle the four
+    built-in detectors' thresholds follow. Left to judgement, the same rule
+    would come back `high` on one run and `medium` on the next."""
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"`must`.{0,200}`high`", region), (
+        f"{host}/{name} never maps must/never/always to high severity"
+    )
+    assert re.search(r"`should`.{0,200}`medium`", region), (
+        f"{host}/{name} never maps should/prefer to medium severity"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_reports_the_rules_it_could_not_check(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The failure mode unique to this detector: a user asks whether their
+    rules are being followed, and the report answers about the subset that
+    happened to be checkable while looking like it answered about all of them.
+    A silently dropped rule reads exactly like a rule that passed.
+    """
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "checkable" in text, f"{host}/{name} never decides whether a rule is checkable"
+    assert re.search(r"never as passing", text), (
+        f"{host}/{name} never says a rule it could not check is not a rule that passed"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_quotes_the_rule_rather_than_paraphrasing_it(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The detector's whole claim is that it cites the project's own words. A
+    paraphrase is arguable in a way the original is not, and an invented rule
+    is the confident-wrong finding this report exists to avoid."""
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"quoted,? (?:rather than|not) paraphrased", text), (
+        f"{host}/{name} never requires the rule to be quoted rather than paraphrased"
+    )
+    assert re.search(r"[Nn]ever invent a rule|not a finding — drop it|is not a finding", text), (
+        f"{host}/{name} never forbids a finding that rests on inferred intent"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_skips_rule_violation_when_no_source_loads(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The gating rule, applied to the fifth detector: it cannot produce its
+    evidence, so it does not run, and the report says so. And the mirror case —
+    `--rules` not passed — is not a gap and is never listed as skipped."""
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"no source could be read", region), (
+        f"{host}/{name} never gates rule-violation on having loaded a rule"
+    )
+    assert "detectorsSkipped" in region, (
+        f"{host}/{name} never records the skipped rule detector where the "
+        f"banner will read it"
+    )
+    assert re.search(r"unrequested detector is not a gap", region), (
+        f"{host}/{name} never says that not passing --rules is not a skipped detector"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_records_the_rules_in_the_report_data(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The three counts and the array they describe. A banner number with no
+    array behind it is a number nobody can check."""
+    region = _flatten(_output_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    for field in ("rules", "rulesLoaded", "rulesChecked", "rulesNotCheckable"):
+        assert _field_reference(field).search(region), (
+            f"{host}/{name} step 5 never names {field!r}"
+        )

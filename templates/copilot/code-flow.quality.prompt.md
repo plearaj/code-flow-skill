@@ -1,6 +1,6 @@
 ---
 agent: agent
-description: Report DRY, KISS and YAGNI findings from the persisted code-flow map, with file:line evidence and honest coverage.
+description: Report DRY, KISS and YAGNI findings, plus violations of rules the project has already written down, from the persisted code-flow map, with file:line evidence and honest coverage.
 ---
 
 Read the map this project has already written under `Code_Flows/` and report where
@@ -12,10 +12,18 @@ deleting suspected-dead code carry real blast radius, and that call is the user'
 
 Follow these steps exactly:
 
-1. **Read the arguments.** At most one flag: `--read-code` — after deriving
+1. **Read the arguments.** Two optional flags. `--read-code` — after deriving
    candidate findings from the map, open the files those candidates cite and
    confirm each against current source. Off by default. It requires the source
    tree to be present and current, not merely the artifacts under `Code_Flows/`.
+   `--rules [source ...]` — also check the map against rules this project has
+   already written down. Off by default. A source is a path to a document, the
+   word `auto`, or a rule written inline in quotes; several may be given,
+   separated by spaces or commas, and `--rules` with no value means `auto`. Step 2
+   loads them and step 3's fifth detector checks them. This is how a project's own
+   standard — a `CLAUDE.md`, an `AGENTS.md`, a Spec Kit constitution, a team style
+   guide — gets reported with the same evidence and the same honesty as DRY, KISS
+   and YAGNI, instead of being a thing everyone agreed to and nobody checks.
    There is no feature name to parse: this command analyzes the whole map. If the
    input contains anything else, say what you read, ignore it, and carry on — do
    not treat it as a filter, a path, or a flow name.
@@ -44,7 +52,33 @@ Follow these steps exactly:
    The other three detectors are unaffected and still run.
    `coverage.flowsTraced` below `coverage.entryPointsFound` is **not** a stop
    condition; it is a partial trace pass, which is normal on a large repository.
-3. **Run the detectors.** Four of them; step 2's gating rule already decided which
+
+   **Load the rules, if `--rules` was passed** — skip all of this when it was not:
+   an unrequested detector is not a gap, and it is never listed as skipped. A
+   source that names a readable file is a rule document; one that is not a
+   readable path is an inline rule. `auto` means look for these, in order, and use
+   every one that exists: `CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`,
+   `GEMINI.md`, `.github/copilot-instructions.md`,
+   `.specify/memory/constitution.md`, `memory/constitution.md`, `CONVENTIONS.md`,
+   `.code-flow/rules.md`. Split each document into discrete rules — one rule is one
+   statement a reader could be shown a counter-example to; a heading, a rationale
+   or an example is not one — and record for each a `ruleId` (`R-01`, `R-02`,
+   counting across all sources), its `text` quoted rather than paraphrased, its
+   `source` as `file:line`, its `severity` from its own wording (`must`, `never`,
+   `always`, `required`, `do not` mean `high`; `should`, `prefer`, `avoid`,
+   `expected` mean `medium`; `consider`, `may`, `where possible`, `ideally` mean
+   `low`; no such word means `medium`), and whether it is `checkable` — whether the
+   map carries the evidence it needs. Naming, file placement, layering,
+   duplication, function size, docstring presence, dependency direction and what
+   may call what are checkable against the inventory and the flow graphs; runtime
+   behavior, review process, commit messages, dependency licences, CI
+   configuration and the intent behind a design are not, and each of those records
+   why in one clause. **Say what you did not check:** a not-checkable rule is
+   reported as not-checked in step 6, never as passing and never silently dropped.
+   If `--rules` was passed and no source could be read, do **not** stop: skip the
+   rule-violation detector, record it in `detectorsSkipped`, and name every path
+   you tried.
+3. **Run the detectors.** Four of them, and a fifth when `--rules` was passed; step 2's gating rule already decided which
    run. Every severity is a **rule**, not a judgement — apply the number, and if a
    finding does not clear a threshold it is not a finding at all.
    - **duplicate-intent (DRY)** — cluster catalogued functions that do the same
@@ -68,6 +102,19 @@ Follow these steps exactly:
      `medium`. `high` only when `unreached`, not `exported`, and not test-only;
      anything whose `exported` is true is capped at `low`, because a public API
      surface has callers this repository cannot see.
+
+   - **rule-violation (RULES)** — runs only when step 2 loaded at least one rule.
+     For each rule marked `checkable`, search the inventory and the flow graphs for
+     evidence that contradicts it, and cite that evidence as every other detector
+     does: `file`, `line`, `symbol`, snippet where the map carries one. Severity is
+     the rule's own severity from step 2 — its wording decided it, not you. One
+     rule is one finding, however many sites break it. A rule with no violating
+     site is not a finding: it is reported as checked and clean in the banner,
+     which is the only place a reader can tell "checked, clean" from "never
+     checked". Every finding here carries `rule` (the text, quoted), `ruleId` and
+     `ruleSource`, so a reader can go and read the sentence it rests on; a finding
+     resting on your reading of the project's intent rather than its written words
+     is not a finding — drop it.
 
    **unreached is a candidate, never a verdict.** Tracing is search and reading,
    not a compiler's view: it cannot see reflection, `getattr`, dependency
@@ -174,11 +221,21 @@ Follow these steps exactly:
      "coverage": { "flowsTraced": 14, "entryPointsFound": 17,
                    "functionsCatalogued": 1180, "flowsUnreadable": 0,
                    "filesChanged": 6, "findingsDropped": 2,
-                   "detectorsSkipped": ["duplicate-intent"] },
+                   "detectorsSkipped": ["duplicate-intent"],
+                   "rulesLoaded": 12, "rulesChecked": 9,
+                   "rulesNotCheckable": 3 },
+     "rules": [
+       { "ruleId": "R-01", "text": "Every public function must carry a docstring.",
+         "source": "CLAUDE.md:14", "severity": "high", "checkable": true,
+         "reason": "" }
+     ],
      "findings": []
    }
    ```
 
+   `rules` is every rule step 2 loaded, checkable or not, each with the `reason`
+   it could not be checked where that applies — an empty array when `--rules` was
+   not passed — and the three `rules*` counts describe that array.
    `meta.root` is the one absolute path; every path inside `findings` is
    repo-relative with forward slashes. `mapGenerated`, `mapMode` and `mapDetail`
    are copied from the map's own `index.json` `meta`, so the report records which
@@ -197,6 +254,10 @@ Follow these steps exactly:
    the reason is not in the JSON — so restate it from the step 2 rule that gated
    the detector off: for duplicate-intent on a thin map, that a thin map carries no
    `snippet`. A detector named without its reason does not satisfy this banner.
+   When `--rules` was passed the banner also states how many rules were loaded,
+   how many were checked, and how many could not be — naming each of those and its
+   reason. A rule the report never mentions reads as a rule that passed, which is
+   the one thing this detector must never imply.
    If `flowsTraced` is below `entryPointsFound`,
    say in words that the map is partial and that everything below is **clean within
    what was mapped** — never a clean bill of health for the repository. Then a

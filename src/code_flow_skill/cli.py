@@ -26,15 +26,23 @@ def _template_path(*parts: str) -> Path:
 
 
 # Every scaffold here is tool-agnostic: every command template references one
-# of them, so all of them install regardless of --tool. This table and the one
-# in bin/install.js must stay in step; the installed-file-set tests in both
-# languages are what holds them there.
+# of them, so all of them install regardless of --tool. Names may carry a
+# subdirectory (the tracers do), and are written under `.code-flow/` verbatim.
+# This table and the one in bin/install.js must stay in step; the
+# installed-file-set tests in both languages are what holds them there.
 _SHARED_FILES = (
     ("viewer.template.html", "interactive viewer"),
     ("report.template.html", "quality report viewer"),
     ("index.template.html", "flow index"),
     ("theme.css", "your theme"),
     ("bundle.template.html", "bundled viewer"),
+    ("tracers/_common.py", "shared tracer core"),
+    ("tracers/trace_python.py", "Python tracer"),
+    ("tracers/trace_typescript.mjs", "TypeScript tracer"),
+    ("tracers/trace_rust.py", "Rust tracer"),
+    ("tracers/trace_java.py", "Java tracer"),
+    ("tracers/trace_c_family.py", "C/C++/Objective-C/C# tracer"),
+    ("tracers/README.md", "tracer contract"),
 )
 
 
@@ -46,9 +54,10 @@ def _install_shared(target: Path) -> None:
     Windows and silently corrupt every shipped template.
     """
     for name, label in _SHARED_FILES:
-        out = target / ".code-flow" / name
+        parts = name.split("/")
+        out = target.joinpath(".code-flow", *parts)
         out.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(_template_path("shared", name), out)
+        shutil.copyfile(_template_path("shared", *parts), out)
         print(f"Installed {label} template: {out}")
 
 

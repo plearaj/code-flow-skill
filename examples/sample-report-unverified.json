@@ -15,8 +15,12 @@
     "flowsUnreadable": 1,
     "filesChanged": 3,
     "findingsDropped": 1,
-    "detectorsSkipped": ["duplicate-intent"]
+    "detectorsSkipped": ["duplicate-intent"],
+    "rulesLoaded": 0,
+    "rulesChecked": 0,
+    "rulesNotCheckable": 0
   },
+  "rules": [],
   "findings": [
     {
       "id": "DRY-01",

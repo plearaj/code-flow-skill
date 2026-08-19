@@ -7,8 +7,8 @@ Analyze the codebase and document the execution flow of the requested functional
 
 Follow these steps exactly:
 
-1. **Read the request for option flags first.** `--whole-code-base` maps the whole repository instead of one feature — if it is there, ignore steps 2-7 and follow "Whole-codebase mode" at the end of this prompt. `--detail thin|standard|verbose` sets how much evidence each catalogued function carries, default `standard`; it only matters in whole-codebase mode, so accept it silently otherwise, and if its value is not one of those three, say what you read, use `standard`, and carry on. `--output files|bundle|both` chooses which HTML gets written, default `files`: `files` writes `index.html`, one page per flow, and the quality report page, exactly as before; `both` adds `Code_Flows/code-flow.html`, a single self-contained page carrying every flow; `bundle` writes that page and no other HTML. If its value is not one of those three, say what you read, use `files`, and carry on. **`--output` never suppresses the JSON artifacts** — `index.json`, `<functionality_name>.json` and `inventory.json` are written in every mode, because `/code-flow.quality` reads them and a run that skipped them would break it silently. Unlike `--detail`, `--output` changes behavior in both modes: in whole-codebase mode it governs the bundle exactly as it does here — see "Whole-codebase mode" below, Pass 1 and Pass 2, for where that applies. Flags are options, not part of the feature name — strip them out. Then **identify the target flow** from what is left and derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further. Steps 2-7 are feature mode, the default.
-2. **Discover relevant files and functions** — search by file patterns and grep for keywords, then trace the call chain. Trace the full execution path from entry point through to the final output, and include every function that participates in the flow.
+1. **Read the request for option flags first.** `--whole-code-base` maps the whole repository instead of one feature — if it is there, ignore steps 2-7 and follow "Whole-codebase mode" at the end of this prompt. `--detail thin|standard|verbose` sets how much evidence each catalogued function carries, default `standard`; it only matters in whole-codebase mode, so accept it silently otherwise, and if its value is not one of those three, say what you read, use `standard`, and carry on. `--output files|bundle|both` chooses which HTML gets written, default `files`: `files` writes `index.html`, one page per flow, and the quality report page, exactly as before; `both` adds `Code_Flows/code-flow.html`, a single self-contained page carrying every flow; `bundle` writes that page and no other HTML. If its value is not one of those three, say what you read, use `files`, and carry on. **`--output` never suppresses the JSON artifacts** — `index.json`, `<functionality_name>.json` and `inventory.json` are written in every mode, because `/code-flow.quality` reads them and a run that skipped them would break it silently. Unlike `--detail`, `--output` changes behavior in both modes: in whole-codebase mode it governs the bundle exactly as it does here — see "Whole-codebase mode" below, Pass 1 and Pass 2, for where that applies. `--frontend auto|react|vue|angular|svelte|off` says whether to map UI components as well as functions, default `auto`: detect the frameworks this repository actually uses and map their components too; naming one forces that framework, `off` maps functions only — see "Frontend component mapping" below. `--tracer auto|on|off` says whether to run the installed static tracers before tracing anything, default `auto`: run each tracer whose language this repository contains and whose interpreter this machine has, and read source yourself where none applies; `on` means say so and stop when no tracer could run, `off` never runs one — see "Automated tracing" below. For either, if the value is not one of those, say what you read, use the default, and carry on. Flags are options, not part of the feature name — strip them out. Then **identify the target flow** from what is left and derive a snake_case filename (e.g. "user login" → `user_login.md`). If no functionality was named, analyze the project structure, suggest 3-5 key flows, and ask the user to pick one before going any further. Steps 2-7 are feature mode, the default.
+2. **Discover relevant files and functions** — if a tracer ran, start from its output rather than from search: find this flow's entry function in `entryPoints[]` or `functions[]`, walk `calls[]` transitively to collect the flow, read the source of every function you collect, and follow `ambiguousCalls[]` by hand wherever the chain passes through one. Otherwise search by file patterns and grep for keywords, then trace the call chain. Trace the full execution path from entry point through to the final output, and include every function that participates in the flow.
 3. **Document undocumented functions** — add docstrings to any function in the flow that lacks one.
 4. **Generate `Code_Flows/<functionality_name>.md`** containing:
    - Flow description
@@ -47,7 +47,7 @@ By default, also produce a self-contained interactive HTML page next to the mark
 Rules (follow exactly or the page refuses to render):
 - One node per function. **Every `edge.from`/`edge.to` MUST match a node `id`.**
 - `id` is derived from the node's own `file` and function name, so that the same function always gets the same `id` in every flow and downstream tools can join flow nodes against a function catalog. Derive it exactly like this: **(1)** take the repo-relative `file` path and drop the extension from its **last segment only** — the final `.` in the filename and everything after it, so `src/v2.1/handler.py` → `src/v2.1/handler`, and a filename with no dot loses nothing; **(2)** append `_` followed by the function's **unqualified** name — `authenticate`, never `User.authenticate` — which is the same name a function catalog records for it; **(3)** lowercase the whole string, replace every remaining character outside `[a-z0-9_]` (path separators, dots, dashes, spaces, anything else) with `_`, collapse each run of `_` into a single `_`, and trim any leading or trailing `_`. Example: `src/web/views.py` + `login_view` → `src_web_views_login_view`. If **the file itself** defines more than one function with that name — same-named methods on two classes, or an overload — append `_l` and the line number of the function's own definition keyword — the `def`, `function`, `func` or `fn` line itself, never a decorator, annotation or comment line above it: `src_jobs_worker_run_l31` and `src_jobs_worker_run_l88`. Decide that from the file's own contents, never from which nodes happen to be in this flow: an `id` must not change depending on what else you mapped.
-- Node `kind` ∈ `entry` | `step` | `external` | `io` (default `step`). `entry` = where the flow starts; `external` = a third-party/library boundary; `io` = a DB/network/file side effect. This drives node color. **Exactly one** node MUST have `kind: entry`; if the flow has several plausible roots, pick the one the user asked about and mark the rest `step`. Edge `kind` ∈ `call` | `async` | `conditional` (default `call`). Set `"back": true` on edges that close a loop/recursion.
+- Node `kind` ∈ `entry` | `step` | `external` | `io` | `component` (default `step`). `entry` = where the flow starts; `external` = a third-party/library boundary; `io` = a DB/network/file side effect; `component` = a UI component rather than a plain function. This drives node color. **Exactly one** node MUST have `kind: entry`; if the flow has several plausible roots, pick the one the user asked about and mark the rest `step`. Edge `kind` ∈ `call` | `async` | `conditional` | `render` (default `call`); `render` is a parent component drawing a child. Set `"back": true` on edges that close a loop/recursion.
 - File paths use **forward slashes**, repo-relative; `meta.root` is the absolute root, forward slashes.
 - `snippet` is optional (≤ ~40 lines). **Replace each `</` with `<\/` inside every snippet.** No trailing commas.
 
@@ -103,6 +103,43 @@ All outputs go in `Code_Flows/` at the project root — create that directory if
 - `Code_Flows/index.html` — the flow index, rebuilt from that registry every time it is written (step 6). Written unless `--output` is `bundle`.
 - `Code_Flows/code-flow.html` — the bundle, written only when `--output` is `bundle` or `both` (see "The bundle" above).
 
+## Automated tracing
+
+Reading a repository function by function is what leaves a large map half-finished. The installed tracers do that reading in one pass, and they are the difference between a hundred flows traced in one session and ten. Run them unless `--tracer off`; nothing here depends on their being present, and when none applies every step still works by reading source, only slower.
+
+`.code-flow/tracers/` holds one tracer per supported language. Run the ones whose language this repository contains, passing the `--detail` value the user passed you:
+
+| Language | Command |
+|---|---|
+| Python | `python .code-flow/tracers/trace_python.py --root . --detail <detail> --out Code_Flows/trace-python.json` |
+| TypeScript, JavaScript | `node .code-flow/tracers/trace_typescript.mjs --root . --detail <detail> --out Code_Flows/trace-typescript.json` |
+| Rust | `python .code-flow/tracers/trace_rust.py --root . --detail <detail> --out Code_Flows/trace-rust.json` |
+| Java | `python .code-flow/tracers/trace_java.py --root . --detail <detail> --out Code_Flows/trace-java.json` |
+| C, C++, Objective-C, C# | `python .code-flow/tracers/trace_c_family.py --root . --detail <detail> --out Code_Flows/trace-c.json` |
+
+A repository written in several of these runs several tracers, into one file each; nothing merges them, and everything else reads them as one catalog. Every tracer but the TypeScript one runs under Python. A tracer that is missing, exits non-zero, or needs an interpreter this machine does not have is not an error under `--tracer auto`: say which one did not run and why, and carry on reading source for that language.
+
+`.code-flow/tracers/README.md` documents the output in full. What matters here: `functions[]` is one entry per function, already shaped like an inventory entry; `functions[].calls[]` is the call graph, each `to` naming another function's `id` with a `confidence` of `exact` or `heuristic`; `entryPoints[]` is where execution enters; `components[]` and `routes[]` carry the UI half; `ambiguousCalls[]` are the calls it refused to guess, `externalCalls[]` the ones that leave the repository, and `limits` is what it cannot see at all.
+
+**A tracer is evidence, not the map.** Read the source of anything you describe — a `purpose` it inferred is where a description starts, not what it says. An `exact` call is a fact; a `heuristic` call is a claim, so confirm it against the source before drawing it and drop it when the source disagrees. `ambiguousCalls` and `limits` name real calls, so a chain passing through one is unfinished rather than finished: follow it by reading, and say in your report where you could not. Never present a traced map as complete — say **catalogued** and **found**, never "all".
+
+## Frontend component mapping
+
+A repository with a UI is two graphs, not one. Functions call functions; components render components; the two meet where a handler or a hook calls into the rest of the system. Mapping only the calls leaves the half of the system a user actually touches undocumented.
+
+This applies unless `--frontend off`, and only to the frameworks the repository really uses — decided from `package.json` dependencies, then the config files present, then the file extensions on disk.
+
+| Framework | A component is | Its children come from | Its inputs are |
+|---|---|---|---|
+| React, Preact, Solid | a capitalized function or class that returns markup | the JSX tags in its body, resolved through the file's imports | destructured props, or the props type |
+| Vue | a `.vue` file, or an options object carrying a `template` | the tags in its `<template>` block | `defineProps`, or the `props` option |
+| Angular | a class decorated `@Component` | the selectors its template uses, inline or in `templateUrl` | `@Input()` members |
+| Svelte | a `.svelte` file | the capitalized tags in its markup | `export let` declarations |
+
+Record alongside each one: its outputs — `@Output()`s, emits, or callback props; its lifecycle hooks and effects; the hooks, composables, stores or services it depends on; and the route that reaches it, if any. A custom hook, a composable and an injectable service are none of them components, and filing them as components distorts the tree: give them their own `kind` — `hook`, `service`, `store` — and keep them in the graph, because that is where a component's behavior actually lives.
+
+Components are catalogued in `inventory.json` (pass 1, step b2 below) and drawn in flows as nodes of `kind: "component"` joined by edges of `kind: "render"`. Everything else about a flow is unchanged. A UI flow is worth its own flow when it starts at a route or at a mounted application root: trace it as any other flow is traced — route, page component, the components it renders, the hooks and handlers those call, and on into the services and requests they reach — so that one flow shows a click arriving at the server. Where a tracer ran it has already done this: `components[]` carries each component with its `children`, `inputs`, `outputs` and `hooks`, and `routes[]` pairs a path with the component it renders.
+
 ## Whole-codebase mode
 
 Reached only when the user passed `--whole-code-base`. Two passes: catalogue what exists, then trace how it runs. They are separate because they answer different questions and because the second is far more expensive than the first.
@@ -124,6 +161,8 @@ assets); `binary` for anything that is not text; `unparsed` for a file you opene
 but could not read structure from. A `.gitignore` match is not itself a reason —
 give the file the reason that fits what it is. If two fit, use the one listed
 first here, so two runs over the same repository produce the same counts.
+
+If a tracer ran, its `files[]` and `skipped[]` arrays are this census already — same paths, sizes, hashes and skip reasons. Take them, and add only what no tracer covered.
 
 **b. Catalogue the functions.** Write `Code_Flows/inventory.json` with one entry
 per function or method you find:
@@ -170,6 +209,11 @@ per function or method you find:
   Go. **When the language or the convention is unclear, use `true`** — wrongly
   calling something private produces a false dead-code claim later, which is the
   more expensive mistake.
+- `calls` — the functions this one calls, each an `id` in this same catalog with a
+  `confidence` of `exact` or `heuristic`. Present when a tracer produced it, absent
+  otherwise: it is a fact the tracer establishes, not something to infer by reading.
+  It is also what makes pass 2 a graph walk instead of a second reading of the whole
+  repository, which is the difference between finishing a large map and abandoning one.
 - `snippet` — governed by `--detail`:
 
 | `--detail` | `snippet` |
@@ -178,7 +222,11 @@ per function or method you find:
 | `standard` (default) | include, capped at ~20 lines; omit for functions of 3 lines or fewer, since a trivial accessor tells a duplicate-detector nothing |
 | `verbose` | include the full body, uncapped |
 
+If a tracer ran, this catalog is its `functions[]` array: copy `id`, `name`, `file`, `line`, `loc`, `signature`, `purpose`, `role`, `exported`, `calls` and `snippet` straight across rather than deriving them again. Read source only for the entries you are about to describe in a flow, and for anything the tracer's `limits` say it could not see. Catalogue what the tracer found *and* what it says it missed; never report the first as if it were both.
+
   Inside every `snippet`, replace each `</` with `<\/`, exactly as in step 5.
+
+**b2. Catalogue the components.** Skip this if `--frontend off`, or if the repository has no UI. Otherwise add a `components` array to the same `inventory.json`, one entry per component, hook, store or service: `id` (derived by the same rule as a function's, from the component's own file and unqualified name), `name`, `file`, `line`, `framework` (`react`, `vue`, `angular`, `svelte`, `solid` or `preact`, decided per file rather than per repository), `kind` (`component`, `page`, `layout`, `hook`, `service`, `store`, `directive`, `pipe` or `module`), `selector` (Angular's, or `null`), `inputs`, `outputs`, `hooks`, `children` (the `id` of every component this one renders — this is the tree) and `exported`. If a tracer ran, this is its `components[]` array copied across, and its `routes[]` array pairs a path with the component it renders.
 
 **c. Record the file census.** In `Code_Flows/index.json`, set `meta.mode` to
 `"whole-code-base"` and `meta.detail` to the level you used, then record one entry
@@ -242,6 +290,10 @@ Use the inventory you just built — `exported` is a strong hint — plus the fr
 conventions the repository actually uses (route decorators, a router table, an
 `argv` parser, a job registry).
 
+If a tracer ran, `entryPoints[]` is this list: take it, and add anything the
+conventions above show it missed. Its `routes[]` are entry points too — a route is
+where a user enters the system.
+
 Record how many you found as `coverage.entryPointsFound` **before you trace any of
 them**. Recording it first is what makes an unfinished run visible: `flowsTraced`
 below `entryPointsFound` means the map is partial.
@@ -250,7 +302,12 @@ below `entryPointsFound` means the map is partial.
 and 6 exactly as written, treating that entry point as the requested flow — but
 **skip step 3**: this mode does not edit source. Each flow produces its own
 `Code_Flows/<slug>.md`, `.html` and `.json`, and its own entry in `index.json`'s
-`flows` array. Derive the slug from the entry point's own name. **The bundle
+`flows` array. Derive the slug from the entry point's own name. Where the inventory
+carries `calls`, step 2 is a walk of that graph from the entry point rather than a
+fresh read of the repository: the nodes are the functions you reach, the edges are
+the calls you walked, and the reading you do is of the functions you are about to
+describe — which is what makes tracing every entry point in one pass possible.
+**The bundle
 applies here too** — after step 6 updates `index.json` for this flow, rebuild
 `Code_Flows/code-flow.html` under the same `--output` condition as "The bundle"
 above, so it stays current as each flow is traced.
