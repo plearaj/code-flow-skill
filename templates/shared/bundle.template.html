@@ -345,13 +345,14 @@ html,body{height:100%; background:var(--bg)}
 #view-flow .lane text{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; fill:var(--faint);
   letter-spacing:.06em; text-transform:uppercase}
 #view-flow .edge path.hit{fill:none; stroke:transparent; stroke-width:14; cursor:pointer}
-#view-flow .edge path.ln{fill:none; stroke:var(--edge-soft); stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round;
-  marker-end:url(#ar)}
+#view-flow .edge path.ln{fill:none; stroke:var(--edge-soft); stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round}
+#view-flow .edge path.ah{fill:var(--edge-soft); stroke:none}
 #view-flow .edge.async path.ln,#view-flow .edge.backe path.ln{stroke-dasharray:5 5}
 #view-flow .edge.render path.ln{stroke-dasharray:2 4}
 #view-flow .edge path.ov{fill:none; stroke:var(--accent); stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
   stroke-dasharray:7 9; opacity:0; pointer-events:none}
-#view-flow .edge.hot path.ln{stroke:var(--edge); marker-end:url(#arh)}
+#view-flow .edge.hot path.ln{stroke:var(--edge)}
+#view-flow .edge.hot path.ah{fill:var(--accent)}
 #view-flow .edge.hot path.ov{opacity:.95; animation:bundleflow 1.1s linear infinite}
 #view-flow .edge.lit path.ov{opacity:1; stroke-dasharray:none; animation:none}
 @keyframes bundleflow{to{stroke-dashoffset:-32}}
@@ -532,10 +533,6 @@ html,body{height:100%; background:var(--bg)}
   <div id="main">
     <div id="canvas">
       <svg id="graph" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 1.2 L9 5 L0 8.8 z" fill="var(--edge-soft)"/></marker>
-          <marker id="arh" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0 1.2 L9 5 L0 8.8 z" fill="var(--accent)"/></marker>
-        </defs>
         <g id="world">
           <g id="lanes"></g>
           <g id="elayer"></g>
@@ -1341,6 +1338,13 @@ function mountFlow(slug){
     if (parent) parent.appendChild(e);
     return e;
   }
+  /* The arrowhead each edge ends in. Drawn per edge rather than defined once as
+     a reusable SVG marker element, because a marker is reachable only through an
+     in-document id reference -- and an SVG carrying one of those is a signature
+     several corporate mail and chat scanners quarantine, which made a generated
+     flow unshareable at work. These are the points the marker drew, at the scale
+     it drew them, so an edge looks exactly as it did before. */
+  var ARROW = "M-7.65 -3.42 L0.45 0 L-7.65 3.42 z";
   function elbow(sx, sy, tx, ty){
     var r = 14;
     if (dir === "LR"){
@@ -1369,14 +1373,18 @@ function mountFlow(slug){
       if (dir === "LR"){
         var lift = bounds.y0 - 46;
         return { d: "M" + (a.x + NW / 2) + " " + a.y +
-                    " C" + (a.x + NW / 2) + " " + lift + " " + (b.x + NW / 2) + " " + lift + " " + (b.x + NW / 2) + " " + (b.y - 4) };
+                    " C" + (a.x + NW / 2) + " " + lift + " " + (b.x + NW / 2) + " " + lift + " " + (b.x + NW / 2) + " " + (b.y - 4),
+                 tip: { x: b.x + NW / 2, y: b.y - 4, a: 90 } };
       }
       var side = bounds.x1 + 54;
       return { d: "M" + (a.x + NW) + " " + (a.y + NH / 2) +
-                  " C" + side + " " + (a.y + NH / 2) + " " + side + " " + (b.y + NH / 2) + " " + (b.x + NW + 4) + " " + (b.y + NH / 2) };
+                  " C" + side + " " + (a.y + NH / 2) + " " + side + " " + (b.y + NH / 2) + " " + (b.x + NW + 4) + " " + (b.y + NH / 2),
+               tip: { x: b.x + NW + 4, y: b.y + NH / 2, a: 180 } };
     }
-    if (dir === "LR") return { d: elbow(a.x + NW, a.y + NH / 2, b.x, b.y + NH / 2) };
-    return { d: elbow(a.x + NW / 2, a.y + NH, b.x + NW / 2, b.y) };
+    if (dir === "LR") return { d: elbow(a.x + NW, a.y + NH / 2, b.x, b.y + NH / 2),
+                               tip: { x: b.x - 3, y: b.y + NH / 2, a: 0 } };
+    return { d: elbow(a.x + NW / 2, a.y + NH, b.x + NW / 2, b.y),
+             tip: { x: b.x + NW / 2, y: b.y - 3, a: 90 } };
   }
   function modHue(m){
     var h = 0; for (var i = 0; i < m.length; i++) h = (h * 31 + m.charCodeAt(i)) % 360;
@@ -1411,8 +1419,10 @@ function mountFlow(slug){
       var a = byId.get(e.from), b = byId.get(e.to);
       var kind = e.back ? "backe" : (e.kind === "async" ? "async" : (e.kind === "conditional" ? "cond" : (e.kind === "render" ? "render" : "call")));
       var g = sEl("g", { "class": "edge " + kind }, eLayerEl);
-      var d = anchors(a, b, e.back, bounds).d;
+      var geo = anchors(a, b, e.back, bounds), d = geo.d;
       sEl("path", { "class": "ln", d: d }, g);
+      sEl("path", { "class": "ah", d: ARROW,
+                   transform: "translate(" + geo.tip.x + "," + geo.tip.y + ") rotate(" + geo.tip.a + ")" }, g);
       var ov = sEl("path", { "class": "ov", d: d }, g);
       var hit = sEl("path", { "class": "hit", d: d }, g);
       hit.addEventListener("click", function(ev){ ev.stopPropagation(); select(e.from); });

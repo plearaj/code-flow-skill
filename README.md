@@ -350,13 +350,16 @@ say "catalogued", never "all", and they mean it.
 ### Automated tracing
 
 Reading a repository function by function is what leaves a large map
-half-finished — the run gets to flow 10 of 118 and stops. Two static tracers
+half-finished — the run gets to flow 10 of 118 and stops. Five static tracers
 install alongside the templates and do that reading in one pass:
 
 | Language | Tracer | Needs |
 |---|---|---|
 | Python | `.code-flow/tracers/trace_python.py` | any CPython 3.9+ |
 | TypeScript, JavaScript, JSX/TSX, Vue, Svelte | `.code-flow/tracers/trace_typescript.mjs` | any Node 18+ |
+| Rust | `.code-flow/tracers/trace_rust.py` | any CPython 3.9+ |
+| Java | `.code-flow/tracers/trace_java.py` | any CPython 3.9+ |
+| C, C++, Objective-C, C# | `.code-flow/tracers/trace_c_family.py` | any CPython 3.9+ |
 
 Each writes one JSON document: every function with its `file:line`, signature,
 purpose, role and export status; the resolved call graph between them; the entry
@@ -366,7 +369,12 @@ repository once per entry point, which is the difference between finishing a
 large map in one pass and finishing it in four.
 
 They are zero-dependency by design — no `typescript` package, no `node_modules`,
-no compiler — because they run inside your repository, not this one.
+no compiler, no toolchain of any kind — because they run inside your repository,
+not this one, and a tracer that needed a working build would be useless on
+exactly the repository most in need of a map. Four of the five run under Python,
+which is why a machine with one interpreter can trace most of a polyglot
+codebase. They leave nothing behind in the tree they read, not even a
+`__pycache__`.
 
 `--tracer auto` (the default) runs each tracer whose language your repository
 contains and whose interpreter your machine has, and falls back to reading source
@@ -374,8 +382,9 @@ where none applies. `--tracer on` says so and stops if none could run. `--tracer
 off` never runs one; everything still works, only slower.
 
 A tracer is evidence, not the map. Every resolved call carries a confidence —
-`exact` where an import, a `self.`/`this.` receiver or a same-file definition made
-the target certain, `heuristic` where a unique name match was the only evidence —
+`exact` where an import, a `self.`/`this.` receiver, a header a file includes or a
+same-file definition made the target certain, `heuristic` where a unique name
+match was the only evidence —
 and calls it could not resolve are listed with their candidates rather than
 guessed into edges. The map confirms heuristic edges against source before drawing
 them. `.code-flow/tracers/README.md` documents the output and, just as important,
@@ -385,9 +394,17 @@ registries populated at runtime, and entry points declared in configuration.
 You can run one yourself, without the map:
 
 ```bash
-python .code-flow/tracers/trace_python.py --root . --out trace.json
-node .code-flow/tracers/trace_typescript.mjs --root . --out trace.json
+python .code-flow/tracers/trace_python.py   --root . --out trace.json
+node   .code-flow/tracers/trace_typescript.mjs --root . --out trace.json
+python .code-flow/tracers/trace_rust.py     --root . --out trace.json
+python .code-flow/tracers/trace_java.py     --root . --out trace.json
+python .code-flow/tracers/trace_c_family.py --root . --out trace.json
 ```
+
+Each language brings its own way of hiding a call, and each tracer says which
+one defeats it in the `limits` array it emits: trait dispatch in Rust, injected
+interfaces in Java, the preprocessor in C, `performSelector:` in Objective-C.
+None of them guesses past it.
 
 ### Frontend component mapping
 
@@ -698,8 +715,12 @@ code-flow-skill --tool gemini
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 | _All tools_ | — | `.code-flow/theme.css` (your theme) |
 | _All tools_ | — | `.code-flow/bundle.template.html` (single-file bundled viewer scaffold) |
-| _All tools_ | — | `.code-flow/tracers/trace_python.py` (static call-graph tracer) |
-| _All tools_ | — | `.code-flow/tracers/trace_typescript.mjs` (static call-graph and component tracer) |
+| _All tools_ | — | `.code-flow/tracers/_common.py` (the discovery, id and envelope core the tracers share) |
+| _All tools_ | — | `.code-flow/tracers/trace_python.py` (Python call-graph tracer) |
+| _All tools_ | — | `.code-flow/tracers/trace_typescript.mjs` (TypeScript call-graph and component tracer) |
+| _All tools_ | — | `.code-flow/tracers/trace_rust.py` (Rust call-graph tracer) |
+| _All tools_ | — | `.code-flow/tracers/trace_java.py` (Java call-graph tracer) |
+| _All tools_ | — | `.code-flow/tracers/trace_c_family.py` (C, C++, Objective-C and C# call-graph tracer) |
 | _All tools_ | — | `.code-flow/tracers/README.md` (what the tracers emit, and what they cannot see) |
 
 Every path this installer can write is listed above. The two `.gemini/` rows are the
@@ -772,7 +793,8 @@ condition that a human closes it by hand before every release:
 1. Run `/code-flow.map` and `/code-flow.quality` against any project and open the resulting
    `Code_Flows/index.html`, `Code_Flows/<flow>.html` and `Code_Flows/quality-report.html` in a
    browser. Confirm each renders its registry, diagram or findings instead of a blank page or a
-   raw JSON dump, and that the index's flow cards and the pages' `Flows` links actually navigate.
+   raw JSON dump, that every edge in a diagram ends in an arrowhead pointing at its target, and
+   that the index's flow cards and the pages' `Flows` links actually navigate.
    Then run again with `--output both` or `--output bundle`, open the resulting
    `Code_Flows/code-flow.html`, and confirm it does the same three things in one document: its
    landing view lists the same flows as `index.html`, opening a flow shows its graph, and the
@@ -783,7 +805,7 @@ condition that a human closes it by hand before every release:
 3. Uncomment one property in a generated project's `.code-flow/theme.css`, regenerate any page,
    and confirm the colour changed in both light and dark. A user's CSS is inlined verbatim and
    nothing in either suite validates it, so this is the only check theming ever gets.
-4. Run both tracers against a real repository that is not this one and read the stats line. The
+4. Run every tracer against a real repository that is not this one and read the stats line. The
    suites run them against fixtures this repository wrote, which prove the contract and prove
    nothing about the heuristics — a resolver that resolves nothing still emits a valid,
    well-shaped, empty-graph document. Confirm `entryPointsFound` is not zero, `callEdges` is in

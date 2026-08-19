@@ -113,8 +113,11 @@ Reading a repository function by function is what leaves a large map half-finish
 |---|---|
 | Python | `python .code-flow/tracers/trace_python.py --root . --detail <detail> --out Code_Flows/trace-python.json` |
 | TypeScript, JavaScript | `node .code-flow/tracers/trace_typescript.mjs --root . --detail <detail> --out Code_Flows/trace-typescript.json` |
+| Rust | `python .code-flow/tracers/trace_rust.py --root . --detail <detail> --out Code_Flows/trace-rust.json` |
+| Java | `python .code-flow/tracers/trace_java.py --root . --detail <detail> --out Code_Flows/trace-java.json` |
+| C, C++, Objective-C, C# | `python .code-flow/tracers/trace_c_family.py --root . --detail <detail> --out Code_Flows/trace-c.json` |
 
-A repository written in both runs both, into two files; nothing merges them, and everything else reads them as one catalog. A tracer that is missing, exits non-zero, or needs an interpreter this machine does not have is not an error under `--tracer auto`: say which one did not run and why, and carry on reading source for that language.
+A repository written in several of these runs several tracers, into one file each; nothing merges them, and everything else reads them as one catalog. Every tracer but the TypeScript one runs under Python. A tracer that is missing, exits non-zero, or needs an interpreter this machine does not have is not an error under `--tracer auto`: say which one did not run and why, and carry on reading source for that language.
 
 `.code-flow/tracers/README.md` documents the output in full. What matters here: `functions[]` is one entry per function, already shaped like an inventory entry; `functions[].calls[]` is the call graph, each `to` naming another function's `id` with a `confidence` of `exact` or `heuristic`; `entryPoints[]` is where execution enters; `components[]` and `routes[]` carry the UI half; `ambiguousCalls[]` are the calls it refused to guess, `externalCalls[]` the ones that leave the repository, and `limits` is what it cannot see at all.
 

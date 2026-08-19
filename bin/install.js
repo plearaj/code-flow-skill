@@ -84,8 +84,12 @@ const sharedFiles = [
   ["index.template.html", "flow index"],
   ["theme.css", "your theme"],
   ["bundle.template.html", "bundled viewer"],
+  ["tracers/_common.py", "shared tracer core"],
   ["tracers/trace_python.py", "Python tracer"],
   ["tracers/trace_typescript.mjs", "TypeScript tracer"],
+  ["tracers/trace_rust.py", "Rust tracer"],
+  ["tracers/trace_java.py", "Java tracer"],
+  ["tracers/trace_c_family.py", "C/C++/Objective-C/C# tracer"],
   ["tracers/README.md", "tracer contract"],
 ];
 

@@ -43,14 +43,36 @@ from .test_node_ids import derive_id
 
 PY_TRACER = ("templates", "shared", "tracers", "trace_python.py")
 TS_TRACER = ("templates", "shared", "tracers", "trace_typescript.mjs")
+RUST_TRACER = ("templates", "shared", "tracers", "trace_rust.py")
+JAVA_TRACER = ("templates", "shared", "tracers", "trace_java.py")
+C_TRACER = ("templates", "shared", "tracers", "trace_c_family.py")
 
-# The keys both tracers must emit, whatever language they read. A consumer that
+# The keys every tracer must emit, whatever language it reads. A consumer that
 # has to ask which tracer wrote a file before it can read it is not a contract.
 ENVELOPE_KEYS = (
     "schema", "tracer", "language", "idRule", "root", "detail", "files", "skipped",
-    "functions", "components", "entryPoints", "ambiguousCalls", "externalCalls",
-    "stats", "limits",
+    "functions", "components", "routes", "entryPoints", "ambiguousCalls",
+    "externalCalls", "stats", "limits",
 )
+
+# Every tracer, its fixture repository, and the fixture that runs it. The shared
+# contracts below are parametrized over this, so a tracer added later is held to
+# them by adding one line rather than by being trusted.
+TRACERS = {
+    "python": "py_trace",
+    "typescript": "ts_trace",
+    "rust": "rust_trace",
+    "java": "java_trace",
+    "c-family": "c_trace",
+}
+FIXTURE_DIRS = {
+    "python": "py-app",
+    "typescript": "ts-app",
+    "rust": "rust-app",
+    "java": "java-app",
+    "c-family": "c-app",
+}
+ALL_TRACERS = sorted(TRACERS)
 
 FUNCTION_KEYS = (
     "id", "name", "file", "line", "loc", "signature", "purpose", "role",
@@ -61,6 +83,16 @@ FUNCTION_KEYS = (
 def _run_python_tracer(repo_root: Path, target: Path, detail: str = "standard") -> dict:
     out = subprocess.run(
         [sys.executable, str(repo_root.joinpath(*PY_TRACER)), "--root", str(target), "--detail", detail],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(out.stdout)
+
+
+def _run_script(script, repo_root: Path, target: Path, detail: str = "standard") -> dict:
+    out = subprocess.run(
+        [sys.executable, str(repo_root.joinpath(*script)), "--root", str(target), "--detail", detail],
         capture_output=True,
         text=True,
         check=True,
@@ -94,6 +126,38 @@ def ts_trace() -> dict:
     return _run_node_tracer(REPO_ROOT, REPO_ROOT / "tests" / "fixtures" / "ts-app")
 
 
+@pytest.fixture(scope="module")
+def rust_trace() -> dict:
+    return _run_script(RUST_TRACER, REPO_ROOT, REPO_ROOT / "tests" / "fixtures" / "rust-app")
+
+
+@pytest.fixture(scope="module")
+def java_trace() -> dict:
+    return _run_script(JAVA_TRACER, REPO_ROOT, REPO_ROOT / "tests" / "fixtures" / "java-app")
+
+
+@pytest.fixture(scope="module")
+def c_trace() -> dict:
+    return _run_script(C_TRACER, REPO_ROOT, REPO_ROOT / "tests" / "fixtures" / "c-app")
+
+
+def _trace(request, which: str) -> dict:
+    return request.getfixturevalue(TRACERS[which])
+
+
+SCRIPTS = {"python": PY_TRACER, "rust": RUST_TRACER, "java": JAVA_TRACER, "c-family": C_TRACER}
+
+
+def _rerun_in(repo_root: Path, which: str, target: Path, detail: str = "standard") -> dict:
+    if which == "typescript":
+        return _run_node_tracer(repo_root, target, detail)
+    return _run_script(SCRIPTS[which], repo_root, target, detail)
+
+
+def _rerun(repo_root: Path, which: str, detail: str = "standard") -> dict:
+    return _rerun_in(repo_root, which, repo_root / "tests" / "fixtures" / FIXTURE_DIRS[which], detail)
+
+
 def _by_id(trace: dict) -> dict[str, dict]:
     return {fn["id"]: fn for fn in trace["functions"]}
 
@@ -105,12 +169,12 @@ def _edges(trace: dict) -> set[tuple[str, str]]:
 # --- the shared envelope ---------------------------------------------------
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_both_tracers_emit_the_same_envelope(request, which: str) -> None:
     """One shape, two languages. A consumer that had to branch on `tracer`
     before it could read `functions` would make every future tracer a change to
     every consumer."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     missing = [key for key in ENVELOPE_KEYS if key not in trace]
     assert not missing, f"{which} tracer omits envelope keys: {missing}"
     assert trace["schema"] == 1
@@ -121,23 +185,23 @@ def test_both_tracers_emit_the_same_envelope(request, which: str) -> None:
     )
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_every_function_carries_the_inventory_fields(request, which: str) -> None:
     """These are the fields `/code-flow-map` copies straight into
     `inventory.json`. A tracer that omits one makes the map hand-fill it."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     assert trace["functions"], f"{which} tracer found no functions in its fixture"
     for fn in trace["functions"]:
         missing = [key for key in FUNCTION_KEYS if key not in fn]
         assert not missing, f"{which}: {fn.get('id')} is missing {missing}"
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_every_call_target_resolves_to_a_catalogued_function(request, which: str) -> None:
     """The map turns `calls` straight into edges, and the viewer refuses to
     render a flow whose edge points at a missing node. A dangling `to` here is
     that error, one step earlier."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     known = set(_by_id(trace))
     dangling = [
         f"{fn['id']} -> {call['to']}"
@@ -148,12 +212,12 @@ def test_every_call_target_resolves_to_a_catalogued_function(request, which: str
     assert not dangling, f"{which}: calls point at unknown functions: {dangling}"
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_every_call_declares_its_confidence(request, which: str) -> None:
     """`exact` and `heuristic` are the only two values, and both are meaningful.
     A tracer that emitted every edge as certain would be the confident-wrong
     output this whole design is arranged to avoid."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     for fn in trace["functions"]:
         for call in fn["calls"]:
             assert call["confidence"] in ("exact", "heuristic"), (
@@ -161,11 +225,11 @@ def test_every_call_declares_its_confidence(request, which: str) -> None:
             )
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_every_entry_point_names_a_catalogued_symbol(request, which: str) -> None:
     """An entry point is where pass 2 starts a flow. One that names nothing the
     inventory carries is a flow that cannot be traced."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     known = set(_by_id(trace)) | {c["id"] for c in trace["components"]}
     assert trace["entryPoints"], f"{which} tracer found no entry points in its fixture"
     for entry in trace["entryPoints"]:
@@ -173,23 +237,22 @@ def test_every_entry_point_names_a_catalogued_symbol(request, which: str) -> Non
         assert entry["kind"], f"{which}: entry point {entry['id']} has no kind"
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_the_run_is_reproducible(request, repo_root: Path, which: str) -> None:
     """A map is built across sessions. A tracer whose output ordering depended on
     a dict's iteration order would make every re-run look like a change to every
     file it touched."""
-    fixture = repo_root / "tests" / "fixtures" / ("py-app" if which == "python" else "ts-app")
-    first = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
-    second = (_run_python_tracer if which == "python" else _run_node_tracer)(repo_root, fixture)
+    first = _trace(request, which)
+    second = _rerun(repo_root, which)
     assert json.dumps(first, sort_keys=False) == json.dumps(second, sort_keys=False)
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_ids_follow_the_documented_derivation(request, which: str) -> None:
     """The one property that makes a tracer usable at all: its ids are the map's
     ids. Checked against `tests/test_node_ids.py`'s implementation of the rule,
     not against a second copy of it written here."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     wrong = []
     for fn in trace["functions"]:
         base = derive_id(fn["file"], fn["name"])
@@ -198,14 +261,12 @@ def test_ids_follow_the_documented_derivation(request, which: str) -> None:
     assert not wrong, f"{which}: ids do not follow the rule: " + "; ".join(wrong)
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_snippets_follow_the_detail_flag(request, repo_root: Path, which: str) -> None:
     """`--detail` means the same thing here as it does in the map, because the
     map hands its own flag straight through."""
-    fixture = repo_root / "tests" / "fixtures" / ("py-app" if which == "python" else "ts-app")
-    runner = _run_python_tracer if which == "python" else _run_node_tracer
-    thin = runner(repo_root, fixture, "thin")
-    verbose = runner(repo_root, fixture, "verbose")
+    thin = _rerun(repo_root, which, "thin")
+    verbose = _rerun(repo_root, which, "verbose")
     assert all("snippet" not in fn for fn in thin["functions"]), (
         f"{which}: --detail thin still emitted snippets"
     )
@@ -216,11 +277,11 @@ def test_snippets_follow_the_detail_flag(request, repo_root: Path, which: str) -
     assert long_bodies, "the fixture has no function long enough to test snippets"
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_the_census_carries_a_size_and_a_hash(request, which: str) -> None:
     """`index.json`'s census is copied from here, and a staleness check with no
     hash is a staleness check that cannot fire."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     assert trace["files"], f"{which} tracer recorded no files"
     for record in trace["files"]:
         # `size` is asserted non-negative rather than positive: an empty
@@ -234,11 +295,11 @@ def test_the_census_carries_a_size_and_a_hash(request, which: str) -> None:
     assert any(record["size"] > 0 for record in trace["files"])
 
 
-@pytest.mark.parametrize("which", ["python", "typescript"])
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_limits_are_stated_rather_than_implied(request, which: str) -> None:
     """The output is read by a model that will otherwise present it as complete.
     `limits` is the sentence that stops "found" turning into "all"."""
-    trace = request.getfixturevalue("py_trace" if which == "python" else "ts_trace")
+    trace = _trace(request, which)
     assert trace["limits"], f"{which} tracer states no limits"
     assert any("static" in limit.lower() for limit in trace["limits"])
 
@@ -413,6 +474,272 @@ def test_typescript_tracer_never_invents_an_array_method_edge(ts_trace: dict) ->
         assert not target.endswith("_map"), f"an array `.map()` resolved to {target}"
 
 
+# --- the Rust tracer -------------------------------------------------------
+
+
+def test_rust_tracer_resolves_a_use_import_and_a_same_file_call(rust_trace: dict) -> None:
+    """The two resolutions that carry a Rust call graph: a call to a name a `use`
+    brought into scope, and a call to a free function beside it."""
+    edges = _edges(rust_trace)
+    assert ("src_main_main", "src_service_authenticate") in edges, (
+        "a call through `use crate::service::authenticate` was not resolved"
+    )
+    assert ("src_service_authenticate", "src_service_verify") in edges, (
+        "a call to a free function in the same module was not resolved"
+    )
+
+
+def test_rust_tracer_resolves_a_constructor_bound_receiver(rust_trace: dict) -> None:
+    """`let store = UserStore::new(..)` then `store.get(..)`. Without this the
+    service layer of a typical Rust application resolves to nothing."""
+    calls = {c["to"]: c for c in _by_id(rust_trace)["src_service_authenticate"]["calls"]}
+    assert "src_store_get_l38" in calls, "a call through a constructor-bound name was lost"
+    assert calls["src_store_get_l38"]["confidence"] == "exact", (
+        "`UserStore::new` names the type outright, so the method it reaches is resolved "
+        "rather than guessed"
+    )
+
+
+def test_rust_tracer_resolves_a_struct_field_receiver(rust_trace: dict) -> None:
+    """`self.cache.get(..)` inside `UserStore` reaches `Cache::get`, not the
+    `get` in the same impl block that is one character closer."""
+    assert ("src_store_get_l38", "src_store_get_l23") in _edges(rust_trace)
+
+
+def test_rust_tracer_never_invents_a_container_method_edge(rust_trace: dict) -> None:
+    """`raw.get(user_id)` is a HashMap lookup. The repository defines two methods
+    called `get`, and a unique-name fallback would connect it to one of them."""
+    read_calls = _by_id(rust_trace)["src_store_read"]["calls"]
+    assert read_calls == [], f"`read` should reach nothing, it reaches {read_calls}"
+    for source, target in _edges(rust_trace):
+        assert not (source == "src_store_read"), "a HashMap `.get()` became an edge"
+
+
+def test_rust_tracer_leaves_dyn_dispatch_ambiguous(rust_trace: dict) -> None:
+    """`item.describe()` on a `&dyn Describe` reaches whichever impl was passed,
+    which is not a fact about the text. Two impls, so two candidates and no edge —
+    the case the tracer exists to *not* get confidently wrong."""
+    ambiguous = {a["from"]: a for a in rust_trace["ambiguousCalls"]}
+    assert "src_service_describe_any" in ambiguous, (
+        "a call through `&dyn Trait` with two impls was resolved to one of them"
+    )
+    assert len(ambiguous["src_service_describe_any"]["candidates"]) == 2
+    assert _by_id(rust_trace)["src_service_describe_any"]["calls"] == []
+
+
+def test_rust_tracer_resolves_a_trait_impl_on_a_named_type(rust_trace: dict) -> None:
+    """The other half of the same story: `store.describe()` on a `&UserStore` has
+    exactly one answer, so it gets an edge."""
+    assert ("src_service_describe_store", "src_store_describe_l62") in _edges(rust_trace)
+
+
+def test_rust_tracer_finds_attribute_and_binary_entry_points(rust_trace: dict) -> None:
+    kinds = {entry["id"]: entry for entry in rust_trace["entryPoints"]}
+    assert kinds["src_web_show_user"]["kind"] == "http-route"
+    assert kinds["src_web_show_user"]["detail"] == "GET /users/{id}", (
+        "the route's verb and path come from the attribute, and are what make the "
+        "entry point worth listing"
+    )
+    assert kinds["src_main_main"]["kind"] == "cli-command"
+
+
+def test_rust_tracer_marks_a_cfg_test_module_as_tests(rust_trace: dict) -> None:
+    """A `#[cfg(test)] mod tests` is test code even though its file is not."""
+    assert _by_id(rust_trace)["src_service_verifies_a_matching_password"]["role"] == "test"
+    assert _by_id(rust_trace)["src_service_authenticate"]["role"] == "source"
+
+
+def test_rust_tracer_reads_past_a_nested_comment_and_a_lifetime(rust_trace: dict) -> None:
+    """Two things that swallow the rest of a file when read naively: a nested
+    block comment, and a `'a` lifetime read as an unterminated character literal.
+    Both sit above `read`, so `read` being catalogued is the assertion."""
+    catalogued = set(_by_id(rust_trace))
+    assert "src_store_shorter" in catalogued, "a lifetime was read as a character literal"
+    assert "src_store_read" in catalogued, "a nested block comment swallowed the rest of the file"
+
+
+# --- the Java tracer -------------------------------------------------------
+
+
+def test_java_tracer_resolves_a_field_typed_receiver(java_trace: dict) -> None:
+    """`private final UserStore store;` then `store.find(..)`. Fields are where a
+    Java service keeps its collaborators, so this is most of the call graph."""
+    edges = _edges(java_trace)
+    assert (
+        "src_main_java_com_demo_userservice_authenticate",
+        "src_main_java_com_demo_userstore_find",
+    ) in edges
+
+
+def test_java_tracer_follows_an_extends_chain(java_trace: dict) -> None:
+    """`AdminUserStore extends UserStore` and calls `find` unqualified."""
+    assert (
+        "src_main_java_com_demo_adminuserstore_findadmin",
+        "src_main_java_com_demo_userstore_find",
+    ) in _edges(java_trace)
+
+
+def test_java_tracer_resolves_an_interface_call_to_the_interface(java_trace: dict) -> None:
+    """`Describable item` calling `describe()` reaches the declaration it is
+    written against. Which implementation runs is the container's decision, and
+    guessing at one of the two would be a call the reader cannot find."""
+    edges = _edges(java_trace)
+    assert (
+        "src_main_java_com_demo_report_describeall",
+        "src_main_java_com_demo_describable_describe",
+    ) in edges
+    assert not any(
+        source == "src_main_java_com_demo_report_describeall" and target.endswith("_describe")
+        and "describable" not in target
+        for source, target in edges
+    ), "a call through an interface was resolved to an implementation"
+
+
+def test_java_tracer_leaves_an_overloaded_call_ambiguous(java_trace: dict) -> None:
+    """Two `verify` methods differing only in arity. Overloads are distinguished
+    by line, not by parameter types, so the honest answer is both candidates."""
+    ambiguous = [a for a in java_trace["ambiguousCalls"] if a["name"] == "verify"]
+    assert ambiguous, "a call to an overloaded method was resolved to one overload"
+    assert len(ambiguous[0]["candidates"]) == 2
+    suffixed = sorted(i for i in _by_id(java_trace) if "_verify_l" in i)
+    assert len(suffixed) == 2, f"expected two suffixed `verify` ids, got {suffixed}"
+
+
+def test_java_tracer_resolves_a_constructor(java_trace: dict) -> None:
+    assert (
+        "src_main_java_com_demo_app_main",
+        "src_main_java_com_demo_userservice_userservice",
+    ) in _edges(java_trace)
+
+
+def test_java_tracer_never_invents_a_map_get_edge(java_trace: dict) -> None:
+    """`records.get(userId)` is a Map lookup, on a receiver whose type is a JDK
+    class. Nothing in the repository may be joined to it."""
+    assert _by_id(java_trace)["src_main_java_com_demo_userstore_find"]["calls"] == []
+
+
+def test_java_tracer_finds_annotation_and_main_entry_points(java_trace: dict) -> None:
+    entries = {entry["id"]: entry for entry in java_trace["entryPoints"]}
+    controller = "src_main_java_com_demo_usercontroller_show"
+    assert entries[controller]["kind"] == "http-route"
+    assert entries[controller]["detail"] == "GET /users/{id}"
+    assert entries["src_main_java_com_demo_app_main"]["kind"] == "cli-command"
+
+
+def test_java_tracer_reads_past_a_brace_inside_a_string(java_trace: dict) -> None:
+    """`UserStore` opens with a field holding `"{ \"id\": \"%s\" }"`. Read as
+    code, that brace closes the class and everything below it disappears."""
+    catalogued = set(_by_id(java_trace))
+    assert "src_main_java_com_demo_userstore_find" in catalogued
+    assert "src_main_java_com_demo_userstore_describe" in catalogued
+
+
+def test_java_tracer_marks_test_classes(java_trace: dict) -> None:
+    tests = [fn for fn in java_trace["functions"] if fn["role"] == "test"]
+    assert [fn["name"] for fn in tests] == ["authenticatesAMatchingPassword"]
+
+
+# --- the C-family tracer ---------------------------------------------------
+
+
+def test_c_tracer_reads_all_four_dialects(c_trace: dict) -> None:
+    """One tracer, four languages, one catalog — a repository that mixes C and
+    Objective-C, or C# and generated C, is read once rather than partly."""
+    assert c_trace["dialects"] == ["c", "cpp", "csharp", "objc"]
+
+
+def test_c_tracer_resolves_a_call_through_an_included_header(c_trace: dict) -> None:
+    """The resolution that makes a C call graph possible at all. `main.c` calls
+    `store_find`, declared in `store.h`, defined in `store.c` — three files, and
+    the `#include` is the evidence joining them."""
+    calls = {c["to"]: c for c in _by_id(c_trace)["src_main_main"]["calls"]}
+    assert "src_store_store_find" in calls
+    assert calls["src_store_store_find"]["confidence"] == "exact", (
+        "a header declaration is evidence, not a guess"
+    )
+    assert "src_store_store_init" in calls
+
+
+def test_c_tracer_resolves_a_same_file_static_helper(c_trace: dict) -> None:
+    """And marks it unexported: file-scope `static` is the one negative signal C
+    gives that really does mean "not visible outside this file"."""
+    assert ("src_store_store_find", "src_store_read_record") in _edges(c_trace)
+    assert _by_id(c_trace)["src_store_read_record"]["exported"] is False
+    assert _by_id(c_trace)["src_store_store_find"]["exported"] is True
+
+
+def test_c_tracer_catalogues_a_cpp_constructor_and_an_out_of_class_method(c_trace: dict) -> None:
+    """A constructor has no return type, so nothing precedes its name to
+    recognize it by; its member initializer list then puts two more braces in
+    front of its body. Both are why it is the declaration most often missed."""
+    functions = _by_id(c_trace)
+    assert "src_service_userservice" in functions, "a C++ constructor was not catalogued"
+    assert functions["src_service_authenticate"]["qualname"] == "UserService::authenticate"
+    assert ("src_service_authenticate", "src_service_describe") in _edges(c_trace)
+
+
+def test_c_tracer_reads_a_cpp_call_into_c(c_trace: dict) -> None:
+    """C++ calling a C function through the same header the C file uses."""
+    assert ("src_service_authenticate", "src_store_store_find") in _edges(c_trace)
+
+
+def test_c_tracer_resolves_a_csharp_field_and_an_expression_body(c_trace: dict) -> None:
+    edges = _edges(c_trace)
+    assert ("src_report_list", "src_report_all") in edges
+    assert ("src_report_total", "src_report_all") in edges, (
+        "an expression-bodied member (`=> store.All().Count`) has a body too"
+    )
+
+
+def test_c_tracer_names_objc_methods_by_selector(c_trace: dict) -> None:
+    """A message send names a whole selector and nothing less, so a method's name
+    has to be the whole selector for the two to match."""
+    functions = _by_id(c_trace)
+    assert functions["src_userbox_recordforuser"]["qualname"] == "UserBox::recordForUser:"
+    assert ("src_userbox_recordforuser", "src_userbox_normalize") in _edges(c_trace), (
+        "`[self normalize:userId]` was not resolved"
+    )
+
+
+def test_c_tracer_takes_objc_visibility_from_the_interface(c_trace: dict) -> None:
+    """`@interface` is in the header and `@implementation` in the source, so
+    deciding this per file marks every public method private."""
+    functions = _by_id(c_trace)
+    assert functions["src_userbox_recordforuser"]["exported"] is True
+    assert functions["src_userbox_normalize"]["exported"] is False
+
+
+def test_c_tracer_takes_a_purpose_from_the_declaration(c_trace: dict) -> None:
+    """In C, C++ and Objective-C the prose lives on the declaration in the header
+    and the definition carries none. Reading only definitions would report every
+    function in the repository as undocumented."""
+    functions = _by_id(c_trace)
+    assert functions["src_store_store_find"]["purpose"].startswith("Looks a user record up")
+    assert functions["src_service_authenticate"]["purpose"].startswith("Authenticates a user")
+    assert functions["src_userbox_recordforuser"]["purpose"].startswith("Returns the record")
+
+
+def test_c_tracer_finds_a_csharp_route_and_a_c_main(c_trace: dict) -> None:
+    entries = {entry["id"]: entry for entry in c_trace["entryPoints"]}
+    assert entries["src_report_list"]["kind"] == "http-route"
+    assert entries["src_report_list"]["detail"] == "GET /reports"
+    assert entries["src_main_main"]["kind"] == "cli-command"
+
+
+def test_c_tracer_declines_a_dot_m_file_that_is_not_objective_c(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """`.m` is Objective-C here and MATLAB elsewhere. Reading a MATLAB script with
+    a C parser produces confident nonsense, so the file is reported as unread —
+    which is a thing the report can say, unlike a wrong answer."""
+    _write(tmp_path, "analysis.m", "function y = analysis(x)\n  y = x .^ 2;\nend\n")
+    _write(tmp_path, "Box.m", "#import \"Box.h\"\n@implementation Box\n- (int)value { return 1; }\n@end\n")
+    trace = _run_script(C_TRACER, repo_root, tmp_path, "thin")
+
+    assert {r["path"] for r in trace["files"]} == {"Box.m"}
+    assert {r["path"]: r["reason"] for r in trace["skipped"]} == {"analysis.m": "unparsed"}
+
+
 # --- what counts as a file worth reading -----------------------------------
 
 
@@ -436,6 +763,24 @@ def _write(root: Path, rel: str, text: str) -> None:
             ("distutils/core.ts", "src/builder.ts", "src/targets.ts"),
             ("node_modules/pkg/index.ts", "dist/app.ts", "coverage/report.ts"),
             "src/app.min.ts",
+        ),
+        (
+            "rust",
+            ("distutils/core.rs", "src/builder.rs", "src/targets.rs"),
+            ("vendor/pkg/lib.rs", "target/debug/out.rs", ".venv/thing.rs"),
+            "src/schema.generated.rs",
+        ),
+        (
+            "java",
+            ("distutils/Core.java", "src/Builder.java", "src/Targets.java"),
+            ("build/gen/Out.java", "node_modules/pkg/A.java", "vendor/lib/B.java"),
+            "src/Schema.g.java",
+        ),
+        (
+            "c-family",
+            ("distutils/core.c", "src/builder.cpp", "src/targets.cs"),
+            ("vendor/pkg/a.c", "build/out.c", "third_party/lib.cpp"),
+            "src/schema.pb.c",
         ),
     ),
 )
@@ -463,11 +808,16 @@ def test_a_skip_reason_matches_a_path_segment_not_a_substring(
     — a pruned directory is never walked, so it is absent rather than counted,
     which is what `.code-flow/tracers/README.md` says it is.
     """
-    body = "def f():\n    return 1\n" if which == "python" else "export function f() { return 1; }\n"
+    bodies = {
+        "python": "def f():\n    return 1\n",
+        "typescript": "export function f() { return 1; }\n",
+        "rust": "pub fn f() -> i32 {\n    1\n}\n",
+        "java": "public class Sample {\n    public int f() {\n        return 1;\n    }\n}\n",
+        "c-family": "int f(void) {\n    return 1;\n}\n",
+    }
     for rel in kept + ignored + (marked,):
-        _write(tmp_path, rel, body)
-    runner = _run_python_tracer if which == "python" else _run_node_tracer
-    trace = runner(repo_root, tmp_path, "thin")
+        _write(tmp_path, rel, bodies[which])
+    trace = _rerun_in(repo_root, which, tmp_path, "thin")
 
     scanned = {record["path"] for record in trace["files"]}
     for rel in kept:

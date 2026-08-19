@@ -292,10 +292,15 @@ language this repository contains:
 |---|---|
 | Python | `python .code-flow/tracers/trace_python.py --root . --detail <detail> --out Code_Flows/trace-python.json` |
 | TypeScript, JavaScript | `node .code-flow/tracers/trace_typescript.mjs --root . --detail <detail> --out Code_Flows/trace-typescript.json` |
+| Rust | `python .code-flow/tracers/trace_rust.py --root . --detail <detail> --out Code_Flows/trace-rust.json` |
+| Java | `python .code-flow/tracers/trace_java.py --root . --detail <detail> --out Code_Flows/trace-java.json` |
+| C, C++, Objective-C, C# | `python .code-flow/tracers/trace_c_family.py --root . --detail <detail> --out Code_Flows/trace-c.json` |
 
 Pass the `--detail` value the user passed you, so one flag governs snippet size
-everywhere. A repository written in both languages runs both, into two files;
-nothing merges them, and everything else here reads them as one catalog.
+everywhere. A repository written in several of these languages runs several
+tracers, into one file each; nothing merges them, and everything else here reads
+them as one catalog. Every tracer but the TypeScript one runs under Python, so a
+machine with a Python interpreter can trace four of the five.
 
 A tracer that is missing, exits non-zero, or needs an interpreter this machine
 does not have is not an error under `--tracer auto`: say which one did not run

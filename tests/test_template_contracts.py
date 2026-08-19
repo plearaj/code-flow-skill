@@ -302,8 +302,17 @@ def test_map_template_catalogues_tests_rather_than_skipping_them(
 
 
 def _iter_template_files(repo_root: Path) -> list[Path]:
-    """Every file the installer ships from templates/, recursively."""
-    return sorted(p for p in (repo_root / "templates").rglob("*") if p.is_file())
+    """Every file the installer ships from templates/, recursively.
+
+    `__pycache__` is excluded because it is not shipped: it is `.gitignore`d, and
+    the tracers set `sys.dont_write_bytecode` so they never create one inside a
+    user's repository either. Left in, a contributor who imported a tracer once
+    would see this module's line-ending check fail on a `.pyc`.
+    """
+    return sorted(
+        p for p in (repo_root / "templates").rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts
+    )
 
 
 def test_shipped_templates_have_no_crlf(repo_root: Path) -> None:

@@ -34,57 +34,27 @@ functions of 3 lines or fewer, `verbose` includes whole bodies.
 """
 from __future__ import annotations
 
-import argparse
 import ast
-import hashlib
-import json
 import os
 import re
-import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
-TRACER_SCHEMA = 1
+# This runs inside the user's repository, so it leaves nothing behind in it:
+# importing a sibling module would otherwise write a `__pycache__/` into the
+# tree it was asked to read.
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _common as common  # noqa: E402  (the path has to be set first)
+
+# Everything about finding files, naming functions and assembling the output is
+# shared with the other tracers; see `_common.py`. What is left here is what is
+# actually specific to reading Python.
+from _common import is_test_path  # noqa: E402  (the path has to be set first)
+
 TRACER_NAME = "python"
 
-# Directories never worth walking into. `.gitignore` covers most of these in
-# most repositories; this list is what makes the tracer behave the same in a
-# checkout that has no `.gitignore` at all.
-PRUNE_DIRS = frozenset(
-    {
-        ".git", ".hg", ".svn", ".idea", ".vscode", "__pycache__", ".mypy_cache",
-        ".pytest_cache", ".ruff_cache", ".tox", ".nox", ".eggs", "node_modules",
-        ".venv", "venv", "env", ".env", "site-packages", "dist", "build",
-        "target", "vendor", "third_party", "coverage", "htmlcov", ".next",
-        ".nuxt", ".svelte-kit", ".terraform",
-    }
-)
-
-# One reason per skipped file, in the priority the map templates fix: a file
-# that is both vendored and generated is reported as vendored, so two runs over
-# the same repository produce the same counts.
-#
-# Matched against whole path *segments*, never as substrings. A substring test
-# skipped `distutils/` and `xml/dom/xmlbuilder.py` from the Python standard
-# library — "dist" and "build" occur inside ordinary words — and a file skipped
-# for a reason that is not true is worse than a file not skipped: it is absent
-# from the map with an explanation that looks right.
-VENDORED_DIRS = frozenset(
-    {"node_modules", "vendor", "third_party", "site-packages", "bower_components",
-     ".venv", "venv", "env", ".env"}
-)
-GENERATED_DIRS = frozenset(
-    {"dist", "build", "target", "out", "coverage", "htmlcov", "__pycache__",
-     ".next", ".nuxt", ".svelte-kit", ".mypy_cache", ".pytest_cache", ".ruff_cache",
-     ".tox", ".nox", ".eggs", ".terraform"}
-)
-# These are filename markers, so they *are* substring tests — of the last path
-# segment only, where "_pb2" and ".min." mean what they say.
-GENERATED_FILE_MARKERS = (".min.", "_pb2", ".generated.", "-generated.")
-
 SOURCE_SUFFIXES = (".py", ".pyi")
-
-TEST_DIR_NAMES = frozenset({"tests", "test", "spec", "specs", "__tests__", "testing"})
 
 # Decorator text -> entry-point kind. Matched against the decorator as written,
 # so `@app.get("/x")`, `@router.get(...)` and `@bp.route(...)` all land on the
@@ -137,100 +107,6 @@ BUILTIN_CALLS = frozenset(
     Exception ValueError TypeError KeyError IndexError RuntimeError NotImplementedError
     StopIteration AttributeError OSError IOError FileNotFoundError ZeroDivisionError""".split()
 )
-
-
-# --- ids -------------------------------------------------------------------
-
-
-def derive_id(file: str, name: str) -> str:
-    """Return the map's `id` for a function named ``name`` defined in ``file``.
-
-    The rule, verbatim from the map templates: drop the extension from the
-    path's last segment only, append `_` and the unqualified name, lowercase,
-    replace every character outside `[a-z0-9_]`, collapse runs, trim.
-    """
-    head, _, last = file.rpartition("/")
-    stem = last.rpartition(".")[0] or last
-    combined = "{}/{}_{}".format(head, stem, name) if head else "{}_{}".format(stem, name)
-    slug = re.sub(r"[^a-z0-9_]+", "_", combined.lower())
-    return re.sub(r"_+", "_", slug).strip("_")
-
-
-# --- discovery -------------------------------------------------------------
-
-
-def git_tracked_files(root: str) -> Optional[List[str]]:
-    """Return the repository's tracked and untracked-but-not-ignored files.
-
-    Preferred over walking the tree because it applies the project's real
-    ignore rules — every `.gitignore`, the global one, and `.git/info/exclude` —
-    rather than this file's approximation of them. Returns None when the
-    directory is not a git checkout or git is not installed, which is the only
-    reason the fallback walk below exists.
-    """
-    try:
-        out = subprocess.run(
-            ["git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if out.returncode != 0:
-        return None
-    return [line for line in out.stdout.splitlines() if line]
-
-
-def walk_files(root: str) -> List[str]:
-    """Return every file under ``root``, pruning the directories above."""
-    found: List[str] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in PRUNE_DIRS and not d.startswith(".egg"))
-        for name in sorted(filenames):
-            rel = os.path.relpath(os.path.join(dirpath, name), root)
-            found.append(rel.replace(os.sep, "/"))
-    return found
-
-
-def skip_reason(rel: str) -> Optional[str]:
-    """Return why ``rel`` is not analyzable, or None if it is a source file.
-
-    The four reasons are the map's own: `vendored`, `generated`, `binary`,
-    `unparsed`. `unparsed` is not decided here — it is what a `SyntaxError`
-    below means.
-    """
-    lowered = rel.lower()
-    parts = lowered.split("/")
-    directories, name = parts[:-1], parts[-1]
-    if any(part in VENDORED_DIRS for part in directories):
-        return "vendored"
-    if any(part in GENERATED_DIRS for part in directories):
-        return "generated"
-    if any(part in PRUNE_DIRS for part in directories):
-        return "generated"
-    if not lowered.endswith(SOURCE_SUFFIXES):
-        return None  # not Python; not a skip, just not ours
-    if any(marker in name for marker in GENERATED_FILE_MARKERS):
-        return "generated"
-    return None
-
-
-def is_test_path(rel: str) -> bool:
-    parts = rel.split("/")
-    stem = parts[-1].rsplit(".", 1)[0]
-    if any(part in TEST_DIR_NAMES for part in parts[:-1]):
-        return True
-    return stem.startswith("test_") or stem.endswith("_test") or stem.endswith("_tests")
-
-
-def file_hash(path: str) -> Optional[str]:
-    try:
-        with open(path, "rb") as handle:
-            digest = hashlib.sha256(handle.read()).hexdigest()
-    except OSError:
-        return None
-    return "sha256:" + digest[:6]
 
 
 # --- module naming ---------------------------------------------------------
@@ -472,18 +348,12 @@ class Repository:
     def assign_ids(self) -> None:
         """Give every function its map `id`, applying the collision suffix.
 
-        The suffix is decided per file, from that file's own contents — two
-        methods named `run` on two classes in one file both become
-        `..._run_l<line>`. It never depends on which functions a caller happened
-        to ask about, which is what keeps an id stable across runs.
+        Per analyzer, which is per file: the suffix is decided from one file's
+        own contents, never from which functions a caller happened to ask about,
+        which is what keeps an id stable across runs.
         """
         for analyzer in self.analyzers.values():
-            counts: Dict[str, int] = {}
-            for fn in analyzer.functions:
-                counts[fn["name"]] = counts.get(fn["name"], 0) + 1
-            for fn in analyzer.functions:
-                base = derive_id(fn["file"], fn["name"])
-                fn["id"] = base if counts[fn["name"]] == 1 else "{}_l{}".format(base, fn["line"])
+            common.assign_ids(analyzer.functions)
 
     def index(self) -> None:
         for analyzer in self.analyzers.values():
@@ -836,17 +706,6 @@ def collect_entry_points(repo: Repository) -> List[Dict[str, Any]]:
 # --- output ----------------------------------------------------------------
 
 
-def snippet_for(fn: Dict[str, Any], lines: List[str], detail: str) -> Optional[str]:
-    if detail == "thin":
-        return None
-    body = "\n".join(lines[fn["line"] - 1 : fn["endLine"]])
-    if detail == "standard":
-        if fn["loc"] <= 3:
-            return None
-        body = "\n".join(body.splitlines()[:20])
-    return body.replace("</", "<\\/")
-
-
 def exported_for(analyzer: FileAnalyzer, fn: Dict[str, Any]) -> bool:
     """Whether the function is public API, by the map's own heuristic.
 
@@ -881,55 +740,34 @@ def build_output(repo: Repository, root_abs: str) -> Dict[str, Any]:
             "decorators": fn["decorators"],
             "calls": fn.get("resolvedCalls", []),
         }
-        snippet = snippet_for(fn, analyzer.lines, repo.detail)
+        snippet = common.snippet_for(
+            analyzer.lines, fn["line"], fn["endLine"], fn["loc"], repo.detail
+        )
         if snippet is not None:
             record["snippet"] = snippet
         functions.append(record)
-    functions.sort(key=lambda f: (f["file"], f["line"]))
 
-    called: Set[str] = set()
-    for fn in functions:
-        for call in fn["calls"]:
-            called.add(call["to"])
+    # `Resolution` is the bookkeeping every tracer shares; this one filled the
+    # same two structures by hand before there was anything to share it with.
+    resolution = common.Resolution()
+    resolution.ambiguous = repo.ambiguous
+    resolution.external = repo.external
 
-    entry_points = collect_entry_points(repo)
-    skip_counts: Dict[str, int] = {}
-    for item in repo.skipped:
-        skip_counts[item["reason"]] = skip_counts.get(item["reason"], 0) + 1
-
-    return {
-        "schema": TRACER_SCHEMA,
-        "tracer": TRACER_NAME,
-        "language": "python",
-        "idRule": "code-flow/v1",
-        "root": root_abs,
-        "detail": repo.detail,
-        "files": repo.files,
-        "skipped": repo.skipped,
-        "functions": functions,
-        "components": [],
-        "entryPoints": entry_points,
-        "ambiguousCalls": sorted(repo.ambiguous, key=lambda a: (a["from"], a["line"], a["name"])),
-        "externalCalls": [repo.external[k] for k in sorted(repo.external)],
-        "stats": {
-            "filesScanned": len(repo.files),
-            "filesSkipped": len(repo.skipped),
-            "skipReason": skip_counts,
-            "functionsFound": len(functions),
-            "callEdges": sum(len(f["calls"]) for f in functions),
-            "ambiguousCalls": len(repo.ambiguous),
-            "externalCalls": len(repo.external),
-            "entryPointsFound": len(entry_points),
-            "componentsFound": 0,
-            "unreachedCandidates": sum(1 for f in functions if f["id"] not in called),
-        },
-        "limits": [
-            "Static analysis only: reflection, getattr, dependency injection, "
-            "registry lookups and configuration-declared entry points are invisible to it.",
-            "Calls resolved by unique name carry confidence 'heuristic'; ambiguous "
-            "ones are listed in ambiguousCalls rather than guessed into edges.",
-        ],
-    }
+    return common.build_envelope(
+        tracer=TRACER_NAME,
+        language="python",
+        root_abs=root_abs,
+        detail=repo.detail,
+        files=repo.files,
+        skipped=repo.skipped,
+        functions=functions,
+        entry_points=collect_entry_points(repo),
+        resolution=resolution,
+        limits=common.BASE_LIMITS + (
+            "Decorators are read as text, so a decorator that wraps a function in "
+            "another function is recorded rather than followed.",
+        ),
+    )
 
 
 # --- driver ----------------------------------------------------------------
@@ -937,17 +775,11 @@ def build_output(repo: Repository, root_abs: str) -> Dict[str, Any]:
 
 def trace(root: str, detail: str) -> Dict[str, Any]:
     root_abs = os.path.abspath(root)
-    listing = git_tracked_files(root_abs)
-    candidates = listing if listing is not None else walk_files(root_abs)
+    keep, skipped = common.collect_sources(root_abs, SOURCE_SUFFIXES)
 
     repo = Repository(root_abs, detail)
-    for rel in sorted(candidates):
-        if not rel.lower().endswith(SOURCE_SUFFIXES):
-            continue
-        reason = skip_reason(rel)
-        if reason is not None:
-            repo.skipped.append({"path": rel, "reason": reason})
-            continue
+    repo.skipped = skipped
+    for rel in keep:
         path = os.path.join(root_abs, rel.replace("/", os.sep))
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -969,7 +801,7 @@ def trace(root: str, detail: str) -> Dict[str, Any]:
             size = os.path.getsize(path)
         except OSError:
             size = 0
-        repo.files.append({"path": rel, "size": size, "hash": file_hash(path)})
+        repo.files.append({"path": rel, "size": size, "hash": common.file_hash(path)})
         dotted = module_name_for(root_abs, rel)
         if dotted:
             repo.modules.setdefault(dotted, rel)
@@ -981,39 +813,15 @@ def trace(root: str, detail: str) -> Dict[str, Any]:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Static call-graph tracer for Python repositories (code-flow)."
-    )
-    parser.add_argument("--root", default=".", help="Repository root to trace (default: .)")
-    parser.add_argument("--out", default=None, help="Write JSON here instead of stdout")
-    parser.add_argument(
-        "--detail",
-        default="standard",
-        choices=["thin", "standard", "verbose"],
-        help="How much snippet evidence each function carries (default: standard)",
-    )
-    args = parser.parse_args(argv)
-
     if sys.version_info < (3, 9):
         sys.stderr.write("trace_python.py needs Python 3.9 or newer (it uses ast.unparse).\n")
         return 2
-
-    result = trace(args.root, args.detail)
-    text = json.dumps(result, indent=2, sort_keys=False)
-    if args.out:
-        os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
-        with open(args.out, "w", encoding="utf-8") as handle:
-            handle.write(text + "\n")
-        stats = result["stats"]
-        sys.stderr.write(
-            "traced {} files, {} functions, {} call edges, {} entry points -> {}\n".format(
-                stats["filesScanned"], stats["functionsFound"], stats["callEdges"],
-                stats["entryPointsFound"], args.out,
-            )
-        )
-    else:
-        sys.stdout.write(text + "\n")
-    return 0
+    return common.run_cli(
+        "trace_python.py",
+        "Static call-graph tracer for Python repositories (code-flow).",
+        trace,
+        argv,
+    )
 
 
 if __name__ == "__main__":

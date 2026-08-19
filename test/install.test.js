@@ -30,7 +30,11 @@ const SHARED = [
   ".code-flow/report.template.html",
   ".code-flow/theme.css",
   ".code-flow/tracers/README.md",
+  ".code-flow/tracers/_common.py",
+  ".code-flow/tracers/trace_c_family.py",
+  ".code-flow/tracers/trace_java.py",
   ".code-flow/tracers/trace_python.py",
+  ".code-flow/tracers/trace_rust.py",
   ".code-flow/tracers/trace_typescript.mjs",
   ".code-flow/viewer.template.html",
 ];
