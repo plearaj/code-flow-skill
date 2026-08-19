@@ -98,7 +98,11 @@ jobs:
           problems = 0
           checked = 0
           for path in sorted(Path("templates").rglob("*")):
-              if not path.is_file():
+              if not path.is_file() or "__pycache__" in path.parts:
+                  # Bytecode is never shipped: `.gitignore`d, excluded from the
+                  # npm tarball, and not built into the wheel. It can still be
+                  # sitting in the working tree, because the test steps above
+                  # import a module out of templates/.
                   continue
               entry = f"code_flow_skill/templates/{path.relative_to('templates').as_posix()}"
               if entry not in names:

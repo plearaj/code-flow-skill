@@ -20,6 +20,12 @@ import pytest
 from .conftest import REPO_ROOT
 from .test_node_ids import derive_id as reference_derive_id
 
+# Set before the import, for the same reason the tracers set it: importing a
+# module out of `templates/` writes a `__pycache__/` next to it, and `npm pack`
+# packs the working tree rather than the git index. A stale `.pyc` would ship in
+# the tarball and fail the publish workflow's wheel-integrity check, without
+# `git status` ever mentioning it -- the directory is `.gitignore`d.
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(REPO_ROOT / "templates" / "shared" / "tracers"))
 
 import _common  # noqa: E402  (the path has to be set first)

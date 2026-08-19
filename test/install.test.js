@@ -283,3 +283,44 @@ for (const tool of Object.keys(EXPECTED_BY_TOOL).sort()) {
     assert.deepEqual(installedPaths(target), EXPECTED_BY_TOOL[tool]);
   });
 }
+
+// --- what the published tarball carries -------------------------------------
+
+// `npm publish` packs the *working tree*, not the git index. Everything else in
+// this repository is checked against what git holds, so a file that is
+// `.gitignore`d but present on disk is invisible to every other test and still
+// ships. That happened: `tests/test_tracer_lexer.py` imports the shared tracer
+// core out of `templates/`, Python wrote a `__pycache__/` next to it, and a
+// 44.7 kB stale `.pyc` was packed into the tarball — while `git status` stayed
+// clean. It also broke the publish workflow, whose wheel-integrity check walks
+// the same working tree after the test steps have run.
+//
+// Asserting on `npm pack` itself rather than on the source tree is the point:
+// it is the only check that sees what a consumer actually receives.
+test("the published tarball carries no build residue", () => {
+  const listing = execFileSync(
+    process.platform === "win32" ? "npm.cmd" : "npm",
+    ["pack", "--dry-run", "--json"],
+    { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+  );
+  const files = JSON.parse(listing)[0].files.map((f) => f.path);
+
+  assert.ok(files.length > 0, "npm pack reported no files at all");
+  const residue = files.filter(
+    (p) => p.split("/").includes("__pycache__") || p.endsWith(".pyc") || p.endsWith(".pyo")
+  );
+  assert.deepEqual(
+    residue,
+    [],
+    "the tarball would ship Python bytecode. It is .gitignore'd, so nothing " +
+      "else in this repository can see it — see the note above this test."
+  );
+
+  // The tracers are the reason this matters, so prove they are still in there.
+  const tracers = files.filter((p) => p.startsWith("templates/shared/tracers/"));
+  assert.equal(
+    tracers.length,
+    7,
+    `expected 7 tracer files in the tarball, got ${tracers.length}: ${tracers}`
+  );
+});

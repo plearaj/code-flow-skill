@@ -10,6 +10,7 @@
   "files": [
     "bin",
     "templates",
+    "!templates/**/__pycache__",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
