@@ -239,7 +239,7 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 |---|---|
 | `/code-flow.map <flow name>` | Traces one flow and writes its markdown, HTML and JSON |
 | `/code-flow.map` (no argument) | Surveys the project and suggests 3–5 flows to pick from |
-| `/code-flow.quality` | Reports DRY, KISS and YAGNI findings from what the map recorded |
+| `/code-flow.quality` | Reports DRY, KISS, YAGNI, SOLID and module-depth findings from what the map recorded |
 | `/code-flow.quality --rules auto` | The same, plus violations of the rules your project already wrote down |
 
 | Flag | On | Default | Does |
@@ -452,8 +452,8 @@ writes `Code_Flows/quality-report.json`, `Code_Flows/quality-report.md` and
 renderings of it, and none of the three may contradict another. The `.html` is a
 single self-contained page — no server, no build step, no internet required —
 that you open straight from disk, with the same coverage banner, the same
-"catalogued, never all" wording, and filters by severity and principle. Four
-detectors run, and a fifth when you pass `--rules`:
+"catalogued, never all" wording, and filters by severity and principle. Ten
+detectors run, and an eleventh when you pass `--rules`:
 
 | Detector | Principle | Reports |
 |---|---|---|
@@ -461,10 +461,31 @@ detectors run, and a fifth when you pass `--rules`:
 | repeated-sequence | DRY | Call chains repeated across flows |
 | complexity-hotspot | KISS | High fan-out, deep nesting, very long functions |
 | unreached | YAGNI | Catalogued functions no mapped flow reaches |
+| single-responsibility | SOLID | A module reaching into many others — more than one reason to change |
+| interface-segregation | SOLID | A wide export surface no single caller uses much of |
+| dependency-cycle | SOLID | Modules that depend on each other in a ring |
+| shallow-module | DEPTH | More interface than implementation behind it |
+| pass-through | DEPTH | Functions that only hand their arguments to one other |
+| internals-coupled-test | DEPTH | Tests reaching past a module's interface into its internals |
 | rule-violation | RULES | Code contradicting a rule you pointed it at — only with `--rules` |
 
 Severity is rule-based — thresholds, not impressions — so findings do not all
 drift toward "medium".
+
+**SOLID and deep modules, with the same honesty as everything else.** The three
+SOLID detectors are the three a call graph carries evidence for. Open-closed and
+Liskov substitution are never reported and the report says so outright: whether a
+module is open to extension, and whether a subtype honours its supertype's
+contract, are facts about behaviour, and a map records none of it. The DEPTH
+three are Ousterhout's deep-module argument — a module earns its keep when it
+hides more than it asks a caller to learn — including its test-side corollary: a
+test that reaches around the interface into the internals freezes the
+implementation that module was supposed to stay free to change.
+
+Five of the six read the call graph, so they need a map built with a tracer. On a
+map without one, they are gated off and the banner names each with its remedy;
+shallow-module reads only export counts and function lengths, so it runs on any
+map that has an inventory.
 
 `--read-code` opens the files the candidate findings cite and confirms each
 against current source, marking the survivors `verified` and dropping the rest;
@@ -492,11 +513,15 @@ and counted in the banner.
 
 On a `--detail thin` map, duplicate-intent is skipped unless you pass
 `--read-code`: a thin map carries no code snippets, so that detector has no
-evidence to cite.
+evidence to cite. On a map whose inventory carries no `calls` — one built with
+`--tracer off`, or in a language no tracer covers — the five call-graph detectors
+are skipped for the same kind of reason, and named in the banner rather than
+quietly omitted.
 
 #### Checking your own rules
 
-DRY, KISS and YAGNI are everybody's rules. `--rules` checks yours:
+DRY, KISS, YAGNI, SOLID and deep modules are everybody's rules. `--rules`
+checks yours:
 
 ```text
 /code-flow.quality --rules auto

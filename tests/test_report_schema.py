@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-PRINCIPLES = {"DRY", "KISS", "YAGNI", "RULES"}
+PRINCIPLES = {"DRY", "KISS", "YAGNI", "SOLID", "DEPTH", "RULES"}
 SEVERITIES = {"high", "medium", "low"}
 CONFIDENCES = {"verified", "unverified"}
 EFFORTS = {"small", "medium", "large"}
@@ -27,6 +27,12 @@ DETECTORS = {
     "complexity-hotspot",
     "unreached",
     "rule-violation",
+    "single-responsibility",
+    "interface-segregation",
+    "dependency-cycle",
+    "shallow-module",
+    "pass-through",
+    "internals-coupled-test",
 }
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
@@ -46,8 +52,8 @@ REQUIRED_FIELDS = {
     "effort",
 }
 
-# Step 3: "Three detectors carry evidence the fields above have no home for.
-# Add exactly these, and nothing else." Each detector not listed here
+# Step 3: "Most detectors carry evidence the fields above have no home for.
+# Add exactly these, and nothing else." Each detector whose entry is empty
 # (duplicate-intent) adds none.
 EVIDENCE_FIELDS_BY_DETECTOR = {
     "duplicate-intent": frozenset(),
@@ -64,6 +70,22 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     # `ruleSource` a reader cannot tell a real violation from a misreading of
     # the rule, which is the failure mode this detector is most exposed to.
     "rule-violation": frozenset({"rule", "ruleId", "ruleSource"}),
+    # The SOLID and DEPTH detectors each claim something about a whole file, so
+    # each carries the file (`module`) and the numbers its own threshold was
+    # applied to. Without them a reader can see the cited functions but not the
+    # measurement the finding rests on, which is the same gap `metric`/`value`
+    # closed for complexity-hotspot.
+    "single-responsibility": frozenset({"module", "dependencies", "dependents"}),
+    "interface-segregation": frozenset(
+        {"module", "exports", "consumers", "widestConsumerUse"}
+    ),
+    # `cycle` is the ring itself. It is the one piece of evidence that cannot be
+    # reconstructed from the sites: the sites say which functions carry the
+    # edges, not what order the edges close in.
+    "dependency-cycle": frozenset({"cycle"}),
+    "shallow-module": frozenset({"module", "interface", "hiddenLoc"}),
+    "pass-through": frozenset({"module"}),
+    "internals-coupled-test": frozenset({"module", "internals"}),
 }
 
 # Step 3: `reachedBy` has exactly two values. `"tests"` is the
@@ -82,7 +104,7 @@ _INSTRUCTS_DELETION = re.compile(r"\b(delete|remove|drop)\b", re.IGNORECASE)
 # check alone would miss it entirely.
 _DRIVE_LETTER_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 
-_ID = re.compile(r"^(DRY|KISS|YAGNI|RULES)-\d{2}$")
+_ID = re.compile(r"^(DRY|KISS|YAGNI|SOLID|DEPTH|RULES)-\d{2}$")
 
 
 # Every example report this repository ships. The fixture below is

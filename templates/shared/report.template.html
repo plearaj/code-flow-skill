@@ -194,10 +194,12 @@ function validate(raw, TOKEN){
     ]};
   }
   var SEVERITY = { high:1, medium:1, low:1 };
-  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, RULES:1 };
+  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, SOLID:1, DEPTH:1, RULES:1 };
   var CONFIDENCE = { unverified:1, verified:1 };
   var DETECTOR = { "duplicate-intent":1, "repeated-sequence":1, "complexity-hotspot":1,
-                   "unreached":1, "rule-violation":1 };
+                   "unreached":1, "rule-violation":1, "single-responsibility":1,
+                   "interface-segregation":1, "dependency-cycle":1, "shallow-module":1,
+                   "pass-through":1, "internals-coupled-test":1 };
   var problems = [];
   if (!data || typeof data !== "object" || Array.isArray(data)){
     return { ok:false, title:"Report data failed validation", lines:["The document must be a JSON object."] };
@@ -217,7 +219,7 @@ function validate(raw, TOKEN){
     if (Object.prototype.hasOwnProperty.call(seen, id)) problems.push("duplicate finding id \"" + id + "\".");
     seen[id] = 1;
     if (!SEVERITY[f.severity]) problems.push(id + " has severity " + JSON.stringify(f.severity) + "; want high, medium or low.");
-    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS, YAGNI or RULES.");
+    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS, YAGNI, SOLID, DEPTH or RULES.");
     if (!DETECTOR[f.detector]) problems.push(id + " has detector " + JSON.stringify(f.detector) + ".");
     if (!CONFIDENCE[f.confidence]) problems.push(id + " has confidence " + JSON.stringify(f.confidence) + "; want unverified or verified.");
     if (!Array.isArray(f.sites) || !f.sites.length){
@@ -326,11 +328,23 @@ if (count(coverage.flowsUnreadable)){
    restated here from the rule in the quality command that gates the detector
    off. A name this viewer does not recognise still gets a line — an unnamed
    hole is worse than an unexplained one. */
+
+/* The five call-graph detectors share one cause and one remedy: a map built
+   without a tracer carries no `calls`, so there is no module graph to walk, and
+   a graph guessed from file names would be exactly the evidence the quality
+   command refuses to invent. */
+var NO_GRAPH = "the map carries no `calls`, so there was no module graph to walk — re-map with " +
+  "/code-flow.map --whole-code-base --tracer on";
 var SKIP_REASONS = {
   "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
     "re-run the quality command with --read-code, or re-map with --detail standard",
   "rule-violation": "no rule could be read from the sources given to --rules, so there was " +
-    "nothing to check against — the other four detectors are unaffected"
+    "nothing to check against — every other detector is unaffected",
+  "single-responsibility": NO_GRAPH,
+  "interface-segregation": NO_GRAPH,
+  "dependency-cycle": NO_GRAPH,
+  "pass-through": NO_GRAPH,
+  "internals-coupled-test": NO_GRAPH
 };
 var skipped = Array.isArray(coverage.detectorsSkipped) ? coverage.detectorsSkipped : [];
 if (skipped.length){
@@ -380,7 +394,8 @@ if (!findings.length){
   var bySeverity = chooser("filter-severity", "Severity",
     [["", "any"], ["high", "high"], ["medium", "medium"], ["low", "low"]]);
   var byPrinciple = chooser("filter-principle", "Principle",
-    [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"], ["RULES", "RULES"]]);
+    [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"],
+    ["SOLID", "SOLID"], ["DEPTH", "DEPTH"], ["RULES", "RULES"]]);
   var shownCount = el("div", "count", null, bar);
   el("div", "hint", "Findings appear in the order the analysis produced them — by severity, " +
     "then site count, then principle. The filters hide rows; they never reorder them.", section);
@@ -424,6 +439,27 @@ if (!findings.length){
     if (typeof f.exported === "boolean") evidence.push(["exported", f.exported ? "yes" : "no"]);
     if (f.reachedBy){
       evidence.push(["reached by", f.reachedBy === "tests" ? "its own tests only" : String(f.reachedBy)]);
+    }
+    // The SOLID and DEPTH detectors are the only ones whose claim is a number about
+    // a whole file rather than about a line of code. Show that number beside the
+    // sites: without it a reader sees five cited functions and no way to check the
+    // threshold the finding says they tripped.
+    if (f.module) evidence.push(["module", String(f.module)]);
+    if (f.dependencies != null){
+      evidence.push(["module dependencies", String(f.dependencies) + " out" +
+        (f.dependents != null ? ", " + f.dependents + " in" : "")]);
+    }
+    if (f.exports != null){
+      evidence.push(["exported surface", String(f.exports) + " exported, " + String(f.consumers) +
+        " " + plural(f.consumers, "consumer", "consumers") + ", widest uses " + String(f.widestConsumerUse)]);
+    }
+    if (Array.isArray(f.cycle) && f.cycle.length) evidence.push(["cycle", f.cycle.join(" \u2192 ")]);
+    if (f.interface != null){
+      evidence.push(["module depth", String(f.interface) + " exported, " + String(f.hiddenLoc) +
+        " lines behind them"]);
+    }
+    if (Array.isArray(f.internals) && f.internals.length){
+      evidence.push(["internals reached", f.internals.join(", ")]);
     }
     if (evidence.length){
       var dl = el("dl", "evidence", null, card);

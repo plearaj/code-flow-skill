@@ -539,6 +539,19 @@ DETECTOR_PRINCIPLES = (
     ("repeated-sequence", "DRY"),
     ("complexity-hotspot", "KISS"),
     ("unreached", "YAGNI"),
+    # The SOLID three are the SOLID principles a call graph carries evidence
+    # for. Open-closed and Liskov substitution are deliberately absent and must
+    # stay absent: a detector for either would have to read intent, which is
+    # the one thing this command refuses to report on.
+    ("single-responsibility", "SOLID"),
+    ("interface-segregation", "SOLID"),
+    ("dependency-cycle", "SOLID"),
+    # Ousterhout's deep modules: interface cost weighed against hidden
+    # functionality, plus the test-side corollary — a test that reaches past
+    # the interface freezes the implementation the module was free to change.
+    ("shallow-module", "DEPTH"),
+    ("pass-through", "DEPTH"),
+    ("internals-coupled-test", "DEPTH"),
     # The fifth runs only when `--rules` was passed, but every host documents
     # it unconditionally: a detector a template never describes is one no run
     # can perform, whatever flag the user typed.
@@ -2249,4 +2262,130 @@ def test_quality_template_records_the_rules_in_the_report_data(
     for field in ("rules", "rulesLoaded", "rulesChecked", "rulesNotCheckable"):
         assert _field_reference(field).search(region), (
             f"{host}/{name} step 5 never names {field!r}"
+        )
+
+
+# --- SOLID and deep modules -------------------------------------------------
+#
+# The five call-graph detectors and the two SOLID principles that are never
+# checked are each a promise the templates make in prose. Neither is a shape a
+# schema can hold, so both are pinned here.
+
+# Every detector that reads `calls`, and so cannot run on a map built without a
+# tracer. shallow-module is deliberately absent: it reads `exported` and `loc`
+# only, which is why it survives that gate.
+_CALL_GRAPH_DETECTORS = (
+    "single-responsibility",
+    "interface-segregation",
+    "dependency-cycle",
+    "pass-through",
+    "internals-coupled-test",
+)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_gates_the_call_graph_detectors(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`calls` is a fact a tracer establishes; the map command says so outright.
+    A module graph inferred from file names and imports instead would be exactly
+    the confident-wrong evidence the gating rule exists to refuse, so a map
+    without `calls` must gate these five off and name the remedy.
+
+    shallow-module is asserted *absent* from the gated list, not merely
+    unmentioned: it is the one new detector that runs on an inventory alone, and
+    a template that gated it off too would silently narrow the report on every
+    tracer-less map.
+    """
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"no inventory entry carries `calls`", region, re.IGNORECASE), (
+        f"{host}/{name} never states the condition that gates the call-graph detectors"
+    )
+    for detector in _CALL_GRAPH_DETECTORS:
+        assert detector in region, (
+            f"{host}/{name} does not gate {detector} on the absence of `calls`"
+        )
+    assert re.search(r"--tracer\s+on", region), (
+        f"{host}/{name} gates the call-graph detectors off without naming the remedy"
+    )
+    # The sentence that keeps shallow-module out of the gate has to say so; the
+    # detector's mere absence from the list above would also hold for a template
+    # that forgot it existed.
+    assert "shallow-module" in region, (
+        f"{host}/{name} never says shallow-module survives the missing call graph"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_names_the_solid_principles_it_cannot_check(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three of SOLID's five are reported and two are not. Silence about the
+    other two reads as five principles clean, which is the exact
+    confident-wrong outcome the whole command is arranged around — and it is
+    worse here than for a skipped detector, because nothing in
+    `detectorsSkipped` will ever mention them.
+    """
+    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    flat = _flatten(text)
+    assert re.search(r"open-closed", flat, re.IGNORECASE), (
+        f"{host}/{name} never names open-closed as unchecked"
+    )
+    assert re.search(r"liskov", flat, re.IGNORECASE), (
+        f"{host}/{name} never names Liskov substitution as unchecked"
+    )
+    assert re.search(
+        r"open-closed and liskov substitution.{0,80}?(are not|as unchecked|never)",
+        flat,
+        re.IGNORECASE,
+    ), f"{host}/{name} names the two principles without saying they go unchecked"
+    # The report has to carry the disclosure, not just the prompt: a template
+    # that knew and never wrote it down leaves the reader exactly where an
+    # undisclosed gap leaves them.
+    assert re.search(
+        r"even when SOLID produced no findings", flat, re.IGNORECASE
+    ), f"{host}/{name} lets the SOLID disclosure vanish when there are no findings"
+
+
+def test_the_report_scaffold_accepts_every_detector_the_templates_name(
+    repo_root: Path,
+) -> None:
+    """The templates decide what a run can emit; the scaffold decides what a
+    reader can see. They are edited in different files by different tasks, and
+    when they disagree the whole page renders as a validation error rather than
+    a report — which is how the rule-violation detector shipped broken once.
+
+    Derived from `DETECTOR_PRINCIPLES` rather than a second literal list, so a
+    detector added to the templates is checked here without anyone remembering
+    to add it twice.
+    """
+    scaffold = (
+        repo_root / "templates" / "shared" / "report.template.html"
+    ).read_text(encoding="utf-8")
+    allowlist = re.search(r"var DETECTOR = \{(.+?)\};", scaffold, re.DOTALL)
+    assert allowlist, "report.template.html has no DETECTOR allowlist"
+    for detector, _ in DETECTOR_PRINCIPLES:
+        assert f'"{detector}"' in allowlist.group(1), (
+            f"report.template.html rejects detector {detector!r}, which the "
+            f"quality templates can emit"
+        )
+
+
+@pytest.mark.parametrize(
+    "scaffold", ("report.template.html", "bundle.template.html")
+)
+def test_both_scaffolds_accept_every_principle_the_templates_name(
+    repo_root: Path, scaffold: str
+) -> None:
+    """The principle allowlist is duplicated across the two scaffolds and
+    neither derives from the other, so this asserts against both from the one
+    list the templates are checked against.
+    """
+    text = (repo_root / "templates" / "shared" / scaffold).read_text(encoding="utf-8")
+    allowlist = re.search(r"var PRINCIPLE = \{(.+?)\};", text)
+    assert allowlist, f"{scaffold} has no PRINCIPLE allowlist"
+    for _, principle in DETECTOR_PRINCIPLES:
+        assert re.search(rf"\b{principle}\s*:\s*1", allowlist.group(1)), (
+            f"{scaffold} rejects principle {principle!r}, which the quality "
+            f"templates can emit"
         )

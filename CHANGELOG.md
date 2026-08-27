@@ -81,6 +81,33 @@ from this repository at the same version.
 - **New node kind `component` and new edge kind `render`**, rendered distinctly by the
   interactive viewer and the bundle, with matching entries in `.code-flow/theme.css`.
 
+### Added — SOLID and deep modules
+
+- **Six more detectors on `/code-flow.quality`, under two new principles.** `SOLID`
+  carries `single-responsibility` (a module reaching into many others),
+  `interface-segregation` (a wide export surface no single caller uses much of) and
+  `dependency-cycle` (modules depending on each other in a ring). `DEPTH` carries
+  Ousterhout's deep-module argument: `shallow-module` (more interface than
+  implementation behind it), `pass-through` (a function that only hands its arguments
+  to one other) and `internals-coupled-test` (a test reaching past a module's interface
+  into its internals, freezing the implementation that module was supposed to stay free
+  to change). Every threshold is a number, as everywhere else in this report, so
+  findings do not drift toward "medium".
+- **Open-closed and Liskov substitution are never reported, and the report says so.**
+  Three of SOLID's five are checkable against a call graph; the other two are facts
+  about behaviour under change and under substitution, which a map records nothing
+  about. The SOLID section carries that sentence even when it has no findings, because
+  three principles reported and two never mentioned reads as five principles clean.
+- **The five call-graph detectors gate off when the map has no `calls`**, naming each
+  one and the remedy — re-map with `--tracer on` — in the same coverage banner that
+  already reports a skipped duplicate-intent. `shallow-module` reads only export counts
+  and function lengths, so it still runs on any map that carries an inventory.
+- Findings from the new detectors carry the measurement their threshold was applied to,
+  the way `complexity-hotspot` carries `metric` and `value`: `module` plus
+  `dependencies`/`dependents`, `exports`/`consumers`/`widestConsumerUse`, `cycle`,
+  `interface`/`hiddenLoc`, and `internals`. Both HTML scaffolds render them beside the
+  cited sites, so a reader can check the number rather than take it.
+
 ### Added — checking your own rules
 
 - **`--rules [source ...]`** on `/code-flow.quality`, off by default. A source is a path

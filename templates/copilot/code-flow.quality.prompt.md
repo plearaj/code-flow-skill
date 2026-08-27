@@ -1,10 +1,12 @@
 ---
 agent: agent
-description: Report DRY, KISS and YAGNI findings, plus violations of rules the project has already written down, from the persisted code-flow map, with file:line evidence and honest coverage.
+description: Report DRY, KISS, YAGNI, SOLID and module-depth findings, plus violations of rules the project has already written down, from the persisted code-flow map, with file:line evidence and honest coverage.
 ---
 
 Read the map this project has already written under `Code_Flows/` and report where
-it shows duplicated intent, needless complexity, and code that nothing reaches.
+it shows duplicated intent, needless complexity, code that nothing reaches,
+responsibilities and dependencies that sit wrong, and modules whose interface
+costs a caller more than the implementation behind it hides.
 
 This command **never edits source code.** `code-flow.map` adds missing docstrings
 as it traces; this one writes documents and stops. Consolidating duplicates and
@@ -39,8 +41,9 @@ Follow these steps exactly:
    a weaker signal for a missing one. If `index.json` is absent, **stop** and tell
    the user to run `/code-flow.map` first. If `inventory.json` is absent, **stop**
    and tell the user to run `/code-flow.map --whole-code-base` first: duplicate-intent
-   and unreached both need the catalog, and reporting only the other two would make
-   the report mean something different depending on how the user built their map.
+   and unreached among others need the catalog, and reporting only the two that
+   survive would make the report mean something different depending on how the user
+   built their map.
    If either file exists but does not parse as JSON, **stop**, report the path and
    the problem, and do not overwrite it — this command never writes those files. If
    a `<slug>.json` named in the registry is missing or does not parse, do **not**
@@ -49,7 +52,16 @@ Follow these steps exactly:
    duplicate-intent detector — a thin map carries no `snippet` and that detector
    cannot cite the evidence its findings require — and name both remedies: re-run
    with `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
-   The other three detectors are unaffected and still run.
+   The other detectors are unaffected and still run. If no inventory entry carries
+   `calls`, skip the five detectors that walk the call graph — single-responsibility,
+   interface-segregation, dependency-cycle, pass-through and internals-coupled-test.
+   `calls` is a fact a tracer establishes, not something to infer by reading, so a
+   map built without one carries no module graph for them to walk, and a graph
+   guessed from file names and imports is exactly the confident-wrong evidence the
+   gating rule exists to prevent. Record all five as skipped and name the remedy:
+   re-map with `/code-flow.map --whole-code-base --tracer on`. duplicate-intent,
+   repeated-sequence, complexity-hotspot, unreached and shallow-module read the
+   inventory and the flow graphs rather than `calls`, and still run.
    `coverage.flowsTraced` below `coverage.entryPointsFound` is **not** a stop
    condition; it is a partial trace pass, which is normal on a large repository.
 
@@ -78,7 +90,7 @@ Follow these steps exactly:
    If `--rules` was passed and no source could be read, do **not** stop: skip the
    rule-violation detector, record it in `detectorsSkipped`, and name every path
    you tried.
-3. **Run the detectors.** Four of them, and a fifth when `--rules` was passed; step 2's gating rule already decided which
+3. **Run the detectors.** Ten of them, and an eleventh when `--rules` was passed; step 2's gating rule already decided which
    run. Every severity is a **rule**, not a judgement — apply the number, and if a
    finding does not clear a threshold it is not a finding at all.
    - **duplicate-intent (DRY)** — cluster catalogued functions that do the same
@@ -102,6 +114,72 @@ Follow these steps exactly:
      `medium`. `high` only when `unreached`, not `exported`, and not test-only;
      anything whose `exported` is true is capped at `low`, because a public API
      surface has callers this repository cannot see.
+
+   **SOLID, and what a map can and cannot see.** The three below are the SOLID
+   principles this map carries evidence for. Open-closed and Liskov substitution
+   are not among them and are never reported: whether a module is open to extension,
+   and whether a subtype honours its supertype's contract, are facts about behaviour
+   under change and under substitution, and the map records neither. Step 6 makes the
+   report say so, because a SOLID section that reports on three of the five and stays
+   silent about the other two reads as a clean bill on all five.
+   - **single-responsibility (SOLID)** — a module here is a file. For each file with
+     at least 3 catalogued `source` functions, count `dependencies` (the distinct
+     other files its functions call into) and `dependents` (the distinct files
+     calling in). `high` when `dependencies` is at least 10, `medium` at 6; below 6
+     is not a finding. Cite the file's own functions reaching into the most distinct
+     other files, up to 5. This is the module-level counterpart to
+     complexity-hotspot's per-function fan-out, and a proxy for "more than one
+     reason to change" rather than a proof of one, and the rationale says so.
+   - **interface-segregation (SOLID)** — for each file exporting at least 4 `source`
+     functions, take each consumer (a file whose functions call into it) and the set
+     of exported symbols that consumer actually uses. A finding when the module has
+     at least 2 consumers and no single consumer uses more than half the exported
+     surface: one interface standing where its clients want several. `high` when the
+     module exports at least 8 and the widest consumer uses a quarter or fewer;
+     otherwise `medium`. Cite up to 5 of the exported functions, the least-called
+     first, and name the consumers in the rationale.
+   - **dependency-cycle (SOLID)** — walk the module graph (files as nodes, a call
+     from a function in one file to a function in another as an edge) and find every
+     cycle. Two files calling each other, or a longer ring, is a finding. `high` when
+     the cycle spans at least 3 files or crosses top-level directories; otherwise
+     `medium`. Cite one site per file: the function whose call carries the edge
+     onward. This is the half of dependency inversion a call graph can establish; the
+     other half — whether a dependency points at an abstraction or a concretion — it
+     cannot, and the usual remedy for a cycle is to invert one of its edges behind an
+     interface, which is why it reports under SOLID.
+
+   **Deep modules.** The three below weigh interface cost against hidden
+   functionality: a module earns its keep when it hides more than it asks a caller to
+   learn. They report shape, never intent, and a small module that is small because
+   its job is small is not a finding — the thresholds sit where they do so that it
+   does not become one.
+   - **shallow-module (DEPTH)** — for each file with at least 3 catalogued `source`
+     functions, take `interface` (its count of exported functions) and `hiddenLoc`
+     (the summed `loc` of every function in it). A finding when `interface` is at
+     least 3 and `hiddenLoc` divided by `interface` is under 10: fewer than ten lines
+     of implementation hidden per symbol the caller has to learn. `high` when
+     `interface` is at least 6 and that ratio is under 6; otherwise `medium`. Cite
+     up to 5 of the exported functions themselves. This one reads only `exported`
+     and `loc`, so it runs on any map that carries an inventory.
+   - **pass-through (DEPTH)** — a pass-through function does nothing except hand its
+     arguments to one other function. A finding when a `source` function has exactly
+     1 outbound call, a `loc` of 5 or fewer, and a parameter count equal to its
+     callee's, both read from `signature`. Group by file: one finding per module, one
+     site per pass-through in it. `high` when a module holds at least 3, otherwise
+     `medium`. A function that transforms, validates, defaults or renames its
+     arguments on the way through is doing work and is not a pass-through; where the
+     map carries a `snippet`, use it to tell the two apart.
+   - **internals-coupled-test (DEPTH)** — a test that reaches past a module's
+     interface into its internals freezes the implementation that module was supposed
+     to stay free to change. A finding when a `test`-role function calls a `source`
+     function whose `exported` is false, in a file that exports at least one function
+     — there was an interface to test through, and the test went around it. Group by
+     the module reached into: one finding per module, one site per test function.
+     `high` when at least 5 distinct test functions reach in or at least 3 distinct
+     internals are reached; otherwise `medium`. `exported` is the map's per-language
+     heuristic and defaults to `true` wherever the convention is unclear, so this one
+     under-reports rather than over-reports — say so in the rationale, and never read
+     an empty result here as tests being well-behaved.
 
    - **rule-violation (RULES)** — runs only when step 2 loaded at least one rule.
      For each rule marked `checkable`, search the inventory and the flow graphs for
@@ -146,22 +224,31 @@ Follow these steps exactly:
    }
    ```
 
-   `principle` is `DRY`, `KISS` or `YAGNI`; `severity` is `high`, `medium` or
-   `low`; `confidence` is `unverified` unless step 4 verified it; `effort` is
-   `small`, `medium` or `large`. `id` is the principle, a hyphen, and a two-digit
-   counter restarting per principle: `DRY-01`, `DRY-02`, `KISS-01`, `YAGNI-01`.
+   `principle` is `DRY`, `KISS`, `YAGNI`, `SOLID`, `DEPTH` or `RULES`; `severity`
+   is `high`, `medium` or `low`; `confidence` is `unverified` unless step 4 verified
+   it; `effort` is `small`, `medium` or `large`. `id` is the principle, a hyphen, and
+   a two-digit counter restarting per principle: `DRY-01`, `DRY-02`, `KISS-01`,
+   `YAGNI-01`, `RULES-01`, `SOLID-01`, `DEPTH-01`.
    **The counter is assigned in step 5, after step 4's drops** — not here — so do
    not number findings as you emit them, and read the `DRY-01` above as the shape
    rather than as a number already spent. Once assigned, ids are stable within
    the run — the markdown and the JSON cross-reference each other by them.
 
-   Three detectors carry evidence those fields have no home for. Add exactly
-   these, and nothing else: `repeated-sequence` adds `flows` (the array of flow
-   `slug`s the chain appears in); `complexity-hotspot` adds `metric` (`fan-out`,
-   `depth` or `loc`) and `value`; `unreached` adds `exported`, copied from the
-   inventory entry, and `reachedBy`, whose only two values are `"none"` (reached
-   by nothing) and `"tests"` (reached only by test-role callers, which is what
-   `production-unreached` means).
+   Most detectors carry evidence those fields have no home for. Add exactly
+   these, and nothing else — `module` is always the file path, forward-slash and
+   repo-relative like every other path in this report. `repeated-sequence` adds
+   `flows` (the array of flow `slug`s the chain appears in); `complexity-hotspot`
+   adds `metric` (`fan-out`, `depth` or `loc`) and `value`; `unreached` adds
+   `exported`, copied from the inventory entry, and `reachedBy`, whose only two
+   values are `"none"` (reached by nothing) and `"tests"` (reached only by test-role
+   callers, which is what `production-unreached` means); `rule-violation` adds `rule`
+   (the text, quoted), `ruleId` and `ruleSource`; `single-responsibility` adds
+   `module`, `dependencies` and `dependents`; `interface-segregation` adds `module`,
+   `exports`, `consumers` and `widestConsumerUse`; `dependency-cycle` adds `cycle`,
+   the file paths in the order the calls run with the first repeated at the end so
+   the ring closes; `shallow-module` adds `module`, `interface` and `hiddenLoc`;
+   `pass-through` adds `module`; and `internals-coupled-test` adds `module` (the file
+   reached into) and `internals`, the array of non-exported names the tests called.
 4. **Verify against source.** Three things, and their order matters.
    - **Check staleness.** Two scopes, and they are not the same set; never report
      one as the other. `filesChanged` is a **whole-census** number: compare every
@@ -240,7 +327,7 @@ Follow these steps exactly:
    repo-relative with forward slashes. `mapGenerated`, `mapMode` and `mapDetail`
    are copied from the map's own `index.json` `meta`, so the report records which
    map it read. `detectorsSkipped` lists the detectors step 2 gated off, and is an
-   empty array when all four ran.
+   empty array when none was.
 
 6. **Write the report.** Render `Code_Flows/quality-report.md` from that JSON;
    nothing in it may contradict that file. **Lead with coverage — a requirement,
@@ -257,7 +344,13 @@ Follow these steps exactly:
    When `--rules` was passed the banner also states how many rules were loaded,
    how many were checked, and how many could not be — naming each of those and its
    reason. A rule the report never mentions reads as a rule that passed, which is
-   the one thing this detector must never imply.
+   the one thing this detector must never imply. **The SOLID group says what it did
+   not check:** where step 6 groups findings by principle, the `SOLID` group opens
+   with one sentence naming open-closed and Liskov substitution as unchecked and why
+   — the map records no evidence about behaviour under extension or under
+   substitution. Write that sentence even when SOLID produced no findings, and write
+   it in the summary when the group is absent entirely; three principles reported and
+   two never mentioned reads as five principles clean.
    If `flowsTraced` is below `entryPointsFound`,
    say in words that the map is partial and that everything below is **clean within
    what was mapped** — never a clean bill of health for the repository. Then a

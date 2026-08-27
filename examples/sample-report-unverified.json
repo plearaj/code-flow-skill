@@ -15,7 +15,9 @@
     "flowsUnreadable": 1,
     "filesChanged": 3,
     "findingsDropped": 1,
-    "detectorsSkipped": ["duplicate-intent"],
+    "detectorsSkipped": ["duplicate-intent", "single-responsibility",
+                         "interface-segregation", "dependency-cycle", "pass-through",
+                         "internals-coupled-test"],
     "rulesLoaded": 0,
     "rulesChecked": 0,
     "rulesNotCheckable": 0
@@ -53,6 +55,27 @@
       "exported": false,
       "reachedBy": "none",
       "suggestion": "Check for dynamic callers and configuration references, then decide.",
+      "effort": "small"
+    },
+    {
+      "id": "DEPTH-01",
+      "principle": "DEPTH",
+      "detector": "shallow-module",
+      "severity": "medium",
+      "confidence": "unverified",
+      "title": "src/events/codes.py exports 5 functions over 31 lines",
+      "rationale": "Five exported symbols hiding thirty-one lines between them, about six lines of implementation per symbol a caller has to learn. Shape only: a module that is small because its job is small is not a finding.",
+      "module": "src/events/codes.py",
+      "interface": 5,
+      "hiddenLoc": 31,
+      "sites": [
+        { "file": "src/events/codes.py", "line": 4, "symbol": "code_for" },
+        { "file": "src/events/codes.py", "line": 10, "symbol": "label_for" },
+        { "file": "src/events/codes.py", "line": 16, "symbol": "is_terminal" },
+        { "file": "src/events/codes.py", "line": 22, "symbol": "is_retryable" },
+        { "file": "src/events/codes.py", "line": 28, "symbol": "all_codes" }
+      ],
+      "suggestion": "Fold the five into the one enum its callers already switch on.",
       "effort": "small"
     },
     {

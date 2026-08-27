@@ -1,5 +1,5 @@
 ---
-description: Report DRY, KISS and YAGNI findings, plus violations of rules the project has already written down, from the persisted code-flow map, with file:line evidence and honest coverage.
+description: Report DRY, KISS, YAGNI, SOLID and module-depth findings, plus violations of rules the project has already written down, from the persisted code-flow map, with file:line evidence and honest coverage.
 ---
 
 ## User Input
@@ -13,7 +13,9 @@ You **MUST** consider the user input before proceeding (if not empty).
 ## Code Flow — Quality Report
 
 Read the map this project has already written under `Code_Flows/` and report where
-it shows duplicated intent, needless complexity, and code that nothing reaches.
+it shows duplicated intent, needless complexity, code that nothing reaches,
+responsibilities and dependencies that sit wrong, and modules whose interface
+costs a caller more than the implementation behind it hides.
 
 This command **never edits source code.** `code-flow.map` adds missing docstrings
 as it traces; this one writes documents and stops. Consolidating duplicates and
@@ -35,7 +37,7 @@ The user's input (`$ARGUMENTS`) carries two optional flags:
   already written down. Off by default. A source is a path to a document, the
   word `auto`, or a rule written inline in quotes; several may be given,
   separated by spaces or commas, and `--rules` with no value means `auto`. Step 2
-  loads them and step 3's fifth detector checks them. This is how a project's own
+  loads them and step 3's last detector checks them. This is how a project's own
   standard — a `CLAUDE.md`, an `AGENTS.md`, a Spec Kit constitution, a team style
   guide — gets reported with the same evidence and the same honesty as DRY, KISS
   and YAGNI, instead of being a thing everyone agreed to and nobody checks.
@@ -68,11 +70,11 @@ costs more trust than a missing one.
 `/code-flow.map` first. There is no map to analyze.
 
 **If `Code_Flows/inventory.json` is absent**, stop. Tell the user to run
-`/code-flow.map --whole-code-base` first. Two of the four detectors —
-duplicate-intent and unreached — need the catalog and cannot run without it. Do
-not fall back to reporting only the other two: half the detectors missing is not
-a degraded report, it is a different report, and one whose meaning would change
-depending on how the user happened to build their map.
+`/code-flow.map --whole-code-base` first. All but two of the detectors —
+duplicate-intent and unreached among them — need the catalog and cannot run
+without it. Do not fall back to reporting only the two that survive: most of the
+detectors missing is not a degraded report, it is a different report, and one
+whose meaning would change depending on how the user happened to build their map.
 
 **If `Code_Flows/index.json` or `Code_Flows/inventory.json` exists but does not
 parse as JSON**, stop. Report the file path and what is wrong with it, and let the
@@ -89,7 +91,18 @@ duplicate-intent detector. A thin map carries no `snippet`, so that detector has
 only names, signatures and line counts — not enough to cite the evidence its
 findings require. Record it as skipped and name both remedies: re-run with
 `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
-The other three detectors are unaffected and still run.
+The other detectors are unaffected and still run.
+
+**If no inventory entry carries `calls`**, skip the five detectors that walk the
+call graph: single-responsibility, interface-segregation, dependency-cycle,
+pass-through and internals-coupled-test. `calls` is a fact a tracer establishes,
+not something to infer by reading, so a map built without one carries no module
+graph for them to walk — and a graph guessed from file names and imports is
+exactly the confident-wrong evidence the gating rule exists to prevent. Record
+all five as skipped and name the remedy: re-map with `/code-flow.map
+--whole-code-base --tracer on`. duplicate-intent, repeated-sequence,
+complexity-hotspot, unreached and shallow-module read the inventory and the flow
+graphs rather than `calls`, and still run.
 
 **Load the rules, if `--rules` was passed.** Skip all of this when it was not:
 an unrequested detector is not a gap, and it is never listed as skipped.
@@ -135,7 +148,7 @@ anywhere else: the user asked specifically about that rule.
 
 **If `--rules` was passed and no source could be read**, do not stop. Skip the
 rule-violation detector, record it in `detectorsSkipped`, and name every path you
-tried — the other four detectors are unaffected.
+tried — every other detector is unaffected.
 
 Note what is *not* a stop condition. `coverage.flowsTraced` below
 `coverage.entryPointsFound` means the trace pass never finished, and that is
@@ -144,8 +157,8 @@ say how much that was.
 
 #### 3. Run the Detectors
 
-Four detectors, and a fifth when `--rules` was passed. Step 2's gating rule has
-already decided which of them run; run those, and only those.
+Ten detectors, and an eleventh when `--rules` was passed. Step 2's gating rule
+has already decided which of them run; run those, and only those.
 
 Every severity below is a **rule**, not a judgement. Apply the number. If a
 finding does not clear a threshold, it is not a finding of lower severity — it is
@@ -185,7 +198,80 @@ Severity is `high` only when the entry is `unreached`, is not `exported`, and is
 not test-only. Anything whose `exported` is true is capped at `low`, because a
 public API surface has callers this repository cannot see.
 
-**e. rule-violation (RULES).** Runs only when step 2 loaded at least one rule.
+**SOLID, and what a map can and cannot see.** The three detectors below are the
+SOLID principles this map carries evidence for. Open-closed and Liskov
+substitution are not among them and are never reported: whether a module is open
+to extension, and whether a subtype honours its supertype's contract, are facts
+about behaviour under change and under substitution, and the map records neither.
+Step 6 makes the report say so, because a SOLID section that reports on three of
+the five and stays silent about the other two reads as a clean bill on all five.
+
+**e. single-responsibility (SOLID).** A module here is a file. For each file with
+at least 3 catalogued `source` functions, count `dependencies` — the distinct
+other files its functions call into — and `dependents`, the distinct files
+calling in. Severity is `high` when `dependencies` is at least 10, `medium` when
+it is at least 6; below 6 is not a finding. Cite the file's own functions that
+reach into the most distinct other files, up to 5 of them. This is the
+module-level counterpart to complexity-hotspot's per-function fan-out, and it is
+a proxy for "more than one reason to change" rather than a proof of one, and the
+rationale says so.
+
+**f. interface-segregation (SOLID).** For each file exporting at least 4 `source`
+functions, take each consumer — a file whose functions call into it — and the set
+of exported symbols that consumer actually uses. It is a finding when the module
+has at least 2 consumers and no single consumer uses more than half the exported
+surface: one interface is standing where its clients want several. Severity is
+`high` when the module exports at least 8 and the widest consumer uses a quarter
+or fewer of them; otherwise `medium`. Cite up to 5 of the exported functions,
+the least-called first, and name the consumers in the rationale.
+
+**g. dependency-cycle (SOLID).** Walk the module graph — files as nodes, a call
+from a function in one file to a function in another as an edge — and find every
+cycle. Two files that call each other, or a longer ring, is a finding. Severity
+is `high` when the cycle spans at least 3 files or crosses top-level directories;
+otherwise `medium`. Cite one site per file in the cycle: the function whose call
+carries the edge onward. This is the half of dependency inversion a call graph
+can establish. The other half — whether a dependency points at an abstraction or
+at a concretion — it cannot, and the usual remedy for a cycle is to invert one of
+its edges behind an interface, which is why it reports under SOLID.
+
+**Deep modules.** The three detectors below weigh interface cost against hidden
+functionality: a module earns its keep when it hides more than it asks a caller
+to learn. They report shape, never intent, and a small module that is small
+because its job is small is not a finding — the thresholds sit where they do so
+that it does not become one.
+
+**h. shallow-module (DEPTH).** For each file with at least 3 catalogued `source`
+functions, take `interface` — its count of exported functions — and `hiddenLoc`,
+the summed `loc` of every function in it. It is a finding when `interface` is at
+least 3 and `hiddenLoc` divided by `interface` is under 10: fewer than ten lines
+of implementation hidden per symbol the caller has to learn. Severity is `high`
+when `interface` is at least 6 and that ratio is under 6; otherwise `medium`.
+Cite up to 5 of the exported functions themselves. This detector reads only
+`exported` and `loc`, so it runs on any map that carries an inventory.
+
+**i. pass-through (DEPTH).** A pass-through function does nothing except hand its
+arguments to one other function. It is a finding when a `source` function has
+exactly 1 outbound call, a `loc` of 5 or fewer, and a parameter count equal to
+its callee's — read both from `signature`. Group them by file: one finding per
+module, one site per pass-through in it. Severity is `high` when a module holds
+at least 3, otherwise `medium`. A function that transforms, validates, defaults
+or renames its arguments on the way through is doing work and is not a
+pass-through; where the map carries a `snippet`, use it to tell the two apart.
+
+**j. internals-coupled-test (DEPTH).** A test that reaches past a module's
+interface into its internals freezes the implementation that module was supposed
+to stay free to change. It is a finding when a `test`-role function calls a
+`source` function whose `exported` is false, in a file that exports at least one
+function — there was an interface to test through, and the test went around it.
+Group by the module reached into: one finding per module, one site per test
+function. Severity is `high` when at least 5 distinct test functions reach in or
+at least 3 distinct internals are reached; otherwise `medium`. `exported` is the
+map's per-language heuristic and it defaults to `true` wherever the convention is
+unclear, so this detector under-reports rather than over-reports — say so in the
+rationale, and never read an empty result here as tests being well-behaved.
+
+**k. rule-violation (RULES).** Runs only when step 2 loaded at least one rule.
 For each rule marked `checkable`, search the inventory and the flow graphs for
 evidence that contradicts it, and cite that evidence the way every other detector
 does: `file`, `line`, `symbol`, snippet where the map carries one. Severity is
@@ -236,18 +322,19 @@ helper is one finding with three sites, not three findings.
 }
 ```
 
-`principle` is `DRY`, `KISS`, `YAGNI` or `RULES`. `severity` is `high`, `medium`
-or `low`. `confidence` is `unverified` unless step 4 verified the finding.
-`effort` is `small`, `medium` or `large`. `id` is the principle, a hyphen, and a
-two-digit counter that restarts per principle: `DRY-01`, `DRY-02`, `KISS-01`,
-`YAGNI-01`, `RULES-01`.
+`principle` is `DRY`, `KISS`, `YAGNI`, `SOLID`, `DEPTH` or `RULES`. `severity`
+is `high`, `medium` or `low`. `confidence` is `unverified` unless step 4 verified
+the finding. `effort` is `small`, `medium` or `large`. `id` is the principle, a
+hyphen, and a two-digit counter that restarts per principle: `DRY-01`, `DRY-02`,
+`KISS-01`, `YAGNI-01`, `RULES-01`, `SOLID-01`, `DEPTH-01`.
 **The counter is assigned in step 5, after step 4's drops** — not here — so do not
 number findings as you emit them, and read the `DRY-01` above as the shape rather
 than as a number already spent. Once assigned, ids are stable within the run,
 because the markdown and the JSON cross-reference each other by them.
 
-Three detectors carry evidence the fields above have no home for. Add exactly
-these, and nothing else:
+Most detectors carry evidence the fields above have no home for. Add exactly
+these, and nothing else — `module` is always the file path, forward-slash and
+repo-relative like every other path in this report:
 
 - `repeated-sequence` adds `flows` — the array of flow `slug`s the chain appears in.
 - `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value`.
@@ -256,6 +343,17 @@ these, and nothing else:
   only by test-role callers, which is what `production-unreached` means).
 - `rule-violation` adds `rule` — the rule's text, quoted — plus `ruleId` and
   `ruleSource`, the `file:line` it was read from.
+- `single-responsibility` adds `module`, plus `dependencies` and `dependents` —
+  the two counts, not the file lists.
+- `interface-segregation` adds `module`, `exports` (its count of exported
+  functions), `consumers` (the count of files calling in) and
+  `widestConsumerUse` (how many of those exports the widest consumer uses).
+- `dependency-cycle` adds `cycle` — the file paths in the order the calls run,
+  the first repeated at the end so the ring closes.
+- `shallow-module` adds `module`, `interface` and `hiddenLoc`.
+- `pass-through` adds `module`.
+- `internals-coupled-test` adds `module` — the file reached into — and
+  `internals`, the array of non-exported names the tests called.
 
 #### 4. Verify Against Source
 
@@ -356,7 +454,7 @@ them against it. `meta.root` is the one absolute path in the file; every path
 inside `findings` is repo-relative with forward slashes. `mapGenerated`, `mapMode` and `mapDetail`
 are copied from the map's own `index.json` `meta`, so the report records which map
 it read. `detectorsSkipped` lists detector names step 2 gated off, and is an empty
-array when all four ran.
+array when none was.
 
 #### 6. Write the Report
 
@@ -373,6 +471,14 @@ When `--rules` was passed, the banner also states how many rules were loaded,
 how many were checked, and how many could not be — naming each of those and its
 reason. A rule the report never mentions reads as a rule that passed, which is
 the one thing this detector must never imply.
+
+**The SOLID group says what it did not check.** Where step 6 groups findings by
+principle, the `SOLID` group opens with one sentence naming open-closed and
+Liskov substitution as unchecked and why — the map records no evidence about
+behaviour under extension or under substitution. Write that sentence even when
+SOLID produced no findings, and write it in the summary when the group is absent
+entirely. Three principles reported and two never mentioned reads as five
+principles clean, which is the one thing this section must not imply.
 
 The changed-file count is step 4's whole file census, not its cited-file subset; say
 "of the N files the map recorded" so no reader takes it for the smaller number.
