@@ -396,6 +396,8 @@ test("report.template.html accepts every detector the quality command can emit",
     "shallow-module",
     "pass-through",
     "internals-coupled-test",
+    "open-closed",
+    "liskov-substitution",
   ];
   const validate = extractValidate("report.template.html");
   const base = JSON.parse(

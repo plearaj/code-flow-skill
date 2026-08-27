@@ -17,7 +17,7 @@
     "findingsDropped": 1,
     "detectorsSkipped": ["duplicate-intent", "single-responsibility",
                          "interface-segregation", "dependency-cycle", "pass-through",
-                         "internals-coupled-test"],
+                         "internals-coupled-test", "open-closed", "liskov-substitution"],
     "rulesLoaded": 0,
     "rulesChecked": 0,
     "rulesNotCheckable": 0

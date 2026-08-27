@@ -552,6 +552,11 @@ DETECTOR_PRINCIPLES = (
     ("shallow-module", "DEPTH"),
     ("pass-through", "DEPTH"),
     ("internals-coupled-test", "DEPTH"),
+    # SOLID's other two. Their evidence is not in the map at all, so they run
+    # only under `--read-code`; they are still SOLID detectors, and the pairing
+    # is asserted here like every other.
+    ("open-closed", "SOLID"),
+    ("liskov-substitution", "SOLID"),
     # The fifth runs only when `--rules` was passed, but every host documents
     # it unconditionally: a detector a template never describes is one no run
     # can perform, whatever flag the user typed.
@@ -2317,31 +2322,57 @@ def test_quality_template_gates_the_call_graph_detectors(
 
 
 @pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
-def test_quality_template_names_the_solid_principles_it_cannot_check(
+def test_quality_template_gates_open_closed_and_liskov_on_read_code(
     repo_root: Path, host: str, name: str
 ) -> None:
-    """Three of SOLID's five are reported and two are not. Silence about the
-    other two reads as five principles clean, which is the exact
-    confident-wrong outcome the whole command is arranged around — and it is
-    worse here than for a skipped detector, because nothing in
-    `detectorsSkipped` will ever mention them.
+    """These two are the only detectors whose evidence is not in the map at all.
+    A dispatch table, a registry and a polymorphic call are all correct answers
+    to the problem open-closed describes, and the call graph cannot tell any of
+    them from a conditional chain — so the map locates candidates and source
+    decides, which means no `--read-code`, no detector.
+
+    The remedy is asserted alongside the gate: a detector named in
+    `detectorsSkipped` with no way to un-skip it is a hole the reader cannot
+    close, which is the whole reason step 2 pairs every gate with one.
     """
-    text = (repo_root / "templates" / host / name).read_text(encoding="utf-8")
-    flat = _flatten(text)
-    assert re.search(r"open-closed", flat, re.IGNORECASE), (
-        f"{host}/{name} never names open-closed as unchecked"
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"`--read-code` was not\s+passed", region, re.IGNORECASE), (
+        f"{host}/{name} never states the condition that gates open-closed and Liskov"
     )
-    assert re.search(r"liskov", flat, re.IGNORECASE), (
-        f"{host}/{name} never names Liskov substitution as unchecked"
+    for detector in ("open-closed", "liskov-substitution"):
+        assert detector in region, (
+            f"{host}/{name} does not gate {detector} on the absence of --read-code"
+        )
+    # Scoped to this gate's own sentence, not to the region: the thin-map rule a
+    # few paragraphs up also says "re-run with `--read-code`", so an unscoped
+    # search here passed with this gate's remedy deleted.
+    assert re.search(
+        r"[Rr]ecord both as skipped and name the remedy.{0,40}?--read-code",
+        region,
+    ), f"{host}/{name} gates the two off without naming the remedy"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_says_which_of_solids_five_it_checked(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three of SOLID's five report from the call graph and two only from
+    source. Silence about the latter two reads as five principles clean, which
+    is the confident-wrong outcome this command is arranged around — and it is
+    worse here than for any other skipped detector, because a reader who never
+    passed `--read-code` has no other way to learn they went unchecked.
+    """
+    flat = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"open-closed and liskov substitution", flat, re.IGNORECASE), (
+        f"{host}/{name}'s SOLID group never names the two by name"
     )
     assert re.search(
-        r"open-closed and liskov substitution.{0,80}?(are not|as unchecked|never)",
+        r"open-closed and liskov substitution.{0,120}?whether they were checked",
         flat,
         re.IGNORECASE,
-    ), f"{host}/{name} names the two principles without saying they go unchecked"
-    # The report has to carry the disclosure, not just the prompt: a template
-    # that knew and never wrote it down leaves the reader exactly where an
-    # undisclosed gap leaves them.
+    ), f"{host}/{name} names the two without requiring the report to say if it checked them"
+    # The sentence has to survive an empty SOLID group: that is precisely the
+    # state in which its absence reads as a clean bill.
     assert re.search(
         r"even when SOLID produced no findings", flat, re.IGNORECASE
     ), f"{host}/{name} lets the SOLID disclosure vanish when there are no findings"

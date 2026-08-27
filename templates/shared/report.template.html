@@ -199,7 +199,8 @@ function validate(raw, TOKEN){
   var DETECTOR = { "duplicate-intent":1, "repeated-sequence":1, "complexity-hotspot":1,
                    "unreached":1, "rule-violation":1, "single-responsibility":1,
                    "interface-segregation":1, "dependency-cycle":1, "shallow-module":1,
-                   "pass-through":1, "internals-coupled-test":1 };
+                   "pass-through":1, "internals-coupled-test":1, "open-closed":1,
+                   "liskov-substitution":1 };
   var problems = [];
   if (!data || typeof data !== "object" || Array.isArray(data)){
     return { ok:false, title:"Report data failed validation", lines:["The document must be a JSON object."] };
@@ -335,6 +336,8 @@ if (count(coverage.flowsUnreadable)){
    command refuses to invent. */
 var NO_GRAPH = "the map carries no `calls`, so there was no module graph to walk — re-map with " +
   "/code-flow.map --whole-code-base --tracer on";
+var NO_SOURCE = "this detector reads source, not the map, and --read-code was not passed — " +
+  "re-run the quality command with --read-code to check it";
 var SKIP_REASONS = {
   "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
     "re-run the quality command with --read-code, or re-map with --detail standard",
@@ -344,7 +347,12 @@ var SKIP_REASONS = {
   "interface-segregation": NO_GRAPH,
   "dependency-cycle": NO_GRAPH,
   "pass-through": NO_GRAPH,
-  "internals-coupled-test": NO_GRAPH
+  "internals-coupled-test": NO_GRAPH,
+  /* The only two whose evidence was never in the map. They locate candidates
+     from it and let --read-code settle them, so without the flag there is
+     nothing for them to report rather than something they got wrong. */
+  "open-closed": NO_SOURCE,
+  "liskov-substitution": NO_SOURCE
 };
 var skipped = Array.isArray(coverage.detectorsSkipped) ? coverage.detectorsSkipped : [];
 if (skipped.length){
@@ -460,6 +468,14 @@ if (!findings.length){
     }
     if (Array.isArray(f.internals) && f.internals.length){
       evidence.push(["internals reached", f.internals.join(", ")]);
+    }
+    if (Array.isArray(f.variants) && f.variants.length){
+      evidence.push(["variants", f.variants.join(", ")]);
+    }
+    if (f.switchPoint) evidence.push(["selected at", String(f.switchPoint)]);
+    if (f.family) evidence.push(["override family", String(f.family)]);
+    if (Array.isArray(f.weakened) && f.weakened.length){
+      evidence.push(["weakens the contract", f.weakened.join(", ")]);
     }
     if (evidence.length){
       var dl = el("dl", "evidence", null, card);

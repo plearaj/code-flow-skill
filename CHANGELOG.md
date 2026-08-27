@@ -93,10 +93,20 @@ from this repository at the same version.
   into its internals, freezing the implementation that module was supposed to stay free
   to change). Every threshold is a number, as everywhere else in this report, so
   findings do not drift toward "medium".
-- **Open-closed and Liskov substitution are never reported, and the report says so.**
-  Three of SOLID's five are checkable against a call graph; the other two are facts
-  about behaviour under change and under substitution, which a map records nothing
-  about. The SOLID section carries that sentence even when it has no findings, because
+- **`open-closed` and `liskov-substitution` run under `--read-code`**, and only there.
+  Their evidence was never in the map: a dispatch table, a registry and a polymorphic
+  call are all correct answers to the problem open-closed describes, and no call graph
+  can tell any of them from a conditional chain. So the map locates candidates — a
+  variant family with a caller that selects among it, an override family with a member
+  whose body refuses — and the source settles them. A candidate the verify pass does
+  not confirm is dropped there, which makes these two the only detectors whose every
+  finding is `verified`. Liskov's candidate survives only if the family really shares
+  a supertype, a caller really holds one through it, and the member really weakens the
+  contract; two unrelated `save` methods are the false positive it is most exposed to,
+  and the first check is what removes it.
+- **The SOLID group says which of the five it checked.** Under `--read-code` all five
+  report; without it the two above are named as not checked, with the flag named as
+  the remedy. The sentence is written even when SOLID produced no findings, because
   three principles reported and two never mentioned reads as five principles clean.
 - **The five call-graph detectors gate off when the map has no `calls`**, naming each
   one and the remedy — re-map with `--tracer on` — in the same coverage banner that

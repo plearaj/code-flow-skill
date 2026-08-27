@@ -33,6 +33,8 @@ DETECTORS = {
     "shallow-module",
     "pass-through",
     "internals-coupled-test",
+    "open-closed",
+    "liskov-substitution",
 }
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
@@ -86,6 +88,13 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     "shallow-module": frozenset({"module", "interface", "hiddenLoc"}),
     "pass-through": frozenset({"module"}),
     "internals-coupled-test": frozenset({"module", "internals"}),
+    # The two detectors whose evidence is never in the map. `switchPoint` is the
+    # place a new variant has to edit, and `weakened` is the subset of the family
+    # the verify pass actually confirmed narrows the contract — not the whole
+    # family, which is why it is a field of its own rather than a slice of
+    # `sites`.
+    "open-closed": frozenset({"variants", "switchPoint"}),
+    "liskov-substitution": frozenset({"family", "weakened"}),
 }
 
 # Step 3: `reachedBy` has exactly two values. `"tests"` is the

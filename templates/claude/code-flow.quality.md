@@ -32,7 +32,9 @@ The user's input (`$ARGUMENTS`) carries two optional flags:
 - `--read-code` — after deriving candidate findings from the map, open the files
   those candidates cite and confirm each against current source. Off by default.
   It requires the source tree to be present and current, not merely the artifacts
-  under `Code_Flows/`.
+  under `Code_Flows/`. It also decides two of step 3's detectors outright:
+  open-closed and liskov-substitution have no evidence in the map and do not run
+  without it.
 - `--rules [source ...]` — also check the map against rules this project has
   already written down. Off by default. A source is a path to a document, the
   word `auto`, or a rule written inline in quotes; several may be given,
@@ -92,6 +94,14 @@ only names, signatures and line counts — not enough to cite the evidence its
 findings require. Record it as skipped and name both remedies: re-run with
 `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
 The other detectors are unaffected and still run.
+
+**If `--read-code` was not passed**, skip the open-closed and
+liskov-substitution detectors. These two are the only ones whose evidence is not
+in the map at all: the map records what calls what, and both of these are about
+what a body does — whether a selection among variants is a conditional chain or a
+lookup, and whether an override honours what its siblings promise. The map can
+say where to look, which is what step 3 has it do, but only source can settle
+either. Record both as skipped and name the remedy: re-run with `--read-code`.
 
 **If no inventory entry carries `calls`**, skip the five detectors that walk the
 call graph: single-responsibility, interface-segregation, dependency-cycle,
@@ -157,8 +167,9 @@ say how much that was.
 
 #### 3. Run the Detectors
 
-Ten detectors, and an eleventh when `--rules` was passed. Step 2's gating rule
-has already decided which of them run; run those, and only those.
+Ten detectors, two more when `--read-code` was passed, and one more when
+`--rules` was. Step 2's gating rule has already decided which of them run; run
+those, and only those.
 
 Every severity below is a **rule**, not a judgement. Apply the number. If a
 finding does not clear a threshold, it is not a finding of lower severity — it is
@@ -198,13 +209,18 @@ Severity is `high` only when the entry is `unreached`, is not `exported`, and is
 not test-only. Anything whose `exported` is true is capped at `low`, because a
 public API surface has callers this repository cannot see.
 
-**SOLID, and what a map can and cannot see.** The three detectors below are the
-SOLID principles this map carries evidence for. Open-closed and Liskov
-substitution are not among them and are never reported: whether a module is open
-to extension, and whether a subtype honours its supertype's contract, are facts
-about behaviour under change and under substitution, and the map records neither.
-Step 6 makes the report say so, because a SOLID section that reports on three of
-the five and stays silent about the other two reads as a clean bill on all five.
+**SOLID's five, and where each one's evidence comes from.** Three of them —
+single-responsibility, interface-segregation and dependency-inversion — are
+settled by the call graph, and their detectors follow immediately. The other two
+are not, and they are not dropped for it: open-closed and liskov-substitution
+report under `--read-code`, from candidates the map can locate and only source
+can confirm. Detectors k and l are those, and step 2 gates them off when the flag
+was not passed.
+
+Nothing here reads a rule from a name. A dispatch table, a registry and a
+polymorphic call are all correct answers to the problem open-closed describes,
+and the map cannot tell any of them from a conditional chain — which is exactly
+why those two detectors wait for the source rather than guessing from the graph.
 
 **e. single-responsibility (SOLID).** A module here is a file. For each file with
 at least 3 catalogued `source` functions, count `dependencies` — the distinct
@@ -271,7 +287,48 @@ map's per-language heuristic and it defaults to `true` wherever the convention i
 unclear, so this detector under-reports rather than over-reports — say so in the
 rationale, and never read an empty result here as tests being well-behaved.
 
-**k. rule-violation (RULES).** Runs only when step 2 loaded at least one rule.
+**Open-closed and Liskov, in two steps.** Each of the two detectors below emits
+a *candidate* from the map and leaves the verdict to step 4b. The map narrows the
+search to a handful of functions; the source decides. A candidate step 4b does
+not confirm is dropped there like any other, and because step 2 gates both
+detectors off without `--read-code`, neither can ever reach the report
+unconfirmed: alone among the detectors, every finding they produce is `verified`.
+
+**k. open-closed (SOLID).** Look for a variant family: at least 3 catalogued
+`source` functions whose unqualified names agree once one token differs
+(`render_pdf`, `render_html`, `render_csv`; `handle_visa`, `handle_amex`), with
+equal parameter counts, and at least one function that calls 3 or more of them
+directly. That caller is the candidate — the place a new variant would have to
+edit. Cite it as the first site and the family members after it. Severity is
+`high` when the caller selects among at least 5 variants, `medium` at 3 or 4.
+
+Step 4b decides. Open the caller and read how it selects: a chain of conditionals
+on a type, a kind, a string or an enum confirms the candidate, because adding a
+variant means editing that function. A lookup table, a registry, a dispatch dict,
+a match on an exhaustive sum type the compiler checks, or a polymorphic call
+drops it — those are the shapes that are already open to extension, and reporting
+one is worse than reporting nothing.
+
+**l. liskov-substitution (SOLID).** Look for an override family: at least 2
+catalogued `source` functions sharing an unqualified `name` and a parameter
+count, in different files, with at least one caller reaching 2 or more of them —
+which is what makes the family polymorphic rather than a name collision. It is a
+candidate when at least one member looks like it refuses or narrows what the
+others do: a `loc` of 3 or fewer, or a `snippet` whose body raises a
+not-implemented error, returns a constant unconditionally, or does nothing. Cite
+each member that looks that way. Severity is `high` when at least 2 members do,
+`medium` at 1.
+
+Step 4b decides this one too, and it has more to check than the other. Open the
+members and confirm three things: they really do share a supertype or interface
+rather than a name; a caller really does hold one through that shared type; and
+the member really does weaken the contract — throwing where its siblings return,
+ignoring an argument they honour, returning a sentinel they never return, or
+demanding a precondition they do not. All three or it is dropped. Two unrelated
+`save` methods in unrelated classes are the false positive this detector is most
+exposed to, and the first check is what removes it.
+
+**m. rule-violation (RULES).** Runs only when step 2 loaded at least one rule.
 For each rule marked `checkable`, search the inventory and the flow graphs for
 evidence that contradicts it, and cite that evidence the way every other detector
 does: `file`, `line`, `symbol`, snippet where the map carries one. Severity is
@@ -354,6 +411,11 @@ repo-relative like every other path in this report:
 - `pass-through` adds `module`.
 - `internals-coupled-test` adds `module` — the file reached into — and
   `internals`, the array of non-exported names the tests called.
+- `open-closed` adds `variants` — the family's names — and `switchPoint`, the
+  `file:line` of the function that selects among them.
+- `liskov-substitution` adds `family` — the shared unqualified name — and
+  `weakened`, the member names step 4b confirmed narrow the contract, qualified
+  where the bare name would not tell two of them apart.
 
 #### 4. Verify Against Source
 
@@ -395,7 +457,12 @@ reason the map is persisted in the first place.
    produces — takes its sites' snippets from the source read here. This widens
    nothing: these are the files this step already opened.
 5. For each candidate that does not survive, drop it.
-6. A candidate whose cited file cannot be opened at all — deleted, or unreadable
+6. An open-closed or liskov-substitution candidate is confirmed against the
+   test its own rule in step 3 states — the selection structure for one, the
+   three checks for the other — and dropped when it fails. These two exist
+   only under this flag, so a candidate this step cannot settle is dropped
+   rather than carried: there is no unverified form of either to fall back on.
+7. A candidate whose cited file cannot be opened at all — deleted, or unreadable
    — is neither confirmed nor dropped here: it keeps `confidence: "unverified"`
    and falls through to the staleness rule below.
 
@@ -472,13 +539,14 @@ how many were checked, and how many could not be — naming each of those and it
 reason. A rule the report never mentions reads as a rule that passed, which is
 the one thing this detector must never imply.
 
-**The SOLID group says what it did not check.** Where step 6 groups findings by
-principle, the `SOLID` group opens with one sentence naming open-closed and
-Liskov substitution as unchecked and why — the map records no evidence about
-behaviour under extension or under substitution. Write that sentence even when
-SOLID produced no findings, and write it in the summary when the group is absent
-entirely. Three principles reported and two never mentioned reads as five
-principles clean, which is the one thing this section must not imply.
+**The SOLID group says which of the five it checked.** Where step 6 groups
+findings by principle, the `SOLID` group opens with one sentence naming
+open-closed and Liskov substitution and saying whether they were checked: under
+`--read-code` they were, from source; without it they were not, and the sentence
+names `--read-code` as the remedy. Write that sentence even when SOLID produced
+no findings, and write it in the summary when the group is absent entirely. Three
+principles reported and two never mentioned reads as five principles clean, which
+is the one thing this section must not imply.
 
 The changed-file count is step 4's whole file census, not its cited-file subset; say
 "of the N files the map recorded" so no reader takes it for the smaller number.

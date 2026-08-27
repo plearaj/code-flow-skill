@@ -249,7 +249,7 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 | `--output files\|bundle\|both` | map | `files` | Which HTML gets written. `both` adds the single-file bundle; `bundle` writes only it. Never skips the JSON. [Details](#one-file-you-can-send-someone) |
 | `--frontend auto\|react\|vue\|angular\|svelte\|off` | map | `auto` | Whether to map UI components as well as functions. [Details](#frontend-component-mapping) |
 | `--tracer auto\|on\|off` | map | `auto` | Whether to run the installed static tracers before tracing anything. [Details](#automated-tracing) |
-| `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. [Details](#quality-reporting) |
+| `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. Also unlocks the two SOLID detectors that read source rather than the map. [Details](#quality-reporting) |
 | `--rules [source ...]` | quality | off | Also checks the map against rules your project has already written down. [Details](#checking-your-own-rules) |
 
 ```text
@@ -453,7 +453,7 @@ renderings of it, and none of the three may contradict another. The `.html` is a
 single self-contained page — no server, no build step, no internet required —
 that you open straight from disk, with the same coverage banner, the same
 "catalogued, never all" wording, and filters by severity and principle. Ten
-detectors run, and an eleventh when you pass `--rules`:
+detectors run, two more when you pass `--read-code`, and one more with `--rules`:
 
 | Detector | Principle | Reports |
 |---|---|---|
@@ -467,25 +467,37 @@ detectors run, and an eleventh when you pass `--rules`:
 | shallow-module | DEPTH | More interface than implementation behind it |
 | pass-through | DEPTH | Functions that only hand their arguments to one other |
 | internals-coupled-test | DEPTH | Tests reaching past a module's interface into its internals |
+| open-closed | SOLID | A conditional chain that must be edited to add a variant — only with `--read-code` |
+| liskov-substitution | SOLID | An override that refuses what its siblings promise — only with `--read-code` |
 | rule-violation | RULES | Code contradicting a rule you pointed it at — only with `--rules` |
 
 Severity is rule-based — thresholds, not impressions — so findings do not all
 drift toward "medium".
 
-**SOLID and deep modules, with the same honesty as everything else.** The three
-SOLID detectors are the three a call graph carries evidence for. Open-closed and
-Liskov substitution are never reported and the report says so outright: whether a
-module is open to extension, and whether a subtype honours its supertype's
-contract, are facts about behaviour, and a map records none of it. The DEPTH
-three are Ousterhout's deep-module argument — a module earns its keep when it
-hides more than it asks a caller to learn — including its test-side corollary: a
-test that reaches around the interface into the internals freezes the
-implementation that module was supposed to stay free to change.
+**SOLID's five, split by where the evidence lives.** Three of them —
+single-responsibility, interface-segregation and dependency-cycle — are settled by
+the call graph. The other two are not, and they are not dropped for it:
+open-closed and liskov-substitution locate candidates in the map and let
+`--read-code` settle them against real source, so they run only under that flag
+and every finding they produce is `verified`. Without it, both are reported as not
+checked, by name, with `--read-code` named as the remedy.
 
-Five of the six read the call graph, so they need a map built with a tracer. On a
-map without one, they are gated off and the banner names each with its remedy;
-shallow-module reads only export counts and function lengths, so it runs on any
-map that has an inventory.
+That split is the point. A dispatch table, a registry and a polymorphic call are
+all correct answers to the problem open-closed describes, and no call graph can
+tell any of them from a conditional chain — so the map says where to look and the
+source says whether it is a finding. Liskov gets the stricter treatment: a
+candidate survives only if the family really shares a supertype, a caller really
+holds one through it, and the member really weakens the contract.
+
+**The DEPTH three** are Ousterhout's deep-module argument — a module earns its
+keep when it hides more than it asks a caller to learn — including its test-side
+corollary: a test that reaches around the interface into the internals freezes
+the implementation that module was supposed to stay free to change.
+
+Five of the nine new detectors read the call graph, so they need a map built with
+a tracer. On a map without one, they are gated off and the banner names each with
+its remedy; shallow-module reads only export counts and function lengths, so it
+runs on any map that has an inventory.
 
 `--read-code` opens the files the candidate findings cite and confirms each
 against current source, marking the survivors `verified` and dropping the rest;
@@ -516,7 +528,8 @@ On a `--detail thin` map, duplicate-intent is skipped unless you pass
 evidence to cite. On a map whose inventory carries no `calls` — one built with
 `--tracer off`, or in a language no tracer covers — the five call-graph detectors
 are skipped for the same kind of reason, and named in the banner rather than
-quietly omitted.
+quietly omitted. Without `--read-code`, open-closed and liskov-substitution are
+skipped too: their evidence was never in the map to begin with.
 
 #### Checking your own rules
 

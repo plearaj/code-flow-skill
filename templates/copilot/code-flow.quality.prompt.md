@@ -18,6 +18,8 @@ Follow these steps exactly:
    candidate findings from the map, open the files those candidates cite and
    confirm each against current source. Off by default. It requires the source
    tree to be present and current, not merely the artifacts under `Code_Flows/`.
+   It also decides two of step 3's detectors outright: open-closed and
+   liskov-substitution have no evidence in the map and do not run without it.
    `--rules [source ...]` — also check the map against rules this project has
    already written down. Off by default. A source is a path to a document, the
    word `auto`, or a rule written inline in quotes; several may be given,
@@ -52,7 +54,14 @@ Follow these steps exactly:
    duplicate-intent detector — a thin map carries no `snippet` and that detector
    cannot cite the evidence its findings require — and name both remedies: re-run
    with `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
-   The other detectors are unaffected and still run. If no inventory entry carries
+   The other detectors are unaffected and still run. If `--read-code` was not
+   passed, skip the open-closed and liskov-substitution detectors: these two are
+   the only ones whose evidence is not in the map at all — the map records what
+   calls what, and both are about what a body does, whether a selection among
+   variants is a conditional chain or a lookup and whether an override honours what
+   its siblings promise. The map can say where to look, which is what step 3 has it
+   do, but only source can settle either. Record both as skipped and name the
+   remedy: re-run with `--read-code`. If no inventory entry carries
    `calls`, skip the five detectors that walk the call graph — single-responsibility,
    interface-segregation, dependency-cycle, pass-through and internals-coupled-test.
    `calls` is a fact a tracer establishes, not something to infer by reading, so a
@@ -90,7 +99,7 @@ Follow these steps exactly:
    If `--rules` was passed and no source could be read, do **not** stop: skip the
    rule-violation detector, record it in `detectorsSkipped`, and name every path
    you tried.
-3. **Run the detectors.** Ten of them, and an eleventh when `--rules` was passed; step 2's gating rule already decided which
+3. **Run the detectors.** Ten of them, two more when `--read-code` was passed and one more when `--rules` was; step 2's gating rule already decided which
    run. Every severity is a **rule**, not a judgement — apply the number, and if a
    finding does not clear a threshold it is not a finding at all.
    - **duplicate-intent (DRY)** — cluster catalogued functions that do the same
@@ -115,13 +124,15 @@ Follow these steps exactly:
      anything whose `exported` is true is capped at `low`, because a public API
      surface has callers this repository cannot see.
 
-   **SOLID, and what a map can and cannot see.** The three below are the SOLID
-   principles this map carries evidence for. Open-closed and Liskov substitution
-   are not among them and are never reported: whether a module is open to extension,
-   and whether a subtype honours its supertype's contract, are facts about behaviour
-   under change and under substitution, and the map records neither. Step 6 makes the
-   report say so, because a SOLID section that reports on three of the five and stays
-   silent about the other two reads as a clean bill on all five.
+   **SOLID's five, and where each one's evidence comes from.** Three of them —
+   single-responsibility, interface-segregation and dependency-inversion — are settled
+   by the call graph, and their detectors follow immediately. The other two are not,
+   and they are not dropped for it: open-closed and liskov-substitution report under
+   `--read-code`, from candidates the map can locate and only source can confirm; step
+   2 gates them off when the flag was not passed. Nothing here reads a rule from a
+   name — a dispatch table, a registry and a polymorphic call are all correct answers
+   to the problem open-closed describes, and the map cannot tell any of them from a
+   conditional chain, which is exactly why those two wait for the source.
    - **single-responsibility (SOLID)** — a module here is a file. For each file with
      at least 3 catalogued `source` functions, count `dependencies` (the distinct
      other files its functions call into) and `dependents` (the distinct files
@@ -180,6 +191,39 @@ Follow these steps exactly:
      heuristic and defaults to `true` wherever the convention is unclear, so this one
      under-reports rather than over-reports — say so in the rationale, and never read
      an empty result here as tests being well-behaved.
+
+   **Open-closed and Liskov, in two steps.** Each of the two below emits a
+   *candidate* from the map and leaves the verdict to step 4's verify pass. The map
+   narrows the search to a handful of functions; the source decides. A candidate the
+   verify pass does not confirm is dropped there like any other, and because step 2
+   gates both off without `--read-code`, neither can reach the report unconfirmed:
+   alone among the detectors, every finding they produce is `verified`.
+   - **open-closed (SOLID)** — look for a variant family: at least 3 catalogued
+     `source` functions whose unqualified names agree once one token differs
+     (`render_pdf`, `render_html`, `render_csv`), with equal parameter counts, and at
+     least one function calling 3 or more of them directly. That caller is the
+     candidate — the place a new variant would have to edit. Cite it first and the
+     family after it. `high` when the caller selects among at least 5 variants,
+     `medium` at 3 or 4. The verify pass decides: a chain of conditionals on a type, a
+     kind, a string or an enum confirms it, because adding a variant means editing
+     that function; a lookup table, a registry, a dispatch dict, a match on an
+     exhaustive sum type the compiler checks, or a polymorphic call drops it — those
+     are already open to extension, and reporting one is worse than reporting nothing.
+   - **liskov-substitution (SOLID)** — look for an override family: at least 2
+     catalogued `source` functions sharing an unqualified `name` and a parameter
+     count, in different files, with at least one caller reaching 2 or more of them,
+     which is what makes the family polymorphic rather than a name collision. A
+     candidate when at least one member looks like it refuses or narrows what the
+     others do: a `loc` of 3 or fewer, or a `snippet` whose body raises a
+     not-implemented error, returns a constant unconditionally, or does nothing. Cite
+     each member that looks that way. `high` when at least 2 members do, `medium` at
+     1. The verify pass confirms three things: they really share a supertype or
+     interface rather than a name; a caller really holds one through that shared type;
+     and the member really weakens the contract — throwing where its siblings return,
+     ignoring an argument they honour, returning a sentinel they never return, or
+     demanding a precondition they do not. All three or it is dropped. Two unrelated
+     `save` methods in unrelated classes are the false positive this one is most
+     exposed to, and the first check is what removes it.
 
    - **rule-violation (RULES)** — runs only when step 2 loaded at least one rule.
      For each rule marked `checkable`, search the inventory and the flow graphs for
@@ -247,8 +291,13 @@ Follow these steps exactly:
    `exports`, `consumers` and `widestConsumerUse`; `dependency-cycle` adds `cycle`,
    the file paths in the order the calls run with the first repeated at the end so
    the ring closes; `shallow-module` adds `module`, `interface` and `hiddenLoc`;
-   `pass-through` adds `module`; and `internals-coupled-test` adds `module` (the file
-   reached into) and `internals`, the array of non-exported names the tests called.
+   `pass-through` adds `module`; `internals-coupled-test` adds `module` (the file
+   reached into) and `internals`, the array of non-exported names the tests called;
+   `open-closed` adds `variants` (the family's names) and `switchPoint`, the
+   `file:line` of the function selecting among them; and `liskov-substitution` adds
+   `family` (the shared unqualified name) and `weakened`, the member names the
+   verify pass confirmed narrow the contract, qualified where the bare name would
+   not tell two of them apart.
 4. **Verify against source.** Three things, and their order matters.
    - **Check staleness.** Two scopes, and they are not the same set; never report
      one as the other. `filesChanged` is a **whole-census** number: compare every
@@ -279,6 +328,11 @@ Follow these steps exactly:
      step already opened. A candidate whose cited file cannot be opened at all —
      deleted, or unreadable — is neither confirmed nor dropped here: it keeps
      `confidence: "unverified"` and falls through to the staleness rule below.
+     An open-closed or liskov-substitution candidate is confirmed against the test
+     its own rule in step 3 states — the selection structure for one, the three
+     checks for the other — and dropped when it fails; these two exist only under
+     this flag, so a candidate this step cannot settle is dropped rather than
+     carried, since there is no unverified form of either to fall back on.
      Without the flag every finding stays `unverified`.
    - **Drop what is left stale and unverified.** Verify first, then drop: any
      finding still `unverified` whose `sites` cite a file whose `hash` no longer
@@ -344,13 +398,14 @@ Follow these steps exactly:
    When `--rules` was passed the banner also states how many rules were loaded,
    how many were checked, and how many could not be — naming each of those and its
    reason. A rule the report never mentions reads as a rule that passed, which is
-   the one thing this detector must never imply. **The SOLID group says what it did
-   not check:** where step 6 groups findings by principle, the `SOLID` group opens
-   with one sentence naming open-closed and Liskov substitution as unchecked and why
-   — the map records no evidence about behaviour under extension or under
-   substitution. Write that sentence even when SOLID produced no findings, and write
-   it in the summary when the group is absent entirely; three principles reported and
-   two never mentioned reads as five principles clean.
+   the one thing this detector must never imply. **The SOLID group says which of the
+   five it checked:** where step 6 groups findings by principle, the `SOLID` group
+   opens with one sentence naming open-closed and Liskov substitution and saying
+   whether they were checked — under `--read-code` they were, from source; without it
+   they were not, and the sentence names `--read-code` as the remedy. Write that
+   sentence even when SOLID produced no findings, and write it in the summary when
+   the group is absent entirely; three principles reported and two never mentioned
+   reads as five principles clean.
    If `flowsTraced` is below `entryPointsFound`,
    say in words that the map is partial and that everything below is **clean within
    what was mapped** — never a clean bill of health for the repository. Then a
