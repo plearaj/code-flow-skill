@@ -669,6 +669,17 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
             "decorators": fn["decorators"],
             "calls": fn["calls"],
         }
+        if fn["owner"]:
+            record["owner"] = fn["owner"]
+        # A constructor shares its class's name, so it can only ever collide
+        # with a supertype the class is named after -- never an override.
+        overrides = (
+            []
+            if fn["isConstructor"]
+            else common.overridden_names(repo.types, repo.methods, fn["owner"], fn["name"])
+        )
+        if overrides:
+            record["overrides"] = overrides
         snippet = common.snippet_for(source.lines, fn["line"], fn["endLine"], loc, repo.detail)
         if snippet is not None:
             record["snippet"] = snippet

@@ -304,6 +304,149 @@ def test_limits_are_stated_rather_than_implied(request, which: str) -> None:
     assert any("static" in limit.lower() for limit in trace["limits"])
 
 
+# --- owner and overrides ---------------------------------------------------
+#
+# `overrides` is the field the quality command's Liskov detector forms a family
+# from, so what it must never do is name a relationship the source does not
+# state. These assertions are written from that direction: one per tracer for
+# the family it does find, and shared ones for everything it must not invent.
+
+# The override family each fixture is built around: the declaration, and the two
+# members that name it. One per tracer, so a tracer that stops reading its
+# language's inheritance is caught by the tracer's own case rather than by a
+# shared assertion that could pass on somebody else's evidence.
+OVERRIDE_FAMILIES = {
+    "python": ("UserStore.get", {"app_store_get_l22", "app_service_get"}),
+    "typescript": ("UserService.load", {"src_services_cachinguserservice_load"}),
+    "rust": ("Describe::describe", {"src_store_describe_l62", "src_store_describe_l68"}),
+    "java": (
+        "Describable.describe",
+        {"src_main_java_com_demo_userservice_describe",
+         "src_main_java_com_demo_userstore_describe"},
+    ),
+    "c-family": ("Describable::describe", {"src_service_describe"}),
+}
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_overrides_names_the_declaration_the_source_states(request, which: str) -> None:
+    """Each tracer finds its language's inheritance, spelled its language's way.
+
+    Five languages state the relationship five ways -- `impl Trait for Type`,
+    `implements`, `extends`, a base-class list, a `: public Base` -- and this is
+    the assertion that each tracer reads its own rather than a paraphrase of
+    Java's.
+    """
+    trace = _trace(request, which)
+    declaration, members = OVERRIDE_FAMILIES[which]
+    found = {
+        fn["id"] for fn in trace["functions"] if declaration in fn.get("overrides", [])
+    }
+    assert found == members, (
+        f"{which}: {declaration} should be named by {sorted(members)}, "
+        f"got {sorted(found)}"
+    )
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_every_override_is_well_formed(request, which: str) -> None:
+    """`Supertype.member`, where `member` is this function's own name and
+    `Supertype` is not the type it already belongs to.
+
+    A consumer forms a family by grouping on this string, so a malformed one is
+    not a cosmetic problem: it either splits a real family or joins two.
+    """
+    trace = _trace(request, which)
+    wrong = []
+    for fn in trace["functions"]:
+        for declaration in fn.get("overrides", []):
+            separator = "::" if "::" in declaration else "."
+            supertype, _, member = declaration.rpartition(separator)
+            if member != fn["name"] or not supertype:
+                wrong.append(f"{fn['id']} names {declaration!r}")
+            elif supertype == fn.get("owner"):
+                wrong.append(f"{fn['id']} claims to override its own type")
+    assert not wrong, f"{which}: " + "; ".join(wrong)
+
+
+# One method per fixture that its type inherits nothing for: the class extends
+# or implements something, and this particular member is its own. Naming an
+# override here would be the field's characteristic failure -- reading the
+# heritage clause and stopping there, without checking that the supertype
+# really declares the member.
+INHERITS_NOTHING = {
+    "python": "app_store_warm",
+    "typescript": "src_services_cachinguserservice_prime",
+    "rust": "src_store_get_l38",
+    "java": "src_main_java_com_demo_adminuserstore_findadmin",
+    "c-family": "src_service_authenticate",
+}
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_extending_something_does_not_make_every_method_an_override(
+    request, which: str
+) -> None:
+    """A subclass of a class is not an override of all of it."""
+    trace = _trace(request, which)
+    target = INHERITS_NOTHING[which]
+    functions = _by_id(trace)
+    assert target in functions, f"{which} fixture no longer defines {target}"
+    assert functions[target].get("overrides") is None, (
+        f"{which}: {target} was reported as overriding "
+        f"{functions[target].get('overrides')}, which its type never declares"
+    )
+
+
+# Java is absent by construction: every method belongs to a type, so there is no
+# free function for this to be true of. Listing it here rather than skipping it
+# inside the test keeps that a stated fact about the language instead of a
+# fixture that happens to have none.
+HAS_FREE_FUNCTIONS = ("c-family", "python", "rust", "typescript")
+
+
+@pytest.mark.parametrize("which", HAS_FREE_FUNCTIONS)
+def test_a_free_function_carries_no_owner_and_no_overrides(request, which: str) -> None:
+    """`owner` is how a consumer tells a method from a function without parsing
+    `qualname`, which only works if a free function really does omit it."""
+    trace = _trace(request, which)
+    free = [fn for fn in trace["functions"] if "owner" not in fn]
+    assert free, f"{which} fixture has no free function to check"
+    assert all("overrides" not in fn for fn in free), (
+        f"{which}: a function belonging to no type was given an override"
+    )
+
+
+def test_python_tracer_resolves_a_base_class_through_an_import(py_trace: dict) -> None:
+    """The half of Python inheritance a same-file walk cannot see.
+
+    `AuditedUserStore` lives in `app/service.py` and extends a class imported
+    from `app/store.py`, so naming its override means resolving the import the
+    way a call through one is resolved. `CachingUserStore` in the same fixture
+    covers the same-file half.
+    """
+    functions = _by_id(py_trace)
+    assert functions["app_service_get"]["overrides"] == ["UserStore.get"], (
+        "a base class reached through `from app.store import UserStore` was not resolved"
+    )
+    assert functions["app_store_get_l22"]["overrides"] == ["UserStore.get"]
+    assert functions["app_store_get_l10"].get("overrides") is None, (
+        "the base class's own method was given an override of itself"
+    )
+
+
+def test_rust_tracer_reads_an_override_off_the_impl_header(rust_trace: dict) -> None:
+    """Rust's required trait methods have no body and so are never catalogued.
+    The relationship is still stated -- by `impl Describe for UserStore` -- and
+    reading it off the header rather than by finding a declaration is what lets
+    this tracer name the family that a body-driven lookup would miss."""
+    functions = _by_id(rust_trace)
+    assert functions["src_store_describe_l62"]["overrides"] == ["Describe::describe"], (
+        "the trait `Describe` declares `describe` without a body, so a tracer that "
+        "looked for a declaration to point at would have found nothing"
+    )
+
+
 # --- the Python tracer -----------------------------------------------------
 
 

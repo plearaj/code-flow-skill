@@ -94,7 +94,7 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     # family, which is why it is a field of its own rather than a slice of
     # `sites`.
     "open-closed": frozenset({"variants", "switchPoint"}),
-    "liskov-substitution": frozenset({"family", "weakened"}),
+    "liskov-substitution": frozenset({"family", "familyFrom", "weakened"}),
 }
 
 # Step 3: `reachedBy` has exactly two values. `"tests"` is the

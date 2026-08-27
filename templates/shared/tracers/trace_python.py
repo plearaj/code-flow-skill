@@ -720,6 +720,89 @@ def exported_for(analyzer: FileAnalyzer, fn: Dict[str, Any]) -> bool:
     return True
 
 
+def _base_class(
+    repo: Repository, analyzer: FileAnalyzer, base: str
+) -> Optional[Tuple[FileAnalyzer, Dict[str, Any]]]:
+    """The class record a base-class expression names, and the file it is in.
+
+    `bases` holds the expression as written -- `Base`, `models.Base`,
+    `Generic[T]` -- so the subscript and the dotted path come off before the
+    name is looked up: first in the same module, then through whatever the
+    module imported. A base this repository does not define resolves to
+    nothing, which is the answer, not a failure.
+    """
+    simple = base.split("[")[0].split(".")[-1].strip()
+    if not simple:
+        return None
+    local = analyzer.classes.get(simple)
+    if local is not None:
+        return (analyzer, local)
+    imported = analyzer.imports.get(simple)
+    if imported is None:
+        return None
+    level = imported.get("level", 0) or 0
+    if level:
+        dotted = repo.resolve_relative(analyzer.rel, imported["module"], level)
+    else:
+        dotted = imported.get("full") if imported.get("name") is None else imported["module"]
+    rel = repo.module_file(dotted) if dotted else None
+    if rel is None:
+        return None
+    other = repo.analyzers.get(rel)
+    if other is None:
+        return None
+    found = other.classes.get(simple)
+    return (other, found) if found is not None else None
+
+
+def overridden_names(
+    repo: Repository, analyzer: FileAnalyzer, fn: Dict[str, Any]
+) -> List[str]:
+    """The base-class methods this one overrides, nearest base first.
+
+    Python has no `override` keyword, so the fact has to come from the class
+    statement: a method overrides when a base class this repository defines
+    declares the same name. A base outside the repository -- `object`,
+    `unittest.TestCase`, a framework's model class -- is not resolvable here and
+    so is not named, the same silence `calls` keeps over a call that leaves.
+
+    Nested functions are skipped: `class` names the enclosing class for those
+    too, but a closure inside a method is not a member of anything.
+    """
+    cls = fn["class"] if not fn["nested"] else None
+    return _walk_bases(repo, analyzer, cls, fn["name"], set(), 0)
+
+
+def _walk_bases(
+    repo: Repository,
+    analyzer: FileAnalyzer,
+    cls: Optional[str],
+    name: str,
+    seen: Set[str],
+    depth: int,
+) -> List[str]:
+    if not cls or depth > 4 or cls in seen:
+        return []
+    seen.add(cls)
+    record = analyzer.classes.get(cls)
+    if record is None:
+        return []
+    found: List[str] = []
+    for base in record["bases"]:
+        resolved = _base_class(repo, analyzer, base)
+        if resolved is None:
+            continue
+        other, parent = resolved
+        if name in parent["methods"]:
+            declaration = parent["name"] + "." + name
+            if declaration not in found:
+                found.append(declaration)
+        for deeper in _walk_bases(repo, other, parent["name"], name, seen, depth + 1):
+            if deeper not in found:
+                found.append(deeper)
+    return found
+
+
 def build_output(repo: Repository, root_abs: str) -> Dict[str, Any]:
     functions: List[Dict[str, Any]] = []
     for fn in repo.functions:
@@ -740,6 +823,11 @@ def build_output(repo: Repository, root_abs: str) -> Dict[str, Any]:
             "decorators": fn["decorators"],
             "calls": fn.get("resolvedCalls", []),
         }
+        if fn["class"] and not fn["nested"]:
+            record["owner"] = fn["class"]
+        overrides = overridden_names(repo, analyzer, fn)
+        if overrides:
+            record["overrides"] = overrides
         snippet = common.snippet_for(
             analyzer.lines, fn["line"], fn["endLine"], fn["loc"], repo.detail
         )

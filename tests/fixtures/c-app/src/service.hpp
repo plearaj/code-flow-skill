@@ -4,8 +4,15 @@
 
 namespace demo {
 
+/// Anything that can say what it is, for the log.
+class Describable {
+public:
+    /// Returns a human-readable description.
+    virtual std::string describe() const { return "thing"; }
+};
+
 /// Authenticates users against the C store.
-class UserService {
+class UserService : public Describable {
 public:
     /// Builds a service reading from the given table.
     explicit UserService(std::string table);

@@ -981,6 +981,18 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
             "calls": fn["calls"],
             "dialect": source.language,
         }
+        if fn["owner"]:
+            record["owner"] = fn["owner"]
+        # A constructor or destructor is named for its own class, so it can
+        # never be an override of anything a supertype declares.
+        is_ctor = bool(fn["owner"]) and fn["name"].lstrip("~") == fn["owner"]
+        overrides = (
+            []
+            if is_ctor
+            else common.overridden_names(repo.types, repo.methods, fn["owner"], fn["name"], "::")
+        )
+        if overrides:
+            record["overrides"] = overrides
         snippet = common.snippet_for(source.lines, fn["line"], fn["endLine"], loc, repo.detail)
         if snippet is not None:
             record["snippet"] = snippet
@@ -989,6 +1001,9 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
 
 
 LIMITS = common.BASE_LIMITS + (
+    "A pure virtual and an Objective-C protocol selector are declarations with no body, so "
+    "they are not catalogued and an override of one carries nothing in `overrides`; an "
+    "override of a base method that does have a body is named.",
     "The preprocessor is not run: a function inside `#if` is catalogued whether or not "
     "that branch compiles, a call that exists only inside a macro body is not found, and "
     "a `#define`d name is neither expanded nor resolved.",

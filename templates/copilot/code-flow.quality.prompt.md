@@ -19,7 +19,7 @@ Follow these steps exactly:
    confirm each against current source. Off by default. It requires the source
    tree to be present and current, not merely the artifacts under `Code_Flows/`.
    It also decides two of step 3's detectors outright: open-closed and
-   liskov-substitution have no evidence in the map and do not run without it.
+   liskov-substitution cannot be settled from the map and do not run without it.
    `--rules [source ...]` — also check the map against rules this project has
    already written down. Off by default. A source is a path to a document, the
    word `auto`, or a rule written inline in quotes; several may be given,
@@ -56,11 +56,12 @@ Follow these steps exactly:
    with `--read-code`, or re-map with `/code-flow.map --whole-code-base --detail standard`.
    The other detectors are unaffected and still run. If `--read-code` was not
    passed, skip the open-closed and liskov-substitution detectors: these two are
-   the only ones whose evidence is not in the map at all — the map records what
-   calls what, and both are about what a body does, whether a selection among
-   variants is a conditional chain or a lookup and whether an override honours what
-   its siblings promise. The map can say where to look, which is what step 3 has it
-   do, but only source can settle either. Record both as skipped and name the
+   the only ones whose verdict is not in the map at all — both are about what a body
+   does, whether a selection among variants is a conditional chain or a lookup and
+   whether an override honours what its siblings promise, and a map records neither.
+   It can say where to look, which is what step 3 has it do, and where the inventory
+   carries `overrides` it can even say who the siblings are; what no map can say is
+   whether one of them breaks the promise. Record both as skipped and name the
    remedy: re-run with `--read-code`. If no inventory entry carries
    `calls`, skip the five detectors that walk the call graph — single-responsibility,
    interface-segregation, dependency-cycle, pass-through and internals-coupled-test.
@@ -209,21 +210,37 @@ Follow these steps exactly:
      that function; a lookup table, a registry, a dispatch dict, a match on an
      exhaustive sum type the compiler checks, or a polymorphic call drops it — those
      are already open to extension, and reporting one is worse than reporting nothing.
-   - **liskov-substitution (SOLID)** — look for an override family: at least 2
-     catalogued `source` functions sharing an unqualified `name` and a parameter
-     count, in different files, with at least one caller reaching 2 or more of them,
-     which is what makes the family polymorphic rather than a name collision. A
-     candidate when at least one member looks like it refuses or narrows what the
-     others do: a `loc` of 3 or fewer, or a `snippet` whose body raises a
-     not-implemented error, returns a constant unconditionally, or does nothing. Cite
-     each member that looks that way. `high` when at least 2 members do, `medium` at
-     1. The verify pass confirms three things: they really share a supertype or
-     interface rather than a name; a caller really holds one through that shared type;
-     and the member really weakens the contract — throwing where its siblings return,
-     ignoring an argument they honour, returning a sentinel they never return, or
-     demanding a precondition they do not. All three or it is dropped. Two unrelated
-     `save` methods in unrelated classes are the false positive this one is most
-     exposed to, and the first check is what removes it.
+   - **liskov-substitution (SOLID)** — look for an override family. There are two
+     ways to find one. **Stated, from `overrides`:** where the inventory entries
+     carry it, the members are the catalogued `source` functions naming the same
+     declaration — the same `Supertype.member` string. Two members is a family and
+     no caller has to be found, because the source already said they implement one
+     thing; set `familyFrom` to `overrides` and `family` to that declaration.
+     **Guessed, from names:** for functions carrying no `overrides` — a map built
+     without a tracer has none at all, and even a traced map has none where the
+     declaration is outside the repository or has no body to catalogue — fall back
+     to at least 2 catalogued `source` functions sharing an unqualified `name` and a
+     parameter count, in different files; where the map carries `calls`, also
+     require at least one caller reaching 2 or more of them, which is the cheapest
+     way to drop a name collision before the verify pass has to open anything. Set
+     `familyFrom` to `name` and `family` to the shared name. A function belongs to
+     one family, not two: stated families form first, and only the functions left
+     over are eligible for a guessed one. Both kinds can appear in one report — a
+     traced Java package beside an untraced C++ one is one repository with two
+     answers — and each finding says which it is. Either way, a candidate when at
+     least one member looks like it refuses or narrows what the others do: a `loc`
+     of 3 or fewer, or a `snippet` whose body raises a not-implemented error,
+     returns a constant unconditionally, or does nothing. Cite each member that
+     looks that way. `high` when at least 2 members do, `medium` at 1. The verify
+     pass confirms three things: they really share a supertype or interface rather
+     than a name; a caller really holds one through that shared type; and the member
+     really weakens the contract — throwing where its siblings return, ignoring an
+     argument they honour, returning a sentinel they never return, or demanding a
+     precondition they do not. All three or it is dropped. Two unrelated `save`
+     methods in unrelated classes are the false positive this one is most exposed
+     to, and the first check is what removes it — which for a stated family the
+     tracer already did, off `impl Trait for Type`, `extends` or `implements`, so
+     there the verify pass confirms the other two and nothing else.
 
    - **rule-violation (RULES)** — runs only when step 2 loaded at least one rule.
      For each rule marked `checkable`, search the inventory and the flow graphs for
@@ -295,9 +312,11 @@ Follow these steps exactly:
    reached into) and `internals`, the array of non-exported names the tests called;
    `open-closed` adds `variants` (the family's names) and `switchPoint`, the
    `file:line` of the function selecting among them; and `liskov-substitution` adds
-   `family` (the shared unqualified name) and `weakened`, the member names the
-   verify pass confirmed narrow the contract, qualified where the bare name would
-   not tell two of them apart.
+   `family` (the `Supertype.member` string for a stated family, the shared
+   unqualified name for a guessed one), `familyFrom` (`overrides` or `name`, saying
+   which of those two it is) and `weakened`, the member names the verify pass
+   confirmed narrow the contract, qualified where the bare name would not tell two
+   of them apart.
 4. **Verify against source.** Three things, and their order matters.
    - **Check staleness.** Two scopes, and they are not the same set; never report
      one as the other. `filesChanged` is a **whole-census** number: compare every
@@ -330,7 +349,8 @@ Follow these steps exactly:
      `confidence: "unverified"` and falls through to the staleness rule below.
      An open-closed or liskov-substitution candidate is confirmed against the test
      its own rule in step 3 states — the selection structure for one, the three
-     checks for the other — and dropped when it fails; these two exist only under
+     checks for the other, less whichever of the three `overrides` already settled
+     — and dropped when it fails; these two exist only under
      this flag, so a candidate this step cannot settle is dropped rather than
      carried, since there is no unverified form of either to fall back on.
      Without the flag every finding stays `unverified`.

@@ -1088,7 +1088,14 @@ function renderReport(){
         evidence.push(["variants", f.variants.join(", ")]);
       }
       if (f.switchPoint) evidence.push(["selected at", String(f.switchPoint)]);
-      if (f.family) evidence.push(["override family", String(f.family)]);
+      if (f.family){
+        /* Whether the family was stated by the source or matched by name is the one
+           thing that decides how much a reader should trust the finding, so it rides
+           beside the family rather than in the rationale where it can be skipped. */
+        evidence.push(["override family", String(f.family) +
+          (f.familyFrom === "overrides" ? " (stated by the source)" :
+           f.familyFrom === "name" ? " (matched by name)" : "")]);
+      }
       if (Array.isArray(f.weakened) && f.weakened.length){
         evidence.push(["weakens the contract", f.weakened.join(", ")]);
       }

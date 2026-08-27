@@ -23,6 +23,10 @@ class CachingUserStore(UserStore):
         """Return one user row, from cache when possible."""
         return self._read().get(user_id)
 
+    def warm(self, user_id):
+        """Pull one row into the cache ahead of time."""
+        return self.get(user_id)
+
 
 def unused_helper(value):
     """Nothing calls this; it is the dead-code candidate."""

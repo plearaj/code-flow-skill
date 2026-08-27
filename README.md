@@ -362,9 +362,10 @@ install alongside the templates and do that reading in one pass:
 | C, C++, Objective-C, C# | `.code-flow/tracers/trace_c_family.py` | any CPython 3.9+ |
 
 Each writes one JSON document: every function with its `file:line`, signature,
-purpose, role and export status; the resolved call graph between them; the entry
-points execution arrives through; and, for the TypeScript one, the component tree
-and the routes. The map then walks that graph instead of re-reading the
+purpose, role and export status; the type that declares it and the supertype
+declarations it overrides; the resolved call graph between them; the entry points
+execution arrives through; and, for the TypeScript one, the component tree and
+the routes. The map then walks that graph instead of re-reading the
 repository once per entry point, which is the difference between finishing a
 large map in one pass and finishing it in four.
 
@@ -488,6 +489,24 @@ tell any of them from a conditional chain — so the map says where to look and 
 source says whether it is a finding. Liskov gets the stricter treatment: a
 candidate survives only if the family really shares a supertype, a caller really
 holds one through it, and the member really weakens the contract.
+
+**Where a Liskov family comes from.** The first of those three checks is the one
+doing the most work — two unrelated `save` methods in unrelated classes are the
+false positive this detector is most exposed to — and on a traced map it is
+already settled before verification starts. Every tracer records `overrides` on
+the functions it catalogues: the supertype declarations each one implements, read
+off the relationship its language states outright (`impl Trait for Type`,
+`extends`, `implements`, a base-class list) and named only where that supertype
+really declares the member. A family is then the set of functions naming the same
+declaration — a fact, not a guess.
+
+Where `overrides` is absent — a map built without a tracer has none, and even a
+traced map has none where the declaration lives outside the repository — the
+detector falls back to matching an unqualified name and a parameter count, and
+verification does all three checks. Both kinds can appear in one report, so every
+finding carries `familyFrom`, `overrides` or `name`, and the viewers print it
+beside the family: *stated by the source* or *matched by name*. A reader never has
+to assume which one they are looking at.
 
 **The DEPTH three** are Ousterhout's deep-module argument — a module earns its
 keep when it hides more than it asks a caller to learn — including its test-side

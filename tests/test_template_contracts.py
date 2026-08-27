@@ -30,6 +30,36 @@ def test_map_template_requires_index(repo_root: Path, host: str, name: str) -> N
     assert "index.json" in text
 
 
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_owner_and_overrides(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Both fields, and the two things a reader has to know to use `overrides`
+    without over-reading it.
+
+    It is a name and not an id, so a consumer that tries to join it against
+    `calls` gets nothing; and it names a supertype only where that supertype
+    really declares the member, which is what separates it from the
+    name-and-arity guess the quality command falls back to. A template that
+    documented the field without either of those would produce maps whose
+    `overrides` means something different from what the tracers put there.
+    """
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "`owner`" in text, f"{host}/{name} never documents the `owner` field"
+    assert "`overrides`" in text, f"{host}/{name} never documents the `overrides` field"
+    assert re.search(r"`Supertype\.member`", text), (
+        f"{host}/{name} documents `overrides` without saying what one looks like"
+    )
+    assert re.search(r"name rather than an `id`", text), (
+        f"{host}/{name} never says `overrides` is a name and not an id, which is "
+        f"what stops a consumer joining it against the catalog"
+    )
+    assert re.search(r"really declares the member", text), (
+        f"{host}/{name} never says a supertype is named only where it declares "
+        f"the member — without it, `extends` alone reads as an override"
+    )
+
+
 INDEX_FIELD_NAMES = (
     "slug",
     "title",
@@ -552,9 +582,9 @@ DETECTOR_PRINCIPLES = (
     ("shallow-module", "DEPTH"),
     ("pass-through", "DEPTH"),
     ("internals-coupled-test", "DEPTH"),
-    # SOLID's other two. Their evidence is not in the map at all, so they run
-    # only under `--read-code`; they are still SOLID detectors, and the pairing
-    # is asserted here like every other.
+    # SOLID's other two. Neither can be settled from the map, so they run only
+    # under `--read-code`; they are still SOLID detectors, and the pairing is
+    # asserted here like every other.
     ("open-closed", "SOLID"),
     ("liskov-substitution", "SOLID"),
     # The fifth runs only when `--rules` was passed, but every host documents
@@ -2325,7 +2355,7 @@ def test_quality_template_gates_the_call_graph_detectors(
 def test_quality_template_gates_open_closed_and_liskov_on_read_code(
     repo_root: Path, host: str, name: str
 ) -> None:
-    """These two are the only detectors whose evidence is not in the map at all.
+    """These two are the only detectors whose verdict is not in the map at all.
     A dispatch table, a registry and a polymorphic call are all correct answers
     to the problem open-closed describes, and the call graph cannot tell any of
     them from a conditional chain — so the map locates candidates and source
@@ -2420,3 +2450,63 @@ def test_both_scaffolds_accept_every_principle_the_templates_name(
             f"{scaffold} rejects principle {principle!r}, which the quality "
             f"templates can emit"
         )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_forms_liskov_families_two_ways(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The Liskov detector has two family rules and they are not
+    interchangeable, so the template has to say which is which.
+
+    A stated family comes from `overrides`, which the source itself asserts —
+    `impl Trait for Type`, `extends`, `implements` — and a guessed one comes
+    from matching a name and a parameter count, which is the same evidence that
+    makes two unrelated `save` methods look like siblings. Reporting both under
+    one label would give the guess the authority of the fact, so the finding
+    carries `familyFrom` and the template names both of its values.
+    """
+    region = _detectors_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    )
+    assert "`overrides`" in region, (
+        f"{host}/{name} never has liskov-substitution read `overrides`"
+    )
+    assert re.search(r"`familyFrom`", region), (
+        f"{host}/{name} never records which way the family was formed"
+    )
+    for value in ("`overrides`", "`name`"):
+        assert re.search(rf"[Ss]et\s+`familyFrom`\s+to\s+{re.escape(value)}", region), (
+            f"{host}/{name} never says when familyFrom is {value}"
+        )
+    # The precedence rule. Without it a function could be counted in a stated
+    # family and a guessed one at once, and the same weakened member would be
+    # reported twice under two different levels of evidence.
+    assert re.search(
+        r"belongs to one family, not two.{0,200}?(stated|formed first)", region
+    ), f"{host}/{name} never says a stated family wins over a guessed one"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_still_verifies_a_guessed_liskov_family(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`overrides` settles the shared-supertype check, and only that one.
+
+    That check is the one doing the most work to keep two unrelated `save`
+    methods out of the report, so a template that let it lapse for *every*
+    family — rather than only where the tracer already made it — would turn the
+    field into a licence to skip verification.
+    """
+    region = _detectors_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    )
+    assert re.search(
+        r"share a supertype or interface\s+rather than a name", region
+    ), f"{host}/{name} dropped the shared-supertype check entirely"
+    assert re.search(
+        r"(stated family|already did).{0,260}?(other two|nothing else)", region
+    ), (
+        f"{host}/{name} never limits the `overrides` shortcut to the check it "
+        f"actually settles"
+    )

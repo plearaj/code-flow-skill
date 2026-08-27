@@ -1178,6 +1178,49 @@ function exportedFunctionIn(repo, rel, name) {
   return null;
 }
 
+/** The class a heritage clause names, and the file it was declared in. */
+function classByName(repo, file, name) {
+  const simple = name.split(".").pop();
+  const local = file.classes.get(simple);
+  if (local) return { file, cls: local };
+  const imported = file.imports.get(simple);
+  if (!imported) return null;
+  const rel = repo.resolve(file.rel, imported.module);
+  const other = rel && repo.files.get(rel);
+  if (!other) return null;
+  const named = imported.name && imported.name !== "default" ? imported.name : simple;
+  const cls = other.classes.get(named) || other.classes.get(simple);
+  return cls ? { file: other, cls } : null;
+}
+
+/**
+ * The base-class methods `fn` overrides, nearest base first.
+ *
+ * Only `extends` is followed. `implements` names an interface, and an interface
+ * declares no bodies, so there is no method record to check the name against --
+ * naming one anyway would report an override for every method of a class that
+ * happens to implement something. A base outside the repository resolves to
+ * nothing and is not named, the same silence a call that leaves keeps.
+ */
+function overriddenNames(repo, file, fn) {
+  if (!fn.class) return [];
+  const found = [];
+  const seen = new Set();
+  let context = { file, cls: file.classes.get(fn.class) };
+  while (context && context.cls && !seen.has(context.cls.name)) {
+    seen.add(context.cls.name);
+    if (!context.cls.extends) break;
+    const parent = classByName(repo, context.file, context.cls.extends);
+    if (!parent) break;
+    if (parent.cls.methods.has(fn.name)) {
+      const declaration = `${parent.cls.name}.${fn.name}`;
+      if (!found.includes(declaration)) found.push(declaration);
+    }
+    context = parent;
+  }
+  return found;
+}
+
 function methodOnClass(repo, file, className, method) {
   const local = file.classes.get(className);
   if (local && local.methods.has(method)) return local.methods.get(method);
@@ -1531,6 +1574,9 @@ function buildOutput(repo, detail) {
         decorators: fn.decorators || [],
         calls: fn.calls || [],
       };
+      if (fn.class) record.owner = fn.class;
+      const overrides = overriddenNames(repo, file, fn);
+      if (overrides.length) record.overrides = overrides;
       if (fn.componentId) record.component = fn.componentId;
       const snippet = snippetFor(file, fn, detail);
       if (snippet !== null) record.snippet = snippet;
@@ -1586,6 +1632,10 @@ function buildOutput(repo, detail) {
         "in ambiguousCalls rather than guessed into edges.",
       "Components are recognized per framework by declaration shape; one produced by a factory " +
         "or a higher-order component may be missed.",
+      "`overrides` names only a declaration this repository defines: a method that overrides " +
+        "one from a dependency, a framework base class or the standard library carries nothing.",
+      "`overrides` follows `extends` only. An interface declares no bodies, so a class that " +
+        "implements one carries nothing for the members it satisfies.",
     ],
   };
 }

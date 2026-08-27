@@ -33,8 +33,8 @@ The user's request carries two optional flags:
   those candidates cite and confirm each against current source. Off by default.
   It requires the source tree to be present and current, not merely the artifacts
   under `Code_Flows/`. It also decides two of step 3's detectors outright:
-  open-closed and liskov-substitution have no evidence in the map and do not run
-  without it.
+  open-closed and liskov-substitution cannot be settled from the map and do not
+  run without it.
 - `--rules [source ...]` — also check the map against rules this project has
   already written down. Off by default. A source is a path to a document, the
   word `auto`, or a rule written inline in quotes; several may be given,
@@ -96,12 +96,13 @@ findings require. Record it as skipped and name both remedies: re-run with
 The other detectors are unaffected and still run.
 
 **If `--read-code` was not passed**, skip the open-closed and
-liskov-substitution detectors. These two are the only ones whose evidence is not
-in the map at all: the map records what calls what, and both of these are about
-what a body does — whether a selection among variants is a conditional chain or a
-lookup, and whether an override honours what its siblings promise. The map can
-say where to look, which is what step 3 has it do, but only source can settle
-either. Record both as skipped and name the remedy: re-run with `--read-code`.
+liskov-substitution detectors. These two are the only ones whose verdict is not
+in the map at all: both are about what a body does — whether a selection among
+variants is a conditional chain or a lookup, and whether an override honours what
+its siblings promise — and a map records neither. It can say where to look, which
+is what step 3 has it do, and where the inventory carries `overrides` it can even
+say who the siblings are; what no map can say is whether one of them breaks the
+promise. Record both as skipped and name the remedy: re-run with `--read-code`.
 
 **If no inventory entry carries `calls`**, skip the five detectors that walk the
 call graph: single-responsibility, interface-segregation, dependency-cycle,
@@ -309,15 +310,39 @@ a match on an exhaustive sum type the compiler checks, or a polymorphic call
 drops it — those are the shapes that are already open to extension, and reporting
 one is worse than reporting nothing.
 
-**l. liskov-substitution (SOLID).** Look for an override family: at least 2
-catalogued `source` functions sharing an unqualified `name` and a parameter
-count, in different files, with at least one caller reaching 2 or more of them —
-which is what makes the family polymorphic rather than a name collision. It is a
-candidate when at least one member looks like it refuses or narrows what the
-others do: a `loc` of 3 or fewer, or a `snippet` whose body raises a
-not-implemented error, returns a constant unconditionally, or does nothing. Cite
-each member that looks that way. Severity is `high` when at least 2 members do,
-`medium` at 1.
+**l. liskov-substitution (SOLID).** Look for an override family. There are two
+ways to find one, and which is available depends on the map.
+
+**Stated, from `overrides`.** Where the inventory entries carry `overrides`, the
+family is read rather than guessed: its members are the catalogued `source`
+functions that name the same declaration — the same `Supertype.member` string.
+Two members is a family, and no caller has to be found to establish it, because
+the source already said these functions implement one thing. Set `familyFrom` to
+`overrides` and `family` to that declaration.
+
+**Guessed, from names.** For functions that carry no `overrides` — a map built
+without a tracer has none at all, and even a traced map has none where the
+declaration is outside the repository or has no body the tracer could
+catalogue — fall back to the shape the map can still see: at least 2 catalogued
+`source` functions sharing an unqualified `name` and a parameter count, in
+different files. Where the map carries `calls`, also require at least one caller
+reaching 2 or more of them; that is the cheapest way to drop a name collision
+before step 4b has to open anything. Where it does not, every such group is a
+candidate and step 4b's first check does the same work by reading. Set
+`familyFrom` to `name` and `family` to the shared name.
+
+A function belongs to one family, not two: the stated families are formed first,
+and only the functions left over are eligible for a guessed one. A map may
+produce both kinds at once — a traced Java package beside an untraced C++ one is
+one repository with two answers — and each finding says which kind it is, so a
+reader can weigh a stated family differently from a guessed one instead of
+having to assume.
+
+Either way, it is a candidate when at least one member looks like it refuses or
+narrows what the others do: a `loc` of 3 or fewer, or a `snippet` whose body
+raises a not-implemented error, returns a constant unconditionally, or does
+nothing. Cite each member that looks that way. Severity is `high` when at least 2
+members do, `medium` at 1.
 
 Step 4b decides this one too, and it has more to check than the other. Open the
 members and confirm three things: they really do share a supertype or interface
@@ -327,6 +352,14 @@ ignoring an argument they honour, returning a sentinel they never return, or
 demanding a precondition they do not. All three or it is dropped. Two unrelated
 `save` methods in unrelated classes are the false positive this detector is most
 exposed to, and the first check is what removes it.
+
+For a stated family the first check is already settled — the tracer read `impl
+Trait for Type`, `extends` or `implements` off the source itself, and named a
+supertype only where that supertype really declares the member — so step 4b
+confirms the other two and nothing else. That is the whole gain from the field:
+the check that was doing the most work to remove false positives is the one it
+makes unnecessary. Confirm it again for a guessed family, where nothing has
+established it.
 
 **m. rule-violation (RULES).** Runs only when step 2 loaded at least one rule.
 For each rule marked `checkable`, search the inventory and the flow graphs for
@@ -413,9 +446,12 @@ repo-relative like every other path in this report:
   `internals`, the array of non-exported names the tests called.
 - `open-closed` adds `variants` — the family's names — and `switchPoint`, the
   `file:line` of the function that selects among them.
-- `liskov-substitution` adds `family` — the shared unqualified name — and
-  `weakened`, the member names step 4b confirmed narrow the contract, qualified
-  where the bare name would not tell two of them apart.
+- `liskov-substitution` adds `family` — the declaration the members share, which
+  is the `Supertype.member` string for a stated family and the shared unqualified
+  name for a guessed one — `familyFrom`, which is `overrides` or `name` and says
+  which of those two it is, and `weakened`, the member names step 4b confirmed
+  narrow the contract, qualified where the bare name would not tell two of them
+  apart.
 
 #### 4. Verify Against Source
 
@@ -459,9 +495,10 @@ reason the map is persisted in the first place.
 5. For each candidate that does not survive, drop it.
 6. An open-closed or liskov-substitution candidate is confirmed against the
    test its own rule in step 3 states — the selection structure for one, the
-   three checks for the other — and dropped when it fails. These two exist
-   only under this flag, so a candidate this step cannot settle is dropped
-   rather than carried: there is no unverified form of either to fall back on.
+   three checks for the other, less whichever of the three `overrides` already
+   settled — and dropped when it fails. These two exist only under this flag, so
+   a candidate this step cannot settle is dropped rather than carried: there is
+   no unverified form of either to fall back on.
 7. A candidate whose cited file cannot be opened at all — deleted, or unreadable
    — is neither confirmed nor dropped here: it keeps `confidence: "unverified"`
    and falls through to the staleness rule below.

@@ -117,6 +117,28 @@ from this repository at the same version.
   `dependencies`/`dependents`, `exports`/`consumers`/`widestConsumerUse`, `cycle`,
   `interface`/`hiddenLoc`, and `internals`. Both HTML scaffolds render them beside the
   cited sites, so a reader can check the number rather than take it.
+- **`owner` and `overrides` on every inventory entry, from every tracer.** `owner` is
+  the type that declares the function — class, struct, trait, `impl` target, interface,
+  `@implementation` — absent for a free function. `overrides` is the supertype
+  declarations it implements, nearest first, written `Supertype.member`. Like `calls`,
+  neither is inferred by reading: each tracer reads the relationship its own language
+  states outright — `impl Trait for Type`, `extends`, `implements`, a base-class list —
+  and names a supertype only where that supertype really declares the member, so
+  `AdminUserStore extends UserStore` does not make `findAdmin` an override of anything.
+  A supertype outside the repository is not named at all. It is a name and not an `id`
+  because a Java interface method, a C++ pure virtual and an Objective-C protocol
+  selector have no body to catalogue, and an id-only field would report the same
+  relationship in one language and stay silent in the next.
+- **`liskov-substitution` forms its family from `overrides` where the map carries it.**
+  A family is then the set of functions naming the same declaration — stated by the
+  source rather than matched by name — and the shared-supertype check, the one doing
+  the most work to keep two unrelated `save` methods out of the report, is settled
+  before verification starts. Where `overrides` is absent the detector falls back to
+  the previous name-and-parameter-count rule and verification does all three checks. A
+  function belongs to one family, not two: stated families form first. Every finding
+  carries `familyFrom`, `overrides` or `name`, and both scaffolds print it beside the
+  family — *stated by the source* or *matched by name* — so a reader never has to
+  assume which kind they are looking at.
 
 ### Added — checking your own rules
 

@@ -240,8 +240,9 @@
       "severity": "medium",
       "confidence": "verified",
       "title": "ReadOnlyStore.write raises where its siblings return",
-      "rationale": "Confirmed against source on all three counts: the three stores share the Store base, dispatch_write holds one through it, and only this member refuses — FileStore.write and MemoryStore.write both return, so a caller holding a Store cannot rely on write working.",
-      "family": "write",
+      "rationale": "The map stated the family: all three stores carry overrides naming Store.write, so no name matching was involved. Verification confirmed the two counts left — dispatch_write holds one through the Store type, and only this member refuses; FileStore.write and MemoryStore.write both return, so a caller holding a Store cannot rely on write working.",
+      "family": "Store.write",
+      "familyFrom": "overrides",
       "weakened": ["ReadOnlyStore.write"],
       "sites": [
         { "file": "src/store/readonly.py", "line": 18, "symbol": "write",
