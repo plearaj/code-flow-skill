@@ -174,6 +174,18 @@ from this repository at the same version.
 - `inventory.json` may now carry a `components` array alongside `functions`.
 - The interactive viewer, the bundle and the quality report accept the new kinds and the
   new principle; existing artifacts render unchanged.
+- **Three detectors now report each repeated fact once.** An aggregation rule left
+  implicit is one the assistant re-decides per run, so two runs over the same map could
+  legitimately disagree about how many findings it holds. Each is now stated:
+  `repeated-sequence` reports only maximal chains — every contiguous run of 3 or more
+  calls inside a repeated chain repeats over exactly the same flows, so a shared path of
+  6 calls contained ten findings; `complexity-hotspot` reports one finding per function
+  however many of its three thresholds it trips and however many flows reach it, citing
+  the metric furthest past its threshold and carrying the rest in `alsoTripped`; and
+  `dependency-cycle` reports one finding per strongly connected component rather than
+  one per rotation or per ring, citing the shortest ring as an exemplar with
+  `cycleCount` beside it. `unreached` is deliberately untouched — it subtracts ids from
+  ids, so each id appears once by construction and the same fact cannot repeat.
 - **`repeated-sequence` reports one finding per group of chains, not one per chain.** A
   dispatcher handing off to a family of siblings that all return to the same place
   produced one `high` finding per sibling — the same fact restated, four times over on

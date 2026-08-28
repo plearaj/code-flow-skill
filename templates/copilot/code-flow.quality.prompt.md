@@ -118,6 +118,10 @@ Follow these steps exactly:
    - **repeated-sequence (DRY)** — chains of at least 3 consecutive calls appearing
      in at least 2 flows. `high` at that threshold; shorter or rarer is not a
      finding. Cite the shared subpath and every flow `slug` it appears in.
+     Only maximal chains are findings: every contiguous run of 3 or more calls
+     inside a repeated chain repeats over exactly the same flows, so a shared
+     path of 6 calls contains ten of them. Report a chain only when no longer
+     chain over the same set of flows contains it.
      Chains sharing both endpoints are one finding, never one per variant: a
      dispatcher handing off to a family of siblings that all return to the same
      place yields one chain per sibling, which is the same fact restated. Group
@@ -126,7 +130,15 @@ Follow these steps exactly:
      differing at either endpoint stay separate.
    - **complexity-hotspot (KISS)** — per node, fan-out (outbound edges) and depth
      (distance from that flow's `entry`). `high` at fan-out 8, depth 6, or `loc`
-     120; otherwise `medium`. Cite the metric that tripped and its value.
+     120; otherwise `medium`. Cite the metric that tripped and its value. One
+     function is one finding however many ways it trips: the thresholds are
+     joined by `or`, so a function can exceed all three and is then the worst
+     function in the report, not three problems at one `file:line`. Cite the
+     metric furthest past its threshold as `metric` and `value` and put the
+     others in `alsoTripped`, written `name = value` and an empty array rather
+     than absent when only one tripped. A function reached by several flows has a depth in
+     each: take the deepest and name that flow in the rationale. Never emit one
+     finding per metric or one per flow.
    - **unreached (YAGNI)** — subtract: every inventory `id` appearing as a node
      `id` in any flow is reached, and the join is exact because the map derives
      both by the same rule, so do not match on names. A `role` of `test` is never
@@ -171,7 +183,15 @@ Follow these steps exactly:
      onward. This is the half of dependency inversion a call graph can establish; the
      other half — whether a dependency points at an abstraction or a concretion — it
      cannot, and the usual remedy for a cycle is to invert one of its edges behind an
-     interface, which is why it reports under SOLID.
+     interface, which is why it reports under SOLID. One knot is one finding: a
+     ring is discovered once per file you start the walk from, and a group of
+     files that all reach each other holds many distinct rings, every one the
+     same knot untied by inverting one of the same edges. Take the strongly
+     connected components; each holding more than one file is one finding, and
+     the severity rule reads on the component. Cite the shortest ring through it
+     as `cycle` and put the number of distinct simple cycles the component holds
+     in `cycleCount` — 1 when it is a single ring. Never emit one finding per
+     rotation, or one per ring through the same component.
 
    **Deep modules.** The three below weigh interface cost against hidden
    functionality: a module earns its keep when it hides more than it asks a caller to
@@ -314,15 +334,18 @@ Follow these steps exactly:
    `flows` (the array of flow `slug`s the chain appears in), `variants` (the
    interior of each chain the group collapsed) and `occurrences` (how many chains
    the group holds); `complexity-hotspot`
-   adds `metric` (`fan-out`, `depth` or `loc`) and `value`; `unreached` adds
+   adds `metric` (`fan-out`, `depth` or `loc`) and `value` — the one furthest past
+   its threshold — plus `alsoTripped`, the others it exceeded written
+   `name = value` and empty when it exceeded only one; `unreached` adds
    `exported`, copied from the inventory entry, and `reachedBy`, whose only two
    values are `"none"` (reached by nothing) and `"tests"` (reached only by test-role
    callers, which is what `production-unreached` means); `rule-violation` adds `rule`
    (the text, quoted), `ruleId` and `ruleSource`; `single-responsibility` adds
    `module`, `dependencies` and `dependents`; `interface-segregation` adds `module`,
    `exports`, `consumers` and `widestConsumerUse`; `dependency-cycle` adds `cycle`,
-   the file paths in the order the calls run with the first repeated at the end so
-   the ring closes; `shallow-module` adds `module`, `interface` and `hiddenLoc`;
+   the shortest ring through the component as file paths in the order the calls run
+   with the first repeated at the end so the ring closes, and `cycleCount`, how many
+   distinct simple cycles the component holds; `shallow-module` adds `module`, `interface` and `hiddenLoc`;
    `pass-through` adds `module`; `internals-coupled-test` adds `module` (the file
    reached into) and `internals`, the array of non-exported names the tests called;
    `open-closed` adds `variants` (the family's names) and `switchPoint`, the

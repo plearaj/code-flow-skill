@@ -65,7 +65,12 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     # unconditional — a group of one carries its single interior and a count of
     # 1, so no reader has to tell a missing field from a count of one.
     "repeated-sequence": frozenset({"flows", "variants", "occurrences"}),
-    "complexity-hotspot": frozenset({"metric", "value"}),
+    # `alsoTripped` carries the thresholds this function exceeded besides the one
+    # in `metric`. The three are joined by `or`, so a function can trip all of
+    # them and is then the worst function in the report — one thing to simplify
+    # at one `file:line`, not three findings. Unconditional: an empty array says
+    # "tripped once", which a missing field cannot.
+    "complexity-hotspot": frozenset({"metric", "value", "alsoTripped"}),
     # `reachedBy` is what gives `production-unreached` a home in the JSON. Both
     # outcomes emit `detector: "unreached"` with different severity rules, and
     # before this field the distinction survived only in `title`/`rationale`
@@ -89,7 +94,12 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     # `cycle` is the ring itself. It is the one piece of evidence that cannot be
     # reconstructed from the sites: the sites say which functions carry the
     # edges, not what order the edges close in.
-    "dependency-cycle": frozenset({"cycle"}),
+    # `cycle` is one ring; `cycleCount` says how many the component holds. A knot
+    # of five mutually-reaching modules contains dozens of simple cycles and one
+    # problem, so the finding is per strongly connected component and the count
+    # is what tells a reader the cited ring is an exemplar rather than the whole
+    # of it.
+    "dependency-cycle": frozenset({"cycle", "cycleCount"}),
     "shallow-module": frozenset({"module", "interface", "hiddenLoc"}),
     "pass-through": frozenset({"module"}),
     "internals-coupled-test": frozenset({"module", "internals"}),

@@ -107,6 +107,7 @@
       "rationale": "Three files across two top-level packages depend on each other in a cycle, so none of them can be read, tested or changed on its own.",
       "cycle": ["src/auth/session.py", "src/api/schemas.py", "src/auth/validators.py",
                 "src/auth/session.py"],
+      "cycleCount": 1,
       "sites": [
         { "file": "src/auth/session.py", "line": 31, "symbol": "load_user",
           "snippet": "    payload = schemas.parse_session(raw)" },
@@ -163,14 +164,15 @@
       "detector": "complexity-hotspot",
       "severity": "high",
       "confidence": "verified",
-      "title": "handle_request has a fan-out of 11",
-      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8.",
+      "title": "handle_request has a fan-out of 11 and a depth of 7",
+      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8, and sits 7 calls deep in user_login. Both describe the same function; fan-out is the further past its threshold.",
       "sites": [
         { "file": "src/web/views.py", "line": 63, "symbol": "handle_request",
           "snippet": "def handle_request(req):\n    ..." }
       ],
       "metric": "fan-out",
       "value": 11,
+      "alsoTripped": ["depth = 7"],
       "suggestion": "Group the validation, persistence and notification calls into three helpers.",
       "effort": "medium"
     },

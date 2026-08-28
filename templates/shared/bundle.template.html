@@ -1088,7 +1088,12 @@ function renderReport(){
       if (f.rule) evidence.push([f.ruleId ? "rule " + f.ruleId : "rule", String(f.rule)]);
       if (f.ruleSource) evidence.push(["rule source", String(f.ruleSource)]);
       if (f.metric != null){
-        evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "")]);
+        /* A function can exceed all three thresholds and is then one finding, so the
+           others ride beside the one that decided the row. Without them the report
+           understates its own worst function. */
+        evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "") +
+          (Array.isArray(f.alsoTripped) && f.alsoTripped.length
+            ? ", also " + f.alsoTripped.join(", ") : "")]);
       } else if (f.value != null){
         evidence.push(["value", String(f.value)]);
       }
@@ -1109,7 +1114,12 @@ function renderReport(){
         evidence.push(["exported surface", String(f.exports) + " exported, " + String(f.consumers) +
           " " + plural(f.consumers, "consumer", "consumers") + ", widest uses " + String(f.widestConsumerUse)]);
       }
-      if (Array.isArray(f.cycle) && f.cycle.length) evidence.push(["cycle", f.cycle.join(" \u2192 ")]);
+      if (Array.isArray(f.cycle) && f.cycle.length){
+        /* The cited ring is an exemplar: one knot of mutually-reaching modules holds
+           many. The count is what stops a reader taking it for the whole cycle. */
+        evidence.push(["cycle", f.cycle.join(" \u2192 ") +
+          (f.cycleCount > 1 ? " (1 of " + f.cycleCount + " through this component)" : "")]);
+      }
       if (f.interface != null){
         evidence.push(["module depth", String(f.interface) + " exported, " + String(f.hiddenLoc) +
           " lines behind them"]);

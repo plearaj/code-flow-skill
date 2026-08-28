@@ -93,6 +93,7 @@
       ],
       "metric": "fan-out",
       "value": 6,
+      "alsoTripped": [],
       "suggestion": "Group the routing and logging calls into two helpers.",
       "effort": "medium"
     },

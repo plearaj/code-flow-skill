@@ -194,6 +194,13 @@ at least 40 lines; otherwise `medium`. Cite every site, with its snippet.
 at that threshold; a shorter chain, or one appearing in only 1 flow, is not a
 finding. Cite the shared subpath and the `slug` of every flow it appears in.
 
+**Only maximal chains are findings.** Every contiguous run of 3 or more calls
+inside a repeated chain is itself a chain repeating over exactly the same flows:
+a shared path of 6 calls contains ten of them. Report a chain only when no longer
+chain over the same set of flows contains it. The runs inside it are the same
+fact seen through a shorter window, and emitting them buries the one finding a
+reader can act on under nine they cannot.
+
 **Chains sharing both endpoints are one finding.** A dispatcher that hands off to
 a family of siblings which all return to the same place yields one chain per
 sibling — the same fact restated once per variant. Group the chains by their
@@ -211,6 +218,17 @@ fan-out (its count of outbound edges) and its depth (its distance from that flow
 `entry` node). Severity is `high` when fan-out is at least 8, or depth is at least
 6, or the function's `loc` is at least 120; otherwise `medium`. Cite the metric
 that tripped and its value.
+
+**One function is one finding, however many ways it trips.** The thresholds are
+joined by `or`, so a function can exceed all three — and it is then the worst
+function in the report, not three separate problems: the three numbers describe
+one thing to simplify, at one `file:line`. Cite the metric furthest past its
+threshold as `metric` and `value`, and put each of the others in `alsoTripped`,
+written `name = value`. When only one tripped, `alsoTripped` is an empty array
+rather than absent, so a reader never has to tell a missing field from a function
+that tripped once. A function reached by several flows has a depth in each: take
+the deepest and name that flow in the rationale. Never emit one finding per
+metric or one per flow.
 
 **d. unreached (YAGNI).** Subtract. Every inventory `id` that appears as a node
 `id` in any flow is reached; what remains is not. The join is exact — the map
@@ -266,7 +284,17 @@ from a function in one file to a function in another as an edge — and find eve
 cycle. Two files that call each other, or a longer ring, is a finding. Severity
 is `high` when the cycle spans at least 3 files or crosses top-level directories;
 otherwise `medium`. Cite one site per file in the cycle: the function whose call
-carries the edge onward. This is the half of dependency inversion a call graph
+carries the edge onward.
+
+**One knot is one finding.** A ring is discovered once per file you start the
+walk from, and a group of files that all reach each other holds many distinct
+rings — every one of them the same knot, untied by inverting one of the same
+edges. Take the strongly connected components of the module graph: each component
+holding more than one file is one finding, and the severity rule reads on the
+component. Cite the shortest ring through it as `cycle`, which is the one a
+reader should look at first, and put the number of distinct simple cycles the
+component holds in `cycleCount` — 1 when the component is a single ring. Never
+emit one finding per rotation, or one per ring through the same component. This is the half of dependency inversion a call graph
 can establish. The other half — whether a dependency points at an abstraction or
 at a concretion — it cannot, and the usual remedy for a cycle is to invert one of
 its edges behind an interface, which is why it reports under SOLID.
@@ -449,7 +477,9 @@ repo-relative like every other path in this report:
   in — plus `variants`, the interior of each chain the group collapsed, written
   as its call arrow joined with the same arrow used in the title, and
   `occurrences`, how many chains the group holds.
-- `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value`.
+- `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value` —
+  the one furthest past its threshold — plus `alsoTripped`, the others it
+  exceeded written `name = value`, empty when it exceeded only one.
 - `unreached` adds `exported`, copied from the inventory entry, and `reachedBy`,
   whose only two values are `"none"` (reached by nothing) and `"tests"` (reached
   only by test-role callers, which is what `production-unreached` means).
@@ -460,8 +490,10 @@ repo-relative like every other path in this report:
 - `interface-segregation` adds `module`, `exports` (its count of exported
   functions), `consumers` (the count of files calling in) and
   `widestConsumerUse` (how many of those exports the widest consumer uses).
-- `dependency-cycle` adds `cycle` — the file paths in the order the calls run,
-  the first repeated at the end so the ring closes.
+- `dependency-cycle` adds `cycle` — the shortest ring through the component, as
+  file paths in the order the calls run with the first repeated at the end so the
+  ring closes — and `cycleCount`, how many distinct simple cycles the component
+  holds.
 - `shallow-module` adds `module`, `interface` and `hiddenLoc`.
 - `pass-through` adds `module`.
 - `internals-coupled-test` adds `module` — the file reached into — and

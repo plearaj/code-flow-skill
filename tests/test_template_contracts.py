@@ -2651,3 +2651,70 @@ def test_quality_template_collapses_repeated_sequences_that_share_endpoints(
     assert re.search(r"differ(?:ing)? at (?:either|an) endpoint", rule), (
         f"{name} does not say that chains differing at an endpoint stay separate"
     )
+
+
+# Every detector that can restate one fact, and the phrase that opens the rule
+# forbidding it. Written as a table because the failure is identical in each
+# case and the fix is the same shape: group first, then report the group once.
+_AGGREGATION_RULES = (
+    (
+        "repeated-sequence",
+        r"\bOnly maximal chains are findings\b",
+        "complexity-hotspot",
+        ("no longer\\s+chain over the same set of flows",),
+    ),
+    (
+        "complexity-hotspot",
+        r"\bOne function is one finding\b",
+        "unreached",
+        # Pinned to the emission clause, not the bare field name: the paragraph
+        # names `alsoTripped` twice — once to say what goes in it and once to say
+        # it is empty rather than absent — so asserting the name alone passes
+        # with the first of those deleted.
+        (r"others (?:in|into) `alsoTripped`", r"empty array", r"per metric or one per flow"),
+    ),
+    (
+        "dependency-cycle",
+        r"\bOne knot is one finding\b",
+        "Deep modules",
+        (r"strongly connected components", r"`cycleCount`"),
+    ),
+)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+@pytest.mark.parametrize("detector,opens,ends,required", _AGGREGATION_RULES)
+def test_quality_template_reports_each_repeated_fact_once(
+    repo_root: Path, host: str, name: str, detector: str, opens: str, ends: str,
+    required: tuple[str, ...],
+) -> None:
+    """A detector that reports one fact N times makes the report longer without
+    making it say more, and every one of those N rows counts separately toward
+    the severity totals a reader skims first.
+
+    Three detectors can do it, each a different way, and none of them showed on
+    the run that prompted this — the chains were all minimal, no function tripped
+    two thresholds, and the repository has no cycles. That is what makes them
+    worth pinning: an aggregation rule left implicit is one the assistant
+    re-decides per run, so two runs over the same map can legitimately disagree
+    about how many findings it contains.
+
+    `unreached` is deliberately absent. It subtracts ids from ids, so each id
+    appears once by construction and the same fact cannot be reported twice.
+
+    Each rule is scoped to its own paragraph — every name below also appears in
+    the evidence table inside the same region, so a region-wide search for
+    `alsoTripped` or `cycleCount` passes with the rule deleted.
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    start = re.search(opens, region)
+    assert start, (
+        f"{name} states no rule collapsing {detector}'s repeated findings into one"
+    )
+    stop = region.find(ends, start.end())
+    rule = region[start.start() : stop if stop != -1 else len(region)]
+    for pattern in required:
+        assert re.search(pattern, rule), (
+            f"{name}'s {detector} aggregation rule never states {pattern!r}, so it "
+            f"says to group without saying what a grouped finding looks like"
+        )
