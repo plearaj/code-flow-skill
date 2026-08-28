@@ -957,9 +957,18 @@ function renderReport(){
     "/code-flow.map --whole-code-base --tracer on";
   var NO_SOURCE = "this detector reads source, not the map, and --read-code was not passed — " +
     "re-run the quality command with --read-code to check it";
+  /* The three detectors defined over flow nodes rather than over the inventory.
+     A map built from a tracer's output with no tracing pass has an empty flow
+     registry, which is ordinary rather than broken -- and `unreached` there
+     would call the whole catalog dead code. */
+  var NO_FLOWS = "the map registers no traced flows, so there were no flow nodes to read \u2014 " +
+    "re-map with /code-flow.map --whole-code-base to trace them";
   var SKIP_REASONS = {
     "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
       "re-run the quality command with --read-code, or re-map with --detail standard",
+    "repeated-sequence": NO_FLOWS,
+    "complexity-hotspot": NO_FLOWS,
+    "unreached": NO_FLOWS,
     "rule-violation": "no rule could be read from the sources given to --rules, so there was " +
       "nothing to check against — every other detector is unaffected",
     "single-responsibility": NO_GRAPH,

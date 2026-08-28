@@ -104,6 +104,18 @@ is what step 3 has it do, and where the inventory carries `overrides` it can eve
 say who the siblings are; what no map can say is whether one of them breaks the
 promise. Record both as skipped and name the remedy: re-run with `--read-code`.
 
+**If the flow registry is empty** — `index.json` lists no flows, or every one it
+lists was unreadable — skip the three detectors defined over the flow graphs:
+repeated-sequence, complexity-hotspot and unreached. All three read flow *nodes*:
+one compares call chains across flows, one measures a node's fan-out and its
+distance from an entry point, and the third subtracts every reached id from every
+catalogued one. With no flows there are no nodes, and `unreached` in particular
+would report the entire catalog as dead code — the most confidently wrong output
+this command could produce. Record all three as skipped and name the remedy:
+re-map with `/code-flow.map --whole-code-base`, which traces the flows the
+inventory alone does not carry. A map built from a tracer's output without a
+tracing pass is the ordinary way to arrive here, not a broken one.
+
 **If no inventory entry carries `calls`**, skip the five detectors that walk the
 call graph: single-responsibility, interface-segregation, dependency-cycle,
 pass-through and internals-coupled-test. `calls` is a fact a tracer establishes,

@@ -2510,3 +2510,66 @@ def test_quality_template_still_verifies_a_guessed_liskov_family(
         f"{host}/{name} never limits the `overrides` shortcut to the check it "
         f"actually settles"
     )
+
+
+_FLOW_DETECTORS = ("repeated-sequence", "complexity-hotspot", "unreached")
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_gates_the_flow_detectors(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A map built from a tracer's output with no tracing pass has an empty flow
+    registry, and three detectors are defined over flow *nodes* rather than over
+    the inventory.
+
+    `unreached` is why this gate has to exist: with nothing reached, subtracting
+    the reached set from the catalogued one reports every function in the
+    repository as dead code — the most confidently wrong output this command can
+    produce, and exactly what the gating rule exists to prevent.
+    """
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"flow registry is empty", region, re.IGNORECASE), (
+        f"{host}/{name} never states the condition that gates the flow detectors"
+    )
+    # Scoped to the gate's enumerated list, not to the region and not even to the
+    # gate's paragraph. `unreached` is named by the inventory-absent rule a few
+    # paragraphs up *and* again inside this gate's own rationale, so both looser
+    # searches pass with it struck from the list of what the gate actually skips.
+    listed = re.search(r"skip the three detectors[^.]*\.", region)
+    assert listed, f"{host}/{name} never names what the empty flow registry skips"
+    for detector in _FLOW_DETECTORS:
+        assert detector in listed.group(0), (
+            f"{host}/{name} does not gate {detector} on an empty flow registry; "
+            f"the gate lists {listed.group(0)!r}"
+        )
+    # Scoped to this gate's own sentence: three other rules in step 2 also name a
+    # remedy, and an unscoped search passes with this one's deleted.
+    assert re.search(
+        r"[Rr]ecord all three as skipped and name the remedy.{0,80}?--whole-code-base",
+        region,
+    ), f"{host}/{name} gates the three off without naming the remedy"
+
+
+@pytest.mark.parametrize(
+    "scaffold", ("report.template.html", "bundle.template.html")
+)
+def test_both_scaffolds_explain_every_skippable_detector(
+    repo_root: Path, scaffold: str
+) -> None:
+    """A skipped detector with no reason renders as "reason not recorded in this
+    report", which is the least useful thing the banner can say.
+
+    Every detector a step-2 gate can skip is asserted to have one, derived from
+    the gates rather than from a second hand-kept list.
+    """
+    skippable = set(_FLOW_DETECTORS) | set(_CALL_GRAPH_DETECTORS) | {
+        "duplicate-intent", "rule-violation", "open-closed", "liskov-substitution",
+    }
+    text = (repo_root / "templates" / "shared" / scaffold).read_text(encoding="utf-8")
+    table = re.search(r"var SKIP_REASONS = \{(.+?)\n\s*\};", text, re.DOTALL)
+    assert table, f"{scaffold} has no SKIP_REASONS table"
+    for detector in sorted(skippable):
+        assert f'"{detector}"' in table.group(1), (
+            f"{scaffold} records no reason for {detector!r}, which step 2 can skip"
+        )

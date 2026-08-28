@@ -108,6 +108,13 @@ from this repository at the same version.
   report; without it the two above are named as not checked, with the flag named as
   the remedy. The sentence is written even when SOLID produced no findings, because
   three principles reported and two never mentioned reads as five principles clean.
+- **The three flow detectors gate off when the map registers no traced flows** —
+  repeated-sequence, complexity-hotspot and unreached are defined over flow *nodes*,
+  and a map built from a tracer's output with no tracing pass has none. `unreached`
+  is why the gate has to exist: with nothing reached, subtracting the reached set
+  from the catalogued one reports every function in the repository as dead code.
+  Both scaffolds now carry a reason for all three, so the banner names the cause and
+  the remedy instead of "reason not recorded in this report".
 - **The five call-graph detectors gate off when the map has no `calls`**, naming each
   one and the remedy — re-map with `--tracer on` — in the same coverage banner that
   already reports a skipped duplicate-intent. `shallow-module` reads only export counts
