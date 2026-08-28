@@ -1043,3 +1043,82 @@ def test_typescript_tracer_does_not_mistake_a_callback_arrow_for_the_binding(
     )
     for name in ("plain", "bare", "generic", "annotated"):
         assert name in catalogued, f"{name} is a real arrow function and was not catalogued"
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_a_git_listing_of_nothing_falls_back_to_walking(
+    request, repo_root: Path, tmp_path: Path, which: str
+) -> None:
+    """`git ls-files` succeeding with no output is not the same as failing.
+
+    Both listers return None on the cases their docstrings name — not a git
+    checkout, git not installed — and the caller falls back to the walk for
+    those. Neither treated an *empty* listing as a third case, so
+    `listing if listing is not None else walk_files(...)` kept the empty list,
+    and `gitTrackedFiles(root) || walkFiles(root)` kept it too because `[]` is
+    truthy in JavaScript.
+
+    A directory a repository ignores is the ordinary way to reach that: point a
+    tracer at one and it catalogues nothing, reports no error, and the map that
+    comes out says the code is not there. Silence that looks like an answer is
+    the failure this project spends most of its rules preventing, so an empty
+    listing falls through to the walk. There is no case where that is wrong: a
+    genuinely empty directory walks to nothing either way.
+    """
+    bodies = {
+        "python": "def only(x):\n    return x\n",
+        "typescript": "export function only(x) { return x; }\n",
+        "rust": "pub fn only(x: i32) -> i32 {\n    x\n}\n",
+        "java": "public class Only {\n    public int only(int x) {\n        return x;\n    }\n}\n",
+        "c-family": "int only(int x) {\n    return x;\n}\n",
+    }
+    names = {
+        "python": "only.py", "typescript": "only.ts", "rust": "only.rs",
+        "java": "Only.java", "c-family": "only.c",
+    }
+    _write(tmp_path, names[which], bodies[which])
+    _write(tmp_path, ".gitignore", "*\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
+
+    listed = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files", "--cached", "--others", "--exclude-standard"],
+        capture_output=True, text=True, check=True,
+    )
+    assert not listed.stdout.strip(), "the fixture must actually produce an empty git listing"
+
+    trace = _rerun_in(repo_root, which, tmp_path, "thin")
+    assert [fn["name"] for fn in trace["functions"]] == ["only"], (
+        f"{which}: catalogued nothing under a root its own repository ignores"
+    )
+
+
+def test_the_catalog_is_ordered_by_file_and_line(repo_root: Path, tmp_path: Path) -> None:
+    """Every tracer emits `functions[]` sorted by file, then by line.
+
+    Written while splitting the TypeScript tracer's 169-line `collectFunctions`
+    into three passes. The worry was that the passes concatenate in a fixed order
+    and a later tidy-up could reorder them; the answer is that collection order
+    never reaches the output, because the catalog is sorted before it is emitted.
+    That is the property worth pinning — it is what lets the collectors be
+    reorganised at all, and what makes two runs over an unchanged repository
+    produce an identical file rather than a reshuffled one.
+
+    The fixture declares the three kinds in an order that disagrees with the
+    line order they end up in, so a catalog carrying collection order through
+    would not pass.
+    """
+    _write(
+        tmp_path,
+        "src/order.ts",
+        "export class First {\n"
+        "  alpha() { return 1; }\n"
+        "}\n"
+        "export function second() { return 2; }\n"
+        "export const third = () => 3;\n",
+    )
+    functions = _run_node_tracer(repo_root, tmp_path)["functions"]
+    assert [fn["name"] for fn in functions] == ["alpha", "second", "third"], (
+        "the catalog is not in line order"
+    )
+    keys = [(fn["file"], fn["line"]) for fn in functions]
+    assert keys == sorted(keys), "the catalog is not sorted by file then line"

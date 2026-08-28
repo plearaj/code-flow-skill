@@ -139,9 +139,15 @@ def git_tracked_files(root: str) -> Optional[List[str]]:
 
     Preferred over walking the tree because it applies the project's real
     ignore rules — every `.gitignore`, the global one, and `.git/info/exclude` —
-    rather than this file's approximation of them. Returns None when the
-    directory is not a git checkout or git is not installed, which is the only
-    reason the fallback walk below exists.
+    rather than this file's approximation of them.
+
+    Returns None when this listing cannot stand in for the walk: the directory
+    is not a git checkout, git is not installed, or git ran and listed nothing.
+    That last case is not "an empty repository" — it is most often a directory
+    the repository ignores, and keeping the empty list there catalogues nothing,
+    reports no error, and produces a map that says the code is not present. A
+    genuinely empty directory walks to nothing anyway, so falling back costs
+    that case nothing and saves this one.
     """
     try:
         out = subprocess.run(
@@ -154,7 +160,8 @@ def git_tracked_files(root: str) -> Optional[List[str]]:
         return None
     if out.returncode != 0:
         return None
-    return [line for line in out.stdout.splitlines() if line]
+    listed = [line for line in out.stdout.splitlines() if line]
+    return listed or None
 
 
 def walk_files(root: str) -> List[str]:
