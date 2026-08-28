@@ -372,6 +372,30 @@ if (skipped.length){
 } else {
   fact("No detectors were skipped");
 }
+/* A detector that ran and found nothing looks exactly like one that never ran:
+   the findings list simply carries no row with its name. On a report where every
+   SOLID and DEPTH detector was clean, that reads as SOLID never having been
+   checked -- the inference `detectorsSkipped` exists to prevent, arriving
+   through the other door. So the clean ones are named too. The set is derived
+   rather than kept: every detector, less the ones step 2 skipped, less the ones
+   that reported. */
+var ALL_DETECTORS = ["duplicate-intent", "repeated-sequence", "complexity-hotspot",
+  "unreached", "single-responsibility", "interface-segregation", "dependency-cycle",
+  "shallow-module", "pass-through", "internals-coupled-test", "open-closed",
+  "liskov-substitution", "rule-violation"];
+var reportedBy = {};
+findings.forEach(function(f){ if (f && f.detector) reportedBy[String(f.detector)] = 1; });
+var skippedBy = {};
+skipped.forEach(function(name){ skippedBy[String(name)] = 1; });
+var clean = ALL_DETECTORS.filter(function(name){
+  /* rule-violation checks rules somebody wrote down. With none loaded it neither
+     ran nor was skipped, so it is not clean -- it has nothing to be clean about. */
+  if (name === "rule-violation" && !coverage.rulesLoaded) return false;
+  return !skippedBy[name] && !reportedBy[name];
+});
+if (clean.length){
+  fact("Ran and found nothing: " + clean.join(", "));
+}
 el("p", "note", "Discovery was Glob, Grep and Read — not a parser. These counts describe " +
   "what the map catalogued, and anything it never reached was never examined.", banner);
 
@@ -479,7 +503,12 @@ if (!findings.length){
       evidence.push(["internals reached", f.internals.join(", ")]);
     }
     if (Array.isArray(f.variants) && f.variants.length){
-      evidence.push(["variants", f.variants.join(", ")]);
+      /* repeated-sequence collapses every chain sharing a pair of endpoints
+         into one row, so the count says how much this single row stands for.
+         Without it a group of four reads as a group of one. */
+      evidence.push(["variants", f.variants.join(", ") +
+        (f.occurrences != null ? " (" + f.occurrences + " " +
+          plural(f.occurrences, "chain", "chains") + ")" : "")]);
     }
     if (f.switchPoint) evidence.push(["selected at", String(f.switchPoint)]);
     if (f.family){

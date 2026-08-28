@@ -199,6 +199,18 @@ at least 40 lines; otherwise `medium`. Cite every site, with its snippet.
 at that threshold; a shorter chain, or one appearing in only 1 flow, is not a
 finding. Cite the shared subpath and the `slug` of every flow it appears in.
 
+**Chains sharing both endpoints are one finding.** A dispatcher that hands off to
+a family of siblings which all return to the same place yields one chain per
+sibling — the same fact restated once per variant. Group the chains by their
+first and last function and report each group once: cite the shared endpoints,
+put the differing interiors in `variants` and their count in `occurrences`.
+Never emit one finding per variant; a reader who has read the group has read
+them all, and four `high` rows about one dispatcher inflate the report's severity
+count without adding a fact. Chains differing at either endpoint are different
+facts and stay separate. A group of one is still a group: it carries its single
+interior and `occurrences` of 1, so a reader never has to work out whether the
+field is missing or the count is one.
+
 **c. complexity-hotspot (KISS).** For each node across the flow graphs, take its
 fan-out (its count of outbound edges) and its depth (its distance from that flow's
 `entry` node). Severity is `high` when fan-out is at least 8, or depth is at least
@@ -438,7 +450,10 @@ Most detectors carry evidence the fields above have no home for. Add exactly
 these, and nothing else — `module` is always the file path, forward-slash and
 repo-relative like every other path in this report:
 
-- `repeated-sequence` adds `flows` — the array of flow `slug`s the chain appears in.
+- `repeated-sequence` adds `flows` — the array of flow `slug`s the chain appears
+  in — plus `variants`, the interior of each chain the group collapsed, written
+  as its call arrow joined with the same arrow used in the title, and
+  `occurrences`, how many chains the group holds.
 - `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value`.
 - `unreached` adds `exported`, copied from the inventory entry, and `reachedBy`,
   whose only two values are `"none"` (reached by nothing) and `"tests"` (reached

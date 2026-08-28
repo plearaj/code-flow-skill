@@ -38,6 +38,8 @@
         { "file": "src/accounts/audit.py", "line": 11, "symbol": "record_access" }
       ],
       "flows": ["user_login", "password_reset", "account_close"],
+      "variants": ["assert_permission"],
+      "occurrences": 1,
       "suggestion": "Extract the three-call sequence into one authorize helper.",
       "effort": "medium"
     },

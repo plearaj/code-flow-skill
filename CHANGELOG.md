@@ -174,9 +174,33 @@ from this repository at the same version.
 - `inventory.json` may now carry a `components` array alongside `functions`.
 - The interactive viewer, the bundle and the quality report accept the new kinds and the
   new principle; existing artifacts render unchanged.
+- **`repeated-sequence` reports one finding per group of chains, not one per chain.** A
+  dispatcher handing off to a family of siblings that all return to the same place
+  produced one `high` finding per sibling — the same fact restated, four times over on
+  this repository's own map, each row counting separately toward the severity totals.
+  Chains sharing both endpoints are now grouped and reported once, carrying `variants`
+  (the interiors that differ) and `occurrences` (how many chains the row stands for).
+  Chains differing at either endpoint are different facts and stay separate.
+- **Both HTML scaffolds name the detectors that ran and found nothing.** A clean detector
+  was indistinguishable from one that never ran: neither put a row in the findings list.
+  On a report where all eight SOLID and DEPTH detectors were clean, that read as SOLID
+  never having been checked — the inference `detectorsSkipped` exists to prevent,
+  arriving through the other door. The banner now lists them, derived as every detector
+  less the skipped less the reporting rather than kept by hand.
 
 ### Fixed
 
+- **The TypeScript tracer no longer invents arrow functions, or loses real ones.** A
+  `const` binding whose value began with `(` had the next `=>` within 200 characters
+  read as its own arrow, so `const xs = (a || []).map((f) => f)` was catalogued as a
+  function — and, worse, the scan then resumed past that arrow's body, skipping every
+  real binding in between. One grouped expression swallowed an exported arrow function
+  three lines below it, and the map simply did not contain it. Only whitespace or a
+  return-type annotation may now sit between a parameter list and the arrow.
+- **Three unreachable branches removed**, all surfaced by running the tool over its own
+  source: `_snippet` in the Python tracer, `matchBracket` in the TypeScript tracer, and
+  an `interface` test in the Java tracer's `_is_exported` that returned exactly what the
+  line below it returned unconditionally.
 - **A generated flow page can be shared through corporate mail and chat again.** The
   viewer and the bundle drew their edge arrowheads with an SVG `<marker>`, which can
   only be reached by referencing it as `url(#id)` — a signature several corporate

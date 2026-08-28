@@ -34,6 +34,30 @@
     {
       "id": "DRY-01",
       "principle": "DRY",
+      "detector": "repeated-sequence",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "Session setup repeated across two flows, two ways",
+      "rationale": "load_user runs, a token step follows, and audit_login closes, in both user_login and password_reset. Two chains share those endpoints and differ only in the token step, so they are reported once.",
+      "sites": [
+        { "file": "src/auth/session.py", "line": 22, "symbol": "load_user",
+          "snippet": "def load_user(request):\n    ..." },
+        { "file": "src/auth/session.py", "line": 40, "symbol": "refresh_token",
+          "snippet": "def refresh_token(user):\n    ..." },
+        { "file": "src/auth/session.py", "line": 49, "symbol": "rotate_token",
+          "snippet": "def rotate_token(user):\n    ..." },
+        { "file": "src/auth/session.py", "line": 58, "symbol": "audit_login",
+          "snippet": "def audit_login(user):\n    ..." }
+      ],
+      "flows": ["user_login", "password_reset"],
+      "variants": ["refresh_token", "rotate_token"],
+      "occurrences": 2,
+      "suggestion": "Extract the shared endpoints into one begin_session helper that takes the token step.",
+      "effort": "medium"
+    },
+    {
+      "id": "DRY-02",
+      "principle": "DRY",
       "detector": "duplicate-intent",
       "severity": "high",
       "confidence": "verified",
@@ -49,26 +73,6 @@
       ],
       "suggestion": "Consolidate into one helper and have the other two call it.",
       "effort": "small"
-    },
-    {
-      "id": "DRY-02",
-      "principle": "DRY",
-      "detector": "repeated-sequence",
-      "severity": "high",
-      "confidence": "verified",
-      "title": "Session setup repeated across two flows",
-      "rationale": "load_user, refresh_token and audit_login run in sequence in both user_login and password_reset.",
-      "sites": [
-        { "file": "src/auth/session.py", "line": 22, "symbol": "load_user",
-          "snippet": "def load_user(request):\n    ..." },
-        { "file": "src/auth/session.py", "line": 40, "symbol": "refresh_token",
-          "snippet": "def refresh_token(user):\n    ..." },
-        { "file": "src/auth/session.py", "line": 58, "symbol": "audit_login",
-          "snippet": "def audit_login(user):\n    ..." }
-      ],
-      "flows": ["user_login", "password_reset"],
-      "suggestion": "Extract the three-call sequence into one begin_session helper.",
-      "effort": "medium"
     },
     {
       "id": "SOLID-01",

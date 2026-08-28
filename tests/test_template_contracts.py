@@ -2573,3 +2573,81 @@ def test_both_scaffolds_explain_every_skippable_detector(
         assert f'"{detector}"' in table.group(1), (
             f"{scaffold} records no reason for {detector!r}, which step 2 can skip"
         )
+
+
+@pytest.mark.parametrize(
+    "scaffold", ("report.template.html", "bundle.template.html")
+)
+def test_both_scaffolds_name_the_detectors_that_ran_and_found_nothing(
+    repo_root: Path, scaffold: str
+) -> None:
+    """Found by reading a real report. Every SOLID and DEPTH detector was clean,
+    so no finding carried their names and the page never mentioned them — a
+    reader with 47 DRY, KISS and YAGNI rows in front of them concludes SOLID was
+    never checked. That is the inference `detectorsSkipped` exists to prevent,
+    reaching them through the other door: a detector absent from the findings is
+    silent for two opposite reasons and the page distinguished neither.
+
+    So the banner names the clean ones, and the list is derived — every
+    detector, less the skipped, less the reporting — rather than kept by hand.
+    `ALL_DETECTORS` is the derivation's input, so it is checked against the same
+    `DETECTOR_PRINCIPLES` the validator allowlists are checked against; a
+    detector added to the templates and missed here would be silently dropped
+    from the clean list and read, again, as unchecked.
+    """
+    text = (repo_root / "templates" / "shared" / scaffold).read_text(encoding="utf-8")
+    listed = re.search(r"var ALL_DETECTORS = \[(.+?)\];", text, re.DOTALL)
+    assert listed, f"{scaffold} has no ALL_DETECTORS list to derive the clean set from"
+    for detector, _ in DETECTOR_PRINCIPLES:
+        assert f'"{detector}"' in listed.group(1), (
+            f"{scaffold} leaves {detector!r} out of ALL_DETECTORS, so a run where it "
+            f"was clean would never mention it"
+        )
+    # The list alone proves nothing: it has to reach the banner, and it has to
+    # subtract both the skipped and the reporting or it will claim a detector
+    # was clean when it was neither.
+    assert re.search(r"!skippedBy\[name\] && !reportedBy\[name\]", text), (
+        f"{scaffold} does not subtract both the skipped and the reporting detectors"
+    )
+    assert "Ran and found nothing: " in text, (
+        f"{scaffold} never renders the clean detectors it derives"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_collapses_repeated_sequences_that_share_endpoints(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Found by reading a real report. `mask_source` dispatches to four masking
+    siblings that all call `blank`, so the detector emitted four `high` findings
+    naming the same dispatcher and the same terminator — one fact restated four
+    times, and four rows of severity count for it.
+
+    A reader who has read one has read all four, so the chains are grouped by
+    their endpoints and reported once with a count. The rule and the two fields
+    that carry it are asserted together: a rule that says to group without
+    saying what to emit leaves the shape to chance, and `occurrences` is what
+    keeps a collapsed row from reading as a single chain.
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    # Scoped to the rule's own paragraph, not the detector region. `variants` is
+    # also open-closed's evidence field and both names appear again in the
+    # evidence table below, so a region-wide search for either passes with the
+    # rule's emission clause deleted — which is how the first version of this
+    # test was vacuous.
+    opens = re.search(r"\bChains shar(?:e|ing) both endpoints\b", region)
+    assert opens, (
+        f"{name} does not say that chains sharing both endpoints are one finding"
+    )
+    closes = region.find("complexity-hotspot", opens.start())
+    rule = region[opens.start() : closes if closes != -1 else len(region)]
+    for field in ("variants", "occurrences"):
+        assert f"`{field}`" in rule, (
+            f"{name} states the grouping rule without naming `{field}`, so a "
+            f"grouped finding has nowhere to put what it collapsed"
+        )
+    # The counterpart matters as much as the rule: grouping chains that differ at
+    # an endpoint would merge two unrelated facts into one row.
+    assert re.search(r"differ(?:ing)? at (?:either|an) endpoint", rule), (
+        f"{name} does not say that chains differing at an endpoint stay separate"
+    )

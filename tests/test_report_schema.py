@@ -59,7 +59,12 @@ REQUIRED_FIELDS = {
 # (duplicate-intent) adds none.
 EVIDENCE_FIELDS_BY_DETECTOR = {
     "duplicate-intent": frozenset(),
-    "repeated-sequence": frozenset({"flows"}),
+    # `variants` and `occurrences` carry the collapse: every chain sharing a pair
+    # of endpoints is one finding, so the row has to say how many chains it
+    # stands for or four restatements of one fact read as one fact. Both are
+    # unconditional — a group of one carries its single interior and a count of
+    # 1, so no reader has to tell a missing field from a count of one.
+    "repeated-sequence": frozenset({"flows", "variants", "occurrences"}),
     "complexity-hotspot": frozenset({"metric", "value"}),
     # `reachedBy` is what gives `production-unreached` a home in the JSON. Both
     # outcomes emit `detector: "unreached"` with different severity rules, and

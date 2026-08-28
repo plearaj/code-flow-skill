@@ -118,6 +118,12 @@ Follow these steps exactly:
    - **repeated-sequence (DRY)** — chains of at least 3 consecutive calls appearing
      in at least 2 flows. `high` at that threshold; shorter or rarer is not a
      finding. Cite the shared subpath and every flow `slug` it appears in.
+     Chains sharing both endpoints are one finding, never one per variant: a
+     dispatcher handing off to a family of siblings that all return to the same
+     place yields one chain per sibling, which is the same fact restated. Group
+     by first and last function, put the differing interiors in `variants` and
+     their count in `occurrences`. A group of one still carries both. Chains
+     differing at either endpoint stay separate.
    - **complexity-hotspot (KISS)** — per node, fan-out (outbound edges) and depth
      (distance from that flow's `entry`). `high` at fan-out 8, depth 6, or `loc`
      120; otherwise `medium`. Cite the metric that tripped and its value.
@@ -305,7 +311,9 @@ Follow these steps exactly:
    Most detectors carry evidence those fields have no home for. Add exactly
    these, and nothing else — `module` is always the file path, forward-slash and
    repo-relative like every other path in this report. `repeated-sequence` adds
-   `flows` (the array of flow `slug`s the chain appears in); `complexity-hotspot`
+   `flows` (the array of flow `slug`s the chain appears in), `variants` (the
+   interior of each chain the group collapsed) and `occurrences` (how many chains
+   the group holds); `complexity-hotspot`
    adds `metric` (`fan-out`, `depth` or `loc`) and `value`; `unreached` adds
    `exported`, copied from the inventory entry, and `reachedBy`, whose only two
    values are `"none"` (reached by nothing) and `"tests"` (reached only by test-role
