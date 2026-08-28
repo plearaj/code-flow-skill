@@ -228,6 +228,13 @@ from this repository at the same version.
   real binding in between. One grouped expression swallowed an exported arrow function
   three lines below it, and the map simply did not contain it. Only whitespace or a
   return-type annotation may now sit between a parameter list and the arrow.
+- **A spread call is a call again.** The TypeScript tracer's call loop rejects a call
+  whose name is preceded by a word character or a dot, which is what stops `a.b(`
+  counting once as `b` and again as `a.b` after the regex has captured the whole path.
+  A spread's third dot sits in exactly that position and means the opposite thing, so
+  every `...f()` was dropped from the graph — and a call missing from the graph reaches
+  the report as an `unreached` finding, which reads as *delete this*. Re-mapping this
+  repository with the fix took it from 237 to 248 functions reached.
 - **`collectFunctions` and `collectComponents` split along the seams they already had**
   — 169 and 144 lines become 12 and 15. Three collectors over declarations, bindings
   and classes; four framework passes over Angular, single-file components, React and
