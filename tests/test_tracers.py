@@ -262,6 +262,37 @@ def test_ids_follow_the_documented_derivation(request, which: str) -> None:
 
 
 @pytest.mark.parametrize("which", ALL_TRACERS)
+def test_ids_are_unique_within_one_trace(request, which: str) -> None:
+    """Two catalogued functions may never share an `id`.
+
+    Everything downstream joins on it — a flow node against the inventory, a
+    reached set against a catalogued one — so a duplicate does not degrade the
+    map, it corrupts it: one entry silently stands in for two.
+
+    This is a canary rather than a proof. The id rule drops the extension from
+    the path's last segment, so `service.cpp` and `service.hpp` derive the same
+    stem, while `assign_ids` decides its `_l<line>` collision suffix from one
+    file's own contents. Two same-named function bodies across such a pair —
+    an inline method in a header and another class's method in the source
+    beside it, which is ordinary C++ — therefore collide, and nothing in the
+    rule prevents it. This assertion is what makes that loud the next time a
+    fixture reaches it.
+    """
+    trace = _trace(request, which)
+    seen: dict[str, dict] = {}
+    clashes = []
+    for fn in trace["functions"]:
+        first = seen.get(fn["id"])
+        if first is None:
+            seen[fn["id"]] = fn
+        else:
+            clashes.append(
+                f"{fn['id']}: {first['file']}:{first['line']} and {fn['file']}:{fn['line']}"
+            )
+    assert not clashes, f"{which}: two functions share one id: " + "; ".join(clashes)
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_snippets_follow_the_detail_flag(request, repo_root: Path, which: str) -> None:
     """`--detail` means the same thing here as it does in the map, because the
     map hands its own flag straight through."""
