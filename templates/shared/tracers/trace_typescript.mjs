@@ -925,7 +925,12 @@ function collectCallSites(rel, src, masked, lineStarts, functions) {
     const receiver = parts.length > 1 ? parts.slice(0, -1).join(".") : null;
     if (NOT_CALLS.has(name) && !receiver) continue;
     const before = masked[m.index - 1];
-    if (before && /[\w$.]/.test(before)) continue;
+    // The guard exists so `a.b(` is counted once for the whole path rather than
+    // again for `b`: a `.` in front means the regex has already captured this
+    // name as part of a longer one. A spread's third dot sits in exactly that
+    // position and means the opposite -- `...f(x)` is a call like any other.
+    const spread = before === "." && masked.slice(m.index - 3, m.index) === "...";
+    if (!spread && before && /[\w$.]/.test(before)) continue;
     if (/\b(function|class)\s*$/.test(masked.slice(Math.max(0, m.index - 12), m.index))) continue;
     const fn = owner(m.index);
     if (!fn) continue;

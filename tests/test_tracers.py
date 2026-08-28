@@ -1251,3 +1251,35 @@ def test_every_function_carries_a_nesting_count(request, which: str) -> None:
     for fn in trace["functions"]:
         assert isinstance(fn.get("nesting"), int), f"{which}: {fn['id']} carries no `nesting`"
         assert fn["nesting"] >= 0, f"{which}: {fn['id']} has a negative `nesting`"
+
+
+def test_a_spread_call_is_still_a_call(repo_root: Path, tmp_path: Path) -> None:
+    """`...f(x)` is a call, and the graph used to miss it.
+
+    The call regex captures dotted paths itself, so the loop skips a match whose
+    preceding character is `.` — otherwise `a.b(` would be counted once for `b`
+    and once for the whole path. A spread's third dot sits in exactly that
+    position and means the opposite thing.
+
+    Found by mapping this repository after `collectFunctions` was split into
+    three collectors returning arrays: the driver spreads them, so every one of
+    the new functions was reported as reached by nothing. Seven `unreached`
+    findings, all of them wrong, on code with a caller three lines above it —
+    which is the failure mode `unreached` is most exposed to and the reason it
+    tells a reader to confirm before deleting.
+    """
+    _write(
+        tmp_path,
+        "src/spread.ts",
+        "function parts() { return [1]; }\n"
+        "function more() { return [2]; }\n"
+        "export function all() {\n"
+        "  return { items: [...parts(), ...more()] };\n"
+        "}\n",
+    )
+    trace = _run_node_tracer(repo_root, tmp_path)
+    calls = {c["to"] for fn in trace["functions"] if fn["name"] == "all" for c in fn["calls"]}
+    for callee in ("parts", "more"):
+        assert any(c.endswith(callee) for c in calls), (
+            f"a spread call to {callee} was not recorded; `all` calls {sorted(calls)}"
+        )
