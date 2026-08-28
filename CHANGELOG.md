@@ -202,6 +202,13 @@ from this repository at the same version.
 
 ### Fixed
 
+- **An empty `git ls-files` no longer means "this repository has no code".** Both file
+  listers returned null for the cases their docstrings named — not a git checkout, git
+  not installed — and the caller walked the tree for those. Neither treated git
+  *succeeding with no output* as a third case, so the empty list was kept (in
+  JavaScript because `[]` is truthy). Pointing a tracer at a directory its repository
+  ignores is the ordinary way to reach that, and all five then catalogued nothing and
+  reported no error. An empty listing now falls through to the walk.
 - **The TypeScript tracer no longer invents arrow functions, or loses real ones.** A
   `const` binding whose value began with `(` had the next `=>` within 200 characters
   read as its own arrow, so `const xs = (a || []).map((f) => f)` was catalogued as a
@@ -209,6 +216,12 @@ from this repository at the same version.
   real binding in between. One grouped expression swallowed an exported arrow function
   three lines below it, and the map simply did not contain it. Only whitespace or a
   return-type annotation may now sit between a parameter list and the arrow.
+- **`collectFunctions` and `collectComponents` split along the seams they already had**
+  — 169 and 144 lines become 12 and 15. Three collectors over declarations, bindings
+  and classes; four framework passes over Angular, single-file components, React and
+  behaviour hooks. The trace of the TypeScript fixture is byte-identical at both
+  `--detail` levels, and a new test pins what makes the split safe: the catalog is
+  sorted by file and line before emission, so collection order never reaches the output.
 - **Three unreachable branches removed**, all surfaced by running the tool over its own
   source: `_snippet` in the Python tracer, `matchBracket` in the TypeScript tracer, and
   an `interface` test in the Java tracer's `_is_exported` that returned exactly what the
