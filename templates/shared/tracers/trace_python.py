@@ -164,11 +164,6 @@ class FileAnalyzer(ast.NodeVisitor):
         except Exception:  # pragma: no cover - unparse is total on parsed trees
             return ""
 
-    def _snippet(self, node: ast.AST) -> str:
-        start = getattr(node, "lineno", 1) - 1
-        end = getattr(node, "end_lineno", start + 1)
-        return "\n".join(self.lines[start:end])
-
     def _current(self) -> Optional[Dict[str, Any]]:
         return self._func_stack[-1] if self._func_stack else None
 

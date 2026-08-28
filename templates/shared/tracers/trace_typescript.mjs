@@ -263,20 +263,6 @@ function matchParen(masked, open) {
   return masked.length;
 }
 
-/** Return the index just past the `]` matching the `[` at `open`. */
-function matchBracket(masked, open) {
-  let depth = 0;
-  for (let i = open; i < masked.length; i++) {
-    const c = masked[i];
-    if (c === "[") depth += 1;
-    else if (c === "]") {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    }
-  }
-  return masked.length;
-}
-
 /** Line number (1-based) of a character offset. */
 function lineAt(lineStarts, index) {
   let lo = 0;
@@ -539,22 +525,31 @@ function collectFunctions(rel, src, masked, lineStarts) {
       const afterParams = matchParen(masked, paren);
       signatureEnd = afterParams;
       body = bodyAfterParams(afterParams);
+    } else if (m[4].endsWith("=>")) {
+      // `const f = x => …`: the binding regex matched the arrow itself, so
+      // there is nothing to search for.
+      const arrow = m.index + m[0].length - 2;
+      signatureEnd = arrow;
+      body = arrowBody(arrow + 2);
     } else {
-      // An arrow: find the `=>` that belongs to this binding.
-      let scan = valueStart;
-      if (m[4] === "(" || m[4] === "<") {
-        if (m[4] === "<") {
-          const paren = masked.indexOf("(", valueStart);
-          if (paren === -1) continue;
-          scan = matchParen(masked, paren);
-        } else {
-          scan = matchParen(masked, valueStart);
-        }
+      // `(params) => …` or `<T>(params) => …`. Find where the parameter list
+      // closes, then require the binding's own `=>` to follow it.
+      let scan;
+      if (m[4] === "<") {
+        const paren = masked.indexOf("(", valueStart);
+        if (paren === -1) continue;
+        scan = matchParen(masked, paren);
       } else {
-        scan = valueStart;
+        scan = matchParen(masked, valueStart);
       }
       const arrow = masked.indexOf("=>", scan);
-      if (arrow === -1 || arrow > scan + 200) continue;
+      if (arrow === -1) continue;
+      // Only a return-type annotation may sit between the parameter list and
+      // the arrow. Anything else — a property access, a call, an operator —
+      // means the parentheses were a grouped expression, not a parameter list,
+      // and the arrow belongs to a callback inside it. Taking it would both
+      // invent a function and skip `lastIndex` past the real ones after it.
+      if (!/^\s*(:[^=]*)?$/.test(masked.slice(scan, arrow))) continue;
       signatureEnd = arrow;
       body = arrowBody(arrow + 2);
     }

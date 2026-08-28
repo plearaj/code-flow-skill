@@ -1002,3 +1002,44 @@ def test_a_skip_reason_matches_a_path_segment_not_a_substring(
     assert {record["path"]: record["reason"] for record in trace["skipped"]}.get(marked) == "generated", (
         f"{which}: {marked} was left out without being reported as generated"
     )
+
+
+def test_typescript_tracer_does_not_mistake_a_callback_arrow_for_the_binding(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """A parenthesised expression is not a parameter list.
+
+    Found by running the tracer over this repository. `const xs = (a || []).map((f) => f)`
+    matches the binding regex with `(` as its value start; the old rule then took
+    the *next* `=>` within 200 characters as the binding's own. Two failures came
+    out of that, and the second is the worse one:
+
+    - the binding is catalogued as a function it is not, and
+    - `lastIndex` advances past everything up to that arrow, so the real arrow
+      function the callback's arrow was borrowed from is never catalogued at all.
+
+    A phantom entry is noise. A silently dropped export is a hole, and the map
+    gives a reader no way to see it. So the fix is asserted from both sides: the
+    expression must not appear, and the real function after it must.
+
+    The four shapes below are each a real arrow the fix must keep — parameter
+    list, bare single parameter, generic, and a return-type annotation between
+    the parameter list and the arrow — because a rule tight enough to reject the
+    expression is exactly the rule that could reject these.
+    """
+    _write(
+        tmp_path,
+        "src/bindings.ts",
+        "export const grouped = ([\"a\"] || []).map((s) => s.trim());\n"
+        "export const plain = (word: string) => word.length;\n"
+        "export const bare = word => word;\n"
+        "export const generic = <T,>(v: T) => v;\n"
+        "export const annotated = (word: string): string => word.toUpperCase();\n",
+    )
+    catalogued = {fn["name"]: fn for fn in _rerun_in(repo_root, "typescript", tmp_path)["functions"]}
+
+    assert "grouped" not in catalogued, (
+        "a grouped expression whose callback contains `=>` was catalogued as a function"
+    )
+    for name in ("plain", "bare", "generic", "annotated"):
+        assert name in catalogued, f"{name} is a real arrow function and was not catalogued"
