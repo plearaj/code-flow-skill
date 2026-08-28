@@ -362,8 +362,9 @@ install alongside the templates and do that reading in one pass:
 | C, C++, Objective-C, C# | `.code-flow/tracers/trace_c_family.py` | any CPython 3.9+ |
 
 Each writes one JSON document: every function with its `file:line`, signature,
-purpose, role and export status; the type that declares it and the supertype
-declarations it overrides; the resolved call graph between them; the entry points
+purpose, role and export status; how deeply control flow nests inside it; the
+type that declares it and the supertype declarations it overrides; the resolved
+call graph between them; the entry points
 execution arrives through; and, for the TypeScript one, the component tree and
 the routes. The map then walks that graph instead of re-reading the
 repository once per entry point, which is the difference between finishing a

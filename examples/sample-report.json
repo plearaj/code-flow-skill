@@ -164,15 +164,15 @@
       "detector": "complexity-hotspot",
       "severity": "high",
       "confidence": "verified",
-      "title": "handle_request has a fan-out of 11 and a depth of 7",
-      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8, and sits 7 calls deep in user_login. Both describe the same function; fan-out is the further past its threshold.",
+      "title": "handle_request has a fan-out of 11 and nests 5 deep",
+      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8, and its control flow nests 5 levels inside the body. Both describe the same function; fan-out is the further past its threshold.",
       "sites": [
         { "file": "src/web/views.py", "line": 63, "symbol": "handle_request",
           "snippet": "def handle_request(req):\n    ..." }
       ],
       "metric": "fan-out",
       "value": 11,
-      "alsoTripped": ["depth = 7"],
+      "alsoTripped": ["nesting = 5"],
       "suggestion": "Group the validation, persistence and notification calls into three helpers.",
       "effort": "medium"
     },

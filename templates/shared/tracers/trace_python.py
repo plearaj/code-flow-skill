@@ -138,6 +138,38 @@ def module_name_for(root: str, rel: str) -> Optional[str]:
 # --- per-file analysis -----------------------------------------------------
 
 
+# The statements that branch or loop. A `with` block is not one -- it manages a
+# resource, it does not add a case for the reader to hold -- and neither is a
+# nested `def` or `class`, which is its own catalogued entry with its own count.
+_NESTING_NODES = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try)
+if hasattr(ast, "Match"):  # 3.10+
+    _NESTING_NODES = _NESTING_NODES + (ast.Match,)
+
+
+def max_control_nesting(node: ast.AST) -> int:
+    """How deeply control flow nests inside one function body.
+
+    Python is the one language here with a real parse tree to ask, so it asks:
+    the brace-counting the other tracers do is a heuristic over text, and this
+    is the same measurement taken exactly. The function's own body is not a
+    level, so a flat function returns 0.
+
+    Nested `def`s and `class`es stop the descent. Each is catalogued in its own
+    right with its own nesting, and counting a closure's insides against the
+    function that happens to contain it would report one number for two bodies.
+    """
+    def walk(inner: ast.AST, depth: int) -> int:
+        best = depth
+        for child in ast.iter_child_nodes(inner):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            step = depth + 1 if isinstance(child, _NESTING_NODES) else depth
+            best = max(best, walk(child, step))
+        return best
+
+    return walk(node, 0)
+
+
 class FileAnalyzer(ast.NodeVisitor):
     """Collect functions, imports, classes and raw call sites from one module."""
 
@@ -247,6 +279,7 @@ class FileAnalyzer(ast.NodeVisitor):
             "line": line,
             "endLine": end,
             "loc": max(1, end - line + 1),
+            "nesting": max_control_nesting(node),
             "signature": signature,
             "purpose": (ast.get_docstring(node) or "").strip().splitlines()[:1],  # type: ignore[arg-type]
             "async": is_async,
@@ -809,6 +842,7 @@ def build_output(repo: Repository, root_abs: str) -> Dict[str, Any]:
             "file": fn["file"],
             "line": fn["line"],
             "loc": fn["loc"],
+            "nesting": fn["nesting"],
             "signature": fn["signature"],
             "purpose": fn["purpose"],
             "role": fn["role"],

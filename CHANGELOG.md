@@ -174,6 +174,18 @@ from this repository at the same version.
 - `inventory.json` may now carry a `components` array alongside `functions`.
 - The interactive viewer, the bundle and the quality report accept the new kinds and the
   new principle; existing artifacts render unchanged.
+- **`complexity-hotspot`'s depth metric now measures nesting inside the function.** It
+  measured a function's distance from its flow's entry node — real, but a property of
+  where a function sits rather than how it is written, and one nothing about the
+  function can change: in a program with a deep call structure everything past the
+  threshold tripped because of its position. Every tracer now emits `nesting`, how
+  deeply control flow nests within one body, and the detector reads that. Only blocks a
+  control keyword opens count, so an object literal, a struct initialiser and a nested
+  class are not levels, and a nested function ends the count because it is catalogued
+  in its own right. Python takes the measurement from its parse tree; the other four
+  read it off the masked source. The threshold is 5 — one above a linter's usual 4,
+  because this puts a `high` row in a report rather than a warning a writer clears as
+  they go, and the three KISS metrics have to be comparably selective.
 - **Three detectors now report each repeated fact once.** An aggregation rule left
   implicit is one the assistant re-decides per run, so two runs over the same map could
   legitimately disagree about how many findings it holds. Each is now stated:
@@ -202,6 +214,13 @@ from this repository at the same version.
 
 ### Fixed
 
+- **An empty `git ls-files` no longer means "this repository has no code".** Both file
+  listers returned null for the cases their docstrings named — not a git checkout, git
+  not installed — and the caller walked the tree for those. Neither treated git
+  *succeeding with no output* as a third case, so the empty list was kept (in
+  JavaScript because `[]` is truthy). Pointing a tracer at a directory its repository
+  ignores is the ordinary way to reach that, and all five then catalogued nothing and
+  reported no error. An empty listing now falls through to the walk.
 - **The TypeScript tracer no longer invents arrow functions, or loses real ones.** A
   `const` binding whose value began with `(` had the next `=>` within 200 characters
   read as its own arrow, so `const xs = (a || []).map((f) => f)` was catalogued as a
@@ -209,6 +228,12 @@ from this repository at the same version.
   real binding in between. One grouped expression swallowed an exported arrow function
   three lines below it, and the map simply did not contain it. Only whitespace or a
   return-type annotation may now sit between a parameter list and the arrow.
+- **`collectFunctions` and `collectComponents` split along the seams they already had**
+  — 169 and 144 lines become 12 and 15. Three collectors over declarations, bindings
+  and classes; four framework passes over Angular, single-file components, React and
+  behaviour hooks. The trace of the TypeScript fixture is byte-identical at both
+  `--detail` levels, and a new test pins what makes the split safe: the catalog is
+  sorted by file and line before emission, so collection order never reaches the output.
 - **Three unreachable branches removed**, all surfaced by running the tool over its own
   source: `_snippet` in the Python tracer, `matchBracket` in the TypeScript tracer, and
   an `interface` test in the Java tracer's `_is_exported` that returned exactly what the

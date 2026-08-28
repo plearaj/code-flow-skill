@@ -671,7 +671,11 @@ SEVERITY_THRESHOLDS = (
     r"3 consecutive calls",
     r"2 (?:different )?flows",
     r"fan-out.{0,20}\b8\b",
-    r"depth.{0,20}\b6\b",
+    # Nesting inside the function body, not distance from an entry point. Set
+    # one above a linter's usual 4: that number is a warning a writer clears as
+    # they go, and this one puts a `high` row in a report. Measured — at 4 this
+    # repository's lexers give twenty-two rows against `loc`'s one.
+    r"nesting.{0,20}\b5\b",
     r"`loc`.{0,20}\b120\b",
 )
 

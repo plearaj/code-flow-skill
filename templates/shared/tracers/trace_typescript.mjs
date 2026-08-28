@@ -297,7 +297,13 @@ function gitTrackedFiles(root) {
       maxBuffer: 64 * 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
     });
-    return out.split("\n").filter(Boolean);
+    // An empty listing is not a usable answer: git ran, but under a directory
+    // the repository ignores it names nothing, and `[]` is truthy here -- so
+    // `gitTrackedFiles(root) || walkFiles(root)` would keep it and the tracer
+    // would catalogue an empty repository without saying so. Null falls through
+    // to the walk, which is what the caller already does for a missing git.
+    const listed = out.split("\n").filter(Boolean);
+    return listed.length ? listed : null;
   } catch {
     return null;
   }
@@ -431,60 +437,140 @@ function collectImports(src, masked) {
 // --- declarations ----------------------------------------------------------
 
 /**
- * Find every named function, method, arrow binding and class in one file.
- *
- * Every span is decided by brace or paren matching over the mask, never by a
- * regex reaching across the file: a `}` inside a string or comment has already
- * been blanked, so the boundaries this returns are the real ones.
+ * The keywords that open a block a reader has to hold a case for. `class`,
+ * `function` and a bare scope are not among them: brace depth is not decision
+ * depth, and counting an object literal or a nested class would report a wide
+ * configuration table as complex.
  */
-function collectFunctions(rel, src, masked, lineStarts) {
-  const functions = [];
-  const classes = new Map();
-  const push = (entry) => {
-    functions.push(entry);
-    return entry;
-  };
+const CONTROL_KEYWORDS = new Set([
+  "if", "else", "for", "while", "do", "switch", "try", "catch", "finally",
+]);
 
-  const bodyAfterParams = (from) => {
-    // From just past a parameter list, skip a return-type annotation and land on
-    // the body's `{`, or on the `=>` of a concise arrow body.
-    let i = from;
-    let depth = 0;
-    while (i < masked.length) {
-      const c = masked[i];
-      if (c === "{" && depth === 0) return { open: i, end: matchBrace(masked, i) };
-      if (c === "(" || c === "[" || c === "<") depth += 1;
-      else if (c === ")" || c === "]" || c === ">") depth = Math.max(0, depth - 1);
-      else if (c === ";" && depth === 0) return null;
-      i += 1;
-    }
-    return null;
-  };
-
-  const arrowBody = (arrowEnd) => {
-    let i = arrowEnd;
-    while (i < masked.length && /\s/.test(masked[i])) i += 1;
-    if (masked[i] === "{") return { open: i, end: matchBrace(masked, i) };
-    // A concise body: run to the end of the statement at depth 0.
-    let depth = 0;
-    for (let j = i; j < masked.length; j++) {
-      const c = masked[j];
-      if (c === "(" || c === "[" || c === "{") depth += 1;
-      else if (c === ")" || c === "]" || c === "}") {
-        if (depth === 0) return { open: i, end: j };
-        depth -= 1;
-      } else if ((c === ";" || c === "\n") && depth === 0) {
-        if (c === "\n") {
-          const rest = masked.slice(j + 1, j + 200);
-          if (/^\s*[.?:&|+*/-]/.test(rest)) continue;
+/**
+ * Whether the `{` at `brace` opens the body of a control statement.
+ *
+ * Decided from the start of the statement the brace belongs to, not the token in
+ * front of it: `if (cond) {` ends in `)` and a paren-free head ends in an
+ * ordinary identifier, and reading back to the nearest `{`, `}` or `;` covers
+ * both, and covers `} else {` as the same case. A `)` on the way back is stepped
+ * over whole, because `for (i = 0; i < n; i++)` carries semicolons of its own.
+ *
+ * Two shapes settle first: a `{` directly after `(`, `,`, `=`, `:` or `[` is an
+ * argument or an initialiser and never a block, and a `{` after `=>` is a
+ * block-bodied arrow, which carries no keyword to find.
+ */
+function opensAControlBlock(masked, brace, floor) {
+  let i = brace - 1;
+  while (i >= floor && /\s/.test(masked[i])) i -= 1;
+  if (i < floor) return false;
+  if (masked[i] === ">" && i > floor && masked[i - 1] === "=") return true;
+  if ("(,=:[".includes(masked[i])) return false;
+  let j = i;
+  while (j >= floor && !"{};".includes(masked[j])) {
+    if (masked[j] === ")") {
+      let opened = 0;
+      for (; j >= floor; j--) {
+        if (masked[j] === ")") opened += 1;
+        else if (masked[j] === "(") {
+          opened -= 1;
+          if (opened === 0) break;
         }
-        return { open: i, end: j };
       }
     }
-    return { open: i, end: masked.length };
-  };
+    j -= 1;
+  }
+  let k = j + 1;
+  while (k <= i && /\s/.test(masked[k])) k += 1;
+  let word = "";
+  while (k <= i && /[\w$]/.test(masked[k])) word += masked[k++];
+  return CONTROL_KEYWORDS.has(word);
+}
 
-  // function declarations and expressions
+/**
+ * How deeply control flow nests inside one function body.
+ *
+ * The same measurement `_common.py::max_control_nesting` takes for the four
+ * Python-hosted tracers, over the same masked text -- a `{` inside a string or
+ * a comment has already been blanked. The body's own outermost brace is not a
+ * level, so a flat function returns 0.
+ *
+ * A nested arrow or function expression is catalogued in its own right with its
+ * own count, but its braces are inside this body and are counted here too: the
+ * mask cannot tell a callback's `if` from its enclosing function's. That
+ * over-reports a function built out of inline callbacks, which is the direction
+ * to err in for a detector whose findings are candidates for reading.
+ */
+function maxControlNesting(masked, start, end) {
+  const stack = [];
+  let depth = 0;
+  let best = 0;
+  for (let i = start; i < end; i++) {
+    if (masked[i] === "{") {
+      const control = opensAControlBlock(masked, i, start);
+      stack.push(control);
+      if (control) best = Math.max(best, (depth += 1));
+    } else if (masked[i] === "}") {
+      if (stack.pop()) depth -= 1;
+    }
+  }
+  return best;
+}
+
+/**
+ * The two span finders every collector below shares.
+ *
+ * Both close over one file's masked text and nothing else, so they are built
+ * once per file and handed to whichever collector needs them -- the same way
+ * `collectClassMembers` has always taken them.
+ */
+function spanFinders(masked) {
+const bodyAfterParams = (from) => {
+  // From just past a parameter list, skip a return-type annotation and land on
+  // the body's `{`, or on the `=>` of a concise arrow body.
+  let i = from;
+  let depth = 0;
+  while (i < masked.length) {
+    const c = masked[i];
+    if (c === "{" && depth === 0) return { open: i, end: matchBrace(masked, i) };
+    if (c === "(" || c === "[" || c === "<") depth += 1;
+    else if (c === ")" || c === "]" || c === ">") depth = Math.max(0, depth - 1);
+    else if (c === ";" && depth === 0) return null;
+    i += 1;
+  }
+  return null;
+};
+
+const arrowBody = (arrowEnd) => {
+  let i = arrowEnd;
+  while (i < masked.length && /\s/.test(masked[i])) i += 1;
+  if (masked[i] === "{") return { open: i, end: matchBrace(masked, i) };
+  // A concise body: run to the end of the statement at depth 0.
+  let depth = 0;
+  for (let j = i; j < masked.length; j++) {
+    const c = masked[j];
+    if (c === "(" || c === "[" || c === "{") depth += 1;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (depth === 0) return { open: i, end: j };
+      depth -= 1;
+    } else if ((c === ";" || c === "\n") && depth === 0) {
+      if (c === "\n") {
+        const rest = masked.slice(j + 1, j + 200);
+        if (/^\s*[.?:&|+*/-]/.test(rest)) continue;
+      }
+      return { open: i, end: j };
+    }
+  }
+  return { open: i, end: masked.length };
+};
+
+  return { bodyAfterParams, arrowBody };
+}
+
+/** `function name(...)`, declared or as a named expression. */
+function collectFunctionDeclarations(rel, src, masked, lineStarts, spans) {
+  const { bodyAfterParams } = spans;
+  const functions = [];
+  const push = (entry) => functions.push(entry);
   const fnRe = /(?:^|[^\w$.'"])(export\s+)?(default\s+)?(async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*(?:<[^<>]*>)?\s*\(/g;
   let m;
   while ((m = fnRe.exec(masked)) !== null) {
@@ -511,8 +597,15 @@ function collectFunctions(rel, src, masked, lineStarts) {
     });
     fnRe.lastIndex = paren;
   }
+  return functions;
+}
 
-  // const/let/var bound to an arrow or function expression
+/** `const name = (...) => ...` and `const name = function (...) { ... }`. */
+function collectBoundFunctions(rel, src, masked, lineStarts, spans) {
+  const { bodyAfterParams, arrowBody } = spans;
+  const functions = [];
+  const push = (entry) => functions.push(entry);
+  let m;
   const bindRe = /(?:^|[^\w$.])(export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::\s*[^=;]+?)?=\s*(async\s+)?(\(|<|function\b|[A-Za-z_$][\w$]*\s*=>)/g;
   while ((m = bindRe.exec(masked)) !== null) {
     const declStart = m.index + (m[0].length - m[0].trimStart().length);
@@ -571,8 +664,16 @@ function collectFunctions(rel, src, masked, lineStarts) {
     });
     bindRe.lastIndex = Math.max(bindRe.lastIndex, body.open);
   }
+  return functions;
+}
 
-  // classes, and the methods inside them
+/** Classes, and every method inside them. */
+function collectClasses(rel, src, masked, lineStarts, spans) {
+  const { bodyAfterParams, arrowBody } = spans;
+  const functions = [];
+  const classes = new Map();
+  const push = (entry) => functions.push(entry);
+  let m;
   const classRe = /(?:^|[^\w$.])(export\s+)?(default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
   while ((m = classRe.exec(masked)) !== null) {
     const name = m[3];
@@ -603,8 +704,33 @@ function collectFunctions(rel, src, masked, lineStarts) {
     }
     classRe.lastIndex = open;
   }
-
   return { functions, classes };
+}
+
+/**
+ * Find every named function, method, arrow binding and class in one file.
+ *
+ * Every span is decided by brace or paren matching over the mask, never by a
+ * regex reaching across the file: a `}` inside a string or comment has already
+ * been blanked, so the boundaries this returns are the real ones.
+ *
+ * The three passes are independent and the order they concatenate in does not
+ * reach the output: `buildOutput` sorts the whole catalog by file and line
+ * before emitting it, and ids take their `_l` collision suffix from a function's
+ * line rather than its position. That is what makes splitting one loop into
+ * three safe, and it is worth knowing before anyone reorders them back.
+ */
+function collectFunctions(rel, src, masked, lineStarts) {
+  const spans = spanFinders(masked);
+  const { functions: methods, classes } = collectClasses(rel, src, masked, lineStarts, spans);
+  return {
+    functions: [
+      ...collectFunctionDeclarations(rel, src, masked, lineStarts, spans),
+      ...collectBoundFunctions(rel, src, masked, lineStarts, spans),
+      ...methods,
+    ],
+    classes,
+  };
 }
 
 /** Return the decorators written immediately above `index`, outermost first. */
@@ -799,7 +925,12 @@ function collectCallSites(rel, src, masked, lineStarts, functions) {
     const receiver = parts.length > 1 ? parts.slice(0, -1).join(".") : null;
     if (NOT_CALLS.has(name) && !receiver) continue;
     const before = masked[m.index - 1];
-    if (before && /[\w$.]/.test(before)) continue;
+    // The guard exists so `a.b(` is counted once for the whole path rather than
+    // again for `b`: a `.` in front means the regex has already captured this
+    // name as part of a longer one. A spread's third dot sits in exactly that
+    // position and means the opposite -- `...f(x)` is a call like any other.
+    const spread = before === "." && masked.slice(m.index - 3, m.index) === "...";
+    if (!spread && before && /[\w$.]/.test(before)) continue;
     if (/\b(function|class)\s*$/.test(masked.slice(Math.max(0, m.index - 12), m.index))) continue;
     const fn = owner(m.index);
     if (!fn) continue;
@@ -877,18 +1008,12 @@ function optionList(text, key) {
  * written in. The framework is decided per file, not per repository: a monorepo
  * with an Angular admin app and a React storefront is one repository.
  */
-function collectComponents(file, frameworks) {
+/**
+ * Angular: the decorator is the declaration, so it needs no heuristic.
+ */
+function angularComponents(file, pascal) {
   const { rel, src, masked, functions, classes, template, imports } = file;
   const found = [];
-  const ext = path.extname(rel);
-  const base = path.basename(rel, ext);
-  const pascal = base
-    .split(/[-_.]/)
-    .filter(Boolean)
-    .map((p) => p[0].toUpperCase() + p.slice(1))
-    .join("");
-
-  // Angular: the decorator is the declaration, so it needs no heuristic.
   for (const cls of classes.values()) {
     const decorator = cls.decorators.find((d) => /^@(Component|Directive|Pipe|Injectable|NgModule)\b/.test(d));
     if (!decorator) continue;
@@ -916,8 +1041,15 @@ function collectComponents(file, frameworks) {
       members: [...cls.methods.keys()].map((n) => deriveId(rel, n)),
     });
   }
-
-  // Vue and Svelte single-file components: the file is the component.
+  return found;
+}
+/**
+ * Vue and Svelte single-file components: the file is the component.
+ */
+function singleFileComponents(file, pascal) {
+  const { rel, src, masked, functions, classes, template } = file;
+  const ext = path.extname(rel);
+  const found = [];
   if (ext === ".vue" || ext === ".svelte") {
     const framework = ext === ".vue" ? "vue" : "svelte";
     const setup = /defineProps\s*(?:<([\s\S]*?)>)?\s*\(([\s\S]*?)\)/.exec(src);
@@ -942,8 +1074,14 @@ function collectComponents(file, frameworks) {
       members: functions.map((fn) => fn.id).filter(Boolean),
     });
   }
-
-  // React and Solid: a capitalized function that returns markup.
+  return found;
+}
+/**
+ * React and Solid: a capitalized function that returns markup.
+ */
+function reactComponents(file, pascal, frameworks) {
+  const { rel, src, masked, functions, classes, template } = file;
+  const found = [];
   if (frameworks.includes("react") || frameworks.includes("solid")) {
     for (const fn of functions) {
       if (!/^[A-Z]/.test(fn.name)) continue;
@@ -993,8 +1131,15 @@ function collectComponents(file, frameworks) {
       });
     }
   }
-
-  // Custom React hooks and Vue composables are neither components nor plain
+  return found;
+}
+/**
+ * Custom React hooks and Vue composables: neither components nor plain
+ * functions, but where a component's behaviour actually lives.
+ */
+function behaviourHooks(file, pascal, frameworks) {
+  const { rel, src, masked, functions, classes, template } = file;
+  const found = [];
   // functions: they are where a component's behavior actually lives.
   for (const fn of functions) {
     if (!/^use[A-Z]/.test(fn.name) || fn.class) continue;
@@ -1015,10 +1160,37 @@ function collectComponents(file, frameworks) {
       members: [fn.id],
     });
   }
+  return found;
+}
 
+/**
+ * Every component this file declares, in framework order.
+ *
+ * Each framework recognises its own shape and nothing else, so they are four
+ * independent passes over one file rather than one pass with four branches.
+ * They concatenate in the order below, which is the order the catalog has
+ * always been in.
+ */
+function collectComponents(file, frameworks) {
+  const { rel, imports } = file;
+  const ext = path.extname(rel);
+  const base = path.basename(rel, ext);
+  const pascal = base
+    .split(/[-_.]/)
+    .filter(Boolean)
+    .map((p) => p[0].toUpperCase() + p.slice(1))
+    .join("");
+
+  const found = [
+    ...angularComponents(file, pascal),
+    ...singleFileComponents(file, pascal),
+    ...reactComponents(file, pascal, frameworks),
+    ...behaviourHooks(file, pascal, frameworks),
+  ];
   for (const component of found) {
     component.importedNames = [...imports.keys()];
   }
+  return found;
   return found;
 }
 
@@ -1560,6 +1732,7 @@ function buildOutput(repo, detail) {
         file: file.rel,
         line: fn.line,
         loc: Math.max(1, fn.endLine - fn.line + 1),
+        nesting: maxControlNesting(file.masked, fn.bodyStart, fn.bodyEnd),
         signature: fn.signature,
         purpose: fn.purpose || "",
         role: fn.role,

@@ -452,6 +452,13 @@ per function or method you find:
 - `line` — the line of the function's own definition keyword, never a decorator or
   comment above it. `loc` — its length in lines, definition line through last line
   inclusive.
+- `nesting` — how deeply control flow nests inside the body: an `if` inside a `for`
+  inside a `while` is 3, and a function whose statements all sit at the top of it
+  is 0. Only blocks a control keyword opens count, so an object literal, a struct
+  initialiser and a nested class are not levels; a nested function ends the count,
+  because it is catalogued in its own right with its own. Present when a tracer
+  produced it. Never confuse it with a function's distance from an entry point:
+  that is a property of where the function sits, not of how it is written.
 - `signature` — the declaration as written, on one line, without the body.
 - `purpose` — one sentence. Use the docstring if there is one; otherwise infer it
   from the body. Do not edit the source file to add one.
@@ -497,8 +504,8 @@ per function or method you find:
   Inside every `snippet`, replace each `</` with `<\/`, exactly as in step 5a.
 
 If a tracer ran, this catalog is its `functions[]` array: copy `id`, `name`,
-`file`, `line`, `loc`, `signature`, `purpose`, `role`, `exported`, `owner`,
-`overrides`, `calls` and `snippet` straight across rather than deriving them
+`file`, `line`, `loc`, `nesting`, `signature`, `purpose`, `role`, `exported`,
+`owner`, `overrides`, `calls` and `snippet` straight across rather than deriving them
 again. Read source only for
 the entries you are about to describe in a flow, and for anything the tracer's
 `limits` say it could not see. Catalogue what the tracer found *and* what it

@@ -213,11 +213,29 @@ facts and stay separate. A group of one is still a group: it carries its single
 interior and `occurrences` of 1, so a reader never has to work out whether the
 field is missing or the count is one.
 
-**c. complexity-hotspot (KISS).** For each node across the flow graphs, take its
-fan-out (its count of outbound edges) and its depth (its distance from that flow's
-`entry` node). Severity is `high` when fan-out is at least 8, or depth is at least
-6, or the function's `loc` is at least 120; otherwise `medium`. Cite the metric
-that tripped and its value.
+**c. complexity-hotspot (KISS).** For each node across the flow graphs, take
+three numbers: its fan-out (its count of outbound edges), its `nesting` from the
+inventory entry, and its `loc`. Severity is `high` when fan-out is at least 8, or
+`nesting` is at least 5, or `loc` is at least 120; otherwise `medium`. Cite the
+metric that tripped and its value.
+
+**`nesting` is depth inside the function, not distance from the entry point.**
+The tracers count how deeply control flow nests within one body — an `if` inside
+a `for` inside a `while` is 3 — and stop at a nested function, which is
+catalogued in its own right. That is the number KISS is about: how many cases a
+reader has to hold at once to follow one function. Distance from a flow's `entry`
+node measures something real but different, and something no function can do
+anything about — in a program with a deep call structure, everything past the
+threshold trips because of where it sits, not how it is written. Never substitute
+one for the other; where the inventory carries no `nesting`, this metric does not
+run and the other two still do.
+
+The threshold is 5 rather than the 4 a linter usually sets, and the difference is
+what the number is for. A linter's is a warning a writer clears as they go; this
+one puts a `high` row in a report and asks a reader to go and look. The three KISS
+metrics have to be comparably selective or the loosest one teaches a reader to
+skim past all of them — at 4 this repository's own lexers produce twenty-two rows
+where `loc` produces one.
 
 **One function is one finding, however many ways it trips.** The thresholds are
 joined by `or`, so a function can exceed all three — and it is then the worst
@@ -226,9 +244,9 @@ one thing to simplify, at one `file:line`. Cite the metric furthest past its
 threshold as `metric` and `value`, and put each of the others in `alsoTripped`,
 written `name = value`. When only one tripped, `alsoTripped` is an empty array
 rather than absent, so a reader never has to tell a missing field from a function
-that tripped once. A function reached by several flows has a depth in each: take
-the deepest and name that flow in the rationale. Never emit one finding per
-metric or one per flow.
+that tripped once. All three numbers are properties of the function itself, so a
+function reached by several flows has one of each: report it once, however many
+flows reach it. Never emit one finding per metric or one per flow.
 
 **d. unreached (YAGNI).** Subtract. Every inventory `id` that appears as a node
 `id` in any flow is reached; what remains is not. The join is exact — the map
@@ -477,7 +495,7 @@ repo-relative like every other path in this report:
   in — plus `variants`, the interior of each chain the group collapsed, written
   as its call arrow joined with the same arrow used in the title, and
   `occurrences`, how many chains the group holds.
-- `complexity-hotspot` adds `metric` (`fan-out`, `depth` or `loc`) and `value` —
+- `complexity-hotspot` adds `metric` (`fan-out`, `nesting` or `loc`) and `value` —
   the one furthest past its threshold — plus `alsoTripped`, the others it
   exceeded written `name = value`, empty when it exceeded only one.
 - `unreached` adds `exported`, copied from the inventory entry, and `reachedBy`,

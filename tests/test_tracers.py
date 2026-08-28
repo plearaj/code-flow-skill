@@ -1043,3 +1043,243 @@ def test_typescript_tracer_does_not_mistake_a_callback_arrow_for_the_binding(
     )
     for name in ("plain", "bare", "generic", "annotated"):
         assert name in catalogued, f"{name} is a real arrow function and was not catalogued"
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_a_git_listing_of_nothing_falls_back_to_walking(
+    request, repo_root: Path, tmp_path: Path, which: str
+) -> None:
+    """`git ls-files` succeeding with no output is not the same as failing.
+
+    Both listers return None on the cases their docstrings name — not a git
+    checkout, git not installed — and the caller falls back to the walk for
+    those. Neither treated an *empty* listing as a third case, so
+    `listing if listing is not None else walk_files(...)` kept the empty list,
+    and `gitTrackedFiles(root) || walkFiles(root)` kept it too because `[]` is
+    truthy in JavaScript.
+
+    A directory a repository ignores is the ordinary way to reach that: point a
+    tracer at one and it catalogues nothing, reports no error, and the map that
+    comes out says the code is not there. Silence that looks like an answer is
+    the failure this project spends most of its rules preventing, so an empty
+    listing falls through to the walk. There is no case where that is wrong: a
+    genuinely empty directory walks to nothing either way.
+    """
+    bodies = {
+        "python": "def only(x):\n    return x\n",
+        "typescript": "export function only(x) { return x; }\n",
+        "rust": "pub fn only(x: i32) -> i32 {\n    x\n}\n",
+        "java": "public class Only {\n    public int only(int x) {\n        return x;\n    }\n}\n",
+        "c-family": "int only(int x) {\n    return x;\n}\n",
+    }
+    names = {
+        "python": "only.py", "typescript": "only.ts", "rust": "only.rs",
+        "java": "Only.java", "c-family": "only.c",
+    }
+    _write(tmp_path, names[which], bodies[which])
+    _write(tmp_path, ".gitignore", "*\n")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True)
+
+    listed = subprocess.run(
+        ["git", "-C", str(tmp_path), "ls-files", "--cached", "--others", "--exclude-standard"],
+        capture_output=True, text=True, check=True,
+    )
+    assert not listed.stdout.strip(), "the fixture must actually produce an empty git listing"
+
+    trace = _rerun_in(repo_root, which, tmp_path, "thin")
+    assert [fn["name"] for fn in trace["functions"]] == ["only"], (
+        f"{which}: catalogued nothing under a root its own repository ignores"
+    )
+
+
+def test_the_catalog_is_ordered_by_file_and_line(repo_root: Path, tmp_path: Path) -> None:
+    """Every tracer emits `functions[]` sorted by file, then by line.
+
+    Written while splitting the TypeScript tracer's 169-line `collectFunctions`
+    into three passes. The worry was that the passes concatenate in a fixed order
+    and a later tidy-up could reorder them; the answer is that collection order
+    never reaches the output, because the catalog is sorted before it is emitted.
+    That is the property worth pinning — it is what lets the collectors be
+    reorganised at all, and what makes two runs over an unchanged repository
+    produce an identical file rather than a reshuffled one.
+
+    The fixture declares the three kinds in an order that disagrees with the
+    line order they end up in, so a catalog carrying collection order through
+    would not pass.
+    """
+    _write(
+        tmp_path,
+        "src/order.ts",
+        "export class First {\n"
+        "  alpha() { return 1; }\n"
+        "}\n"
+        "export function second() { return 2; }\n"
+        "export const third = () => 3;\n",
+    )
+    functions = _run_node_tracer(repo_root, tmp_path)["functions"]
+    assert [fn["name"] for fn in functions] == ["alpha", "second", "third"], (
+        "the catalog is not in line order"
+    )
+    keys = [(fn["file"], fn["line"]) for fn in functions]
+    assert keys == sorted(keys), "the catalog is not sorted by file then line"
+
+
+# One function per language whose control flow nests three deep, and one whose
+# braces nest just as far without a single decision in them. The pair is the
+# point: brace depth is not decision depth, and a metric that cannot tell them
+# apart reports a wide configuration table as complex.
+NESTING_CASES = {
+    "python": (
+        "def deep(rows):\n"
+        "    for row in rows:\n"
+        "        if row:\n"
+        "            while row.next:\n"
+        "                row = row.next\n"
+        "    return rows\n",
+        "def flat():\n"
+        "    table = {'a': {'b': {'c': 1}}}\n"
+        "    return table\n",
+    ),
+    "typescript": (
+        "export function deep(rows) {\n"
+        "  for (const row of rows) {\n"
+        "    if (row) {\n"
+        "      while (row.next) { row = row.next; }\n"
+        "    }\n"
+        "  }\n"
+        "  return rows;\n"
+        "}\n",
+        "export function flat() {\n"
+        "  const table = { a: { b: { c: 1 } } };\n"
+        "  return table;\n"
+        "}\n",
+    ),
+    "java": (
+        "public class Deep {\n"
+        "  public int deep(int[] rows) {\n"
+        "    for (int r : rows) {\n"
+        "      if (r > 0) {\n"
+        "        while (r > 1) { r--; }\n"
+        "      }\n"
+        "    }\n"
+        "    return 0;\n"
+        "  }\n"
+        "}\n",
+        "public class Flat {\n"
+        "  public int flat() {\n"
+        "    int[][] table = { { 1, 2 }, { 3, 4 } };\n"
+        "    return table[0][0];\n"
+        "  }\n"
+        "}\n",
+    ),
+    "rust": (
+        "pub fn deep(rows: Vec<i32>) -> i32 {\n"
+        "    for r in rows {\n"
+        "        if r > 0 {\n"
+        "            while r > 1 { break; }\n"
+        "        }\n"
+        "    }\n"
+        "    0\n"
+        "}\n",
+        "pub struct Cfg { pub a: i32 }\n"
+        "pub fn flat() -> Cfg {\n"
+        "    Cfg { a: 1 }\n"
+        "}\n",
+    ),
+    "c-family": (
+        "int deep(int n) {\n"
+        "    for (int i = 0; i < n; i++) {\n"
+        "        if (i > 0) {\n"
+        "            while (i > 1) { i--; }\n"
+        "        }\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n",
+        "struct Cfg { int a; };\n"
+        "int flat(void) {\n"
+        "    struct Cfg c = { .a = 1 };\n"
+        "    return c.a;\n"
+        "}\n",
+    ),
+}
+NESTING_FILES = {
+    "python": "deep.py", "typescript": "deep.ts", "java": "Deep.java",
+    "rust": "deep.rs", "c-family": "deep.c",
+}
+FLAT_FILES = {
+    "python": "flat.py", "typescript": "flat.ts", "java": "Flat.java",
+    "rust": "flat.rs", "c-family": "flat.c",
+}
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_nesting_counts_decisions_not_braces(
+    request, repo_root: Path, tmp_path: Path, which: str
+) -> None:
+    """`nesting` is how deeply control flow nests inside one body.
+
+    It replaced a `depth` the quality report derived from the flow graph — a
+    function's distance from its entry point — which measured something real but
+    something no function can do anything about: in a program with a deep call
+    structure everything past the threshold trips because of where it sits, not
+    how it is written. KISS is about how many cases a reader has to hold at once,
+    which is a property of the body.
+
+    Both halves are asserted because only the pair pins the definition. A
+    tracer counting every brace passes the first and fails the second, and brace
+    depth is what four of the five have to work with — Python is the one with a
+    parse tree to ask instead.
+    """
+    deep_src, flat_src = NESTING_CASES[which]
+    _write(tmp_path, NESTING_FILES[which], deep_src)
+    _write(tmp_path, FLAT_FILES[which], flat_src)
+    by_name = {fn["name"]: fn for fn in _rerun_in(repo_root, which, tmp_path, "thin")["functions"]}
+
+    assert by_name["deep"]["nesting"] == 3, (
+        f"{which}: a for/if/while stack should nest 3, got {by_name['deep']['nesting']}"
+    )
+    assert by_name["flat"]["nesting"] == 0, (
+        f"{which}: a nested literal is brace depth without a decision in it, "
+        f"got {by_name['flat']['nesting']}"
+    )
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_every_function_carries_a_nesting_count(request, which: str) -> None:
+    """The field is unconditional, and a count is never negative."""
+    trace = request.getfixturevalue(TRACERS[which])
+    for fn in trace["functions"]:
+        assert isinstance(fn.get("nesting"), int), f"{which}: {fn['id']} carries no `nesting`"
+        assert fn["nesting"] >= 0, f"{which}: {fn['id']} has a negative `nesting`"
+
+
+def test_a_spread_call_is_still_a_call(repo_root: Path, tmp_path: Path) -> None:
+    """`...f(x)` is a call, and the graph used to miss it.
+
+    The call regex captures dotted paths itself, so the loop skips a match whose
+    preceding character is `.` — otherwise `a.b(` would be counted once for `b`
+    and once for the whole path. A spread's third dot sits in exactly that
+    position and means the opposite thing.
+
+    Found by mapping this repository after `collectFunctions` was split into
+    three collectors returning arrays: the driver spreads them, so every one of
+    the new functions was reported as reached by nothing. Seven `unreached`
+    findings, all of them wrong, on code with a caller three lines above it —
+    which is the failure mode `unreached` is most exposed to and the reason it
+    tells a reader to confirm before deleting.
+    """
+    _write(
+        tmp_path,
+        "src/spread.ts",
+        "function parts() { return [1]; }\n"
+        "function more() { return [2]; }\n"
+        "export function all() {\n"
+        "  return { items: [...parts(), ...more()] };\n"
+        "}\n",
+    )
+    trace = _run_node_tracer(repo_root, tmp_path)
+    calls = {c["to"] for fn in trace["functions"] if fn["name"] == "all" for c in fn["calls"]}
+    for callee in ("parts", "more"):
+        assert any(c.endswith(callee) for c in calls), (
+            f"a spread call to {callee} was not recorded; `all` calls {sorted(calls)}"
+        )
