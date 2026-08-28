@@ -128,17 +128,28 @@ Follow these steps exactly:
      by first and last function, put the differing interiors in `variants` and
      their count in `occurrences`. A group of one still carries both. Chains
      differing at either endpoint stay separate.
-   - **complexity-hotspot (KISS)** — per node, fan-out (outbound edges) and depth
-     (distance from that flow's `entry`). `high` at fan-out 8, depth 6, or `loc`
-     120; otherwise `medium`. Cite the metric that tripped and its value. One
+   - **complexity-hotspot (KISS)** — per node, fan-out (outbound edges), `nesting`
+     from the inventory entry, and `loc`. `high` at fan-out 8, nesting 5, or `loc`
+     120; otherwise `medium`. Cite the metric that tripped and its value.
+     `nesting` is depth *inside* the function — how deeply control flow nests in
+     one body, stopping at a nested function — not distance from the entry point,
+     which measures where a function sits rather than how it is written and which
+     nothing about the function can change. Never substitute one for the other;
+     where the inventory carries no `nesting`, that metric does not run and the
+     other two still do. The threshold is 5 rather than the 4 a linter usually
+     sets: a linter's number is a warning a writer clears as they go, this one
+     puts a `high` row in a report and asks a reader to go and look, and the
+     three KISS metrics have to be comparably selective or the loosest teaches a
+     reader to skim past all of them. One
      function is one finding however many ways it trips: the thresholds are
      joined by `or`, so a function can exceed all three and is then the worst
      function in the report, not three problems at one `file:line`. Cite the
      metric furthest past its threshold as `metric` and `value` and put the
      others in `alsoTripped`, written `name = value` and an empty array rather
-     than absent when only one tripped. A function reached by several flows has a depth in
-     each: take the deepest and name that flow in the rationale. Never emit one
-     finding per metric or one per flow.
+     than absent when only one tripped.
+     All three numbers are properties of the function itself, so a function
+     reached by several flows has one of each: report it once, however many flows
+     reach it. Never emit one finding per metric or one per flow.
    - **unreached (YAGNI)** — subtract: every inventory `id` appearing as a node
      `id` in any flow is reached, and the join is exact because the map derives
      both by the same rule, so do not match on names. A `role` of `test` is never
@@ -334,7 +345,7 @@ Follow these steps exactly:
    `flows` (the array of flow `slug`s the chain appears in), `variants` (the
    interior of each chain the group collapsed) and `occurrences` (how many chains
    the group holds); `complexity-hotspot`
-   adds `metric` (`fan-out`, `depth` or `loc`) and `value` — the one furthest past
+   adds `metric` (`fan-out`, `nesting` or `loc`) and `value` — the one furthest past
    its threshold — plus `alsoTripped`, the others it exceeded written
    `name = value` and empty when it exceeded only one; `unreached` adds
    `exported`, copied from the inventory entry, and `reachedBy`, whose only two

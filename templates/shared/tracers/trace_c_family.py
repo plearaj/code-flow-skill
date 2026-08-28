@@ -353,6 +353,7 @@ class SourceFile:
             "owner": owner,
             "line": line,
             "endLine": self.index.line_of(body_end),
+            "nesting": common.max_control_nesting(self.masked, body_start, body_end),
             "signature": " ".join((name + params).split()),
             "purpose": common.doc_comment_before(self.text, above),
             "exported": _is_exported(self.language, head, self.is_header, enclosing),
@@ -460,6 +461,7 @@ class SourceFile:
                     "owner": block["name"] if block else None,
                     "line": line,
                     "endLine": self.index.line_of(body_end),
+                    "nesting": common.max_control_nesting(self.masked, cursor, body_end),
                     "signature": " ".join(self.text[match.start() : cursor].split()),
                     "purpose": common.doc_comment_before(self.text, line_start),
                     "exported": True,  # decided in `finish_objc_exports`, once the
@@ -509,6 +511,7 @@ class SourceFile:
                 {
                     "file": self.rel, "name": name, "qualname": name, "owner": None,
                     "line": line, "endLine": self.index.line_of(body_end),
+                    "nesting": common.max_control_nesting(self.masked, cursor, body_end),
                     "signature": " ".join(self.text[match.start() : cursor].split()),
                     "purpose": common.doc_comment_before(self.text, self.index.start_of(line)),
                     "exported": False, "async": False, "static": False,
@@ -971,6 +974,7 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
             "file": fn["file"],
             "line": fn["line"],
             "loc": loc,
+            "nesting": fn["nesting"],
             "signature": fn["signature"],
             "purpose": fn["purpose"],
             "role": fn["role"],

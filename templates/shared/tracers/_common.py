@@ -663,6 +663,102 @@ def snippet_for(lines: List[str], start_line: int, end_line: int, loc: int, deta
 # --- inheritance -----------------------------------------------------------
 
 
+CONTROL_KEYWORDS = frozenset(
+    """if else for while do switch try catch finally foreach match loop
+    unless elif except""".split()
+)
+
+
+def max_control_nesting(masked: str, start: int, end: int) -> int:
+    """How deeply control flow nests inside one brace-language body.
+
+    This is the KISS reading of "depth": a reader holding four conditions in
+    their head at once is the thing the metric is meant to catch. It counts
+    only blocks a control keyword opens — an object literal, a struct
+    initialiser, a nested class and a bare scope are all brace depth without
+    being decisions, and counting them would report a wide configuration table
+    as complex.
+
+    Brace-counting over the mask, in the manner of every other span this file
+    decides: a `{` inside a string or a comment has already been blanked, so
+    nothing here can be fooled by one. A keyword is recognised either directly
+    before the brace (`else {`, `try {`, `loop {`) or before the parenthesised
+    head that precedes it (`if (...) {`, `while (...) {`, `match x {`).
+
+    The body's own outermost brace is not a nesting level: a function whose
+    statements are all at the top of it returns 0.
+    """
+    depth = 0
+    best = 0
+    stack: List[bool] = []
+    i = start
+    while i < end:
+        char = masked[i]
+        if char == "{":
+            control = _opens_a_control_block(masked, i, start)
+            stack.append(control)
+            if control:
+                depth += 1
+                best = max(best, depth)
+        elif char == "}":
+            if stack and stack.pop():
+                depth -= 1
+        i += 1
+    return best
+
+
+def _opens_a_control_block(masked: str, brace: int, floor: int) -> bool:
+    """Whether the `{` at ``brace`` opens the body of a control statement.
+
+    Decided from the *start* of the statement the brace belongs to rather than
+    from the token in front of it, because the two syntaxes disagree about what
+    that token is: C, Java and JavaScript write `if (cond) {`, where it is `)`,
+    and Rust writes `for row in rows {`, where it is an ordinary identifier at
+    the end of an arbitrary expression. Reading back to the nearest `{`, `}` or
+    `;` and taking the first word covers both, and covers `} else {` as the same
+    case.
+
+    Two shapes are settled before that. A `{` sitting directly after `(`, `,`,
+    `=`, `:` or `[` is an argument or an initialiser and never a block, which is
+    what keeps an object literal inside a control statement from counting twice.
+    A `{` after `=>` is a match arm or a block-bodied closure, and carries no
+    keyword to find.
+    """
+    i = brace - 1
+    while i >= floor and masked[i] in " \t\r\n":
+        i -= 1
+    if i < floor:
+        return False
+    if masked[i] == ">" and i > floor and masked[i - 1] == "=":
+        return True
+    if masked[i] in "(,=:[":
+        return False
+    j = i
+    while j >= floor and masked[j] not in "{};":
+        if masked[j] == ")":
+            # Step over the head in one move. `for (i = 0; i < n; i++)` carries
+            # semicolons of its own, and stopping at one would look for the
+            # statement's first word inside the parentheses.
+            opened = 0
+            while j >= floor:
+                if masked[j] == ")":
+                    opened += 1
+                elif masked[j] == "(":
+                    opened -= 1
+                    if opened == 0:
+                        break
+                j -= 1
+        j -= 1
+    k = j + 1
+    while k <= i and masked[k] in " \t\r\n":
+        k += 1
+    word = ""
+    while k <= i and (masked[k].isalnum() or masked[k] == "_"):
+        word += masked[k]
+        k += 1
+    return word in CONTROL_KEYWORDS
+
+
 def overridden_names(
     types: Dict[str, Dict[str, Any]],
     methods: Dict[Tuple[str, str], List[Dict[str, Any]]],

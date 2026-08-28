@@ -437,6 +437,86 @@ function collectImports(src, masked) {
 // --- declarations ----------------------------------------------------------
 
 /**
+ * The keywords that open a block a reader has to hold a case for. `class`,
+ * `function` and a bare scope are not among them: brace depth is not decision
+ * depth, and counting an object literal or a nested class would report a wide
+ * configuration table as complex.
+ */
+const CONTROL_KEYWORDS = new Set([
+  "if", "else", "for", "while", "do", "switch", "try", "catch", "finally",
+]);
+
+/**
+ * Whether the `{` at `brace` opens the body of a control statement.
+ *
+ * Decided from the start of the statement the brace belongs to, not the token in
+ * front of it: `if (cond) {` ends in `)` and a paren-free head ends in an
+ * ordinary identifier, and reading back to the nearest `{`, `}` or `;` covers
+ * both, and covers `} else {` as the same case. A `)` on the way back is stepped
+ * over whole, because `for (i = 0; i < n; i++)` carries semicolons of its own.
+ *
+ * Two shapes settle first: a `{` directly after `(`, `,`, `=`, `:` or `[` is an
+ * argument or an initialiser and never a block, and a `{` after `=>` is a
+ * block-bodied arrow, which carries no keyword to find.
+ */
+function opensAControlBlock(masked, brace, floor) {
+  let i = brace - 1;
+  while (i >= floor && /\s/.test(masked[i])) i -= 1;
+  if (i < floor) return false;
+  if (masked[i] === ">" && i > floor && masked[i - 1] === "=") return true;
+  if ("(,=:[".includes(masked[i])) return false;
+  let j = i;
+  while (j >= floor && !"{};".includes(masked[j])) {
+    if (masked[j] === ")") {
+      let opened = 0;
+      for (; j >= floor; j--) {
+        if (masked[j] === ")") opened += 1;
+        else if (masked[j] === "(") {
+          opened -= 1;
+          if (opened === 0) break;
+        }
+      }
+    }
+    j -= 1;
+  }
+  let k = j + 1;
+  while (k <= i && /\s/.test(masked[k])) k += 1;
+  let word = "";
+  while (k <= i && /[\w$]/.test(masked[k])) word += masked[k++];
+  return CONTROL_KEYWORDS.has(word);
+}
+
+/**
+ * How deeply control flow nests inside one function body.
+ *
+ * The same measurement `_common.py::max_control_nesting` takes for the four
+ * Python-hosted tracers, over the same masked text -- a `{` inside a string or
+ * a comment has already been blanked. The body's own outermost brace is not a
+ * level, so a flat function returns 0.
+ *
+ * A nested arrow or function expression is catalogued in its own right with its
+ * own count, but its braces are inside this body and are counted here too: the
+ * mask cannot tell a callback's `if` from its enclosing function's. That
+ * over-reports a function built out of inline callbacks, which is the direction
+ * to err in for a detector whose findings are candidates for reading.
+ */
+function maxControlNesting(masked, start, end) {
+  const stack = [];
+  let depth = 0;
+  let best = 0;
+  for (let i = start; i < end; i++) {
+    if (masked[i] === "{") {
+      const control = opensAControlBlock(masked, i, start);
+      stack.push(control);
+      if (control) best = Math.max(best, (depth += 1));
+    } else if (masked[i] === "}") {
+      if (stack.pop()) depth -= 1;
+    }
+  }
+  return best;
+}
+
+/**
  * The two span finders every collector below shares.
  *
  * Both close over one file's masked text and nothing else, so they are built
@@ -1647,6 +1727,7 @@ function buildOutput(repo, detail) {
         file: file.rel,
         line: fn.line,
         loc: Math.max(1, fn.endLine - fn.line + 1),
+        nesting: maxControlNesting(file.masked, fn.bodyStart, fn.bodyEnd),
         signature: fn.signature,
         purpose: fn.purpose || "",
         role: fn.role,

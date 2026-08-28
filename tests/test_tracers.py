@@ -1122,3 +1122,132 @@ def test_the_catalog_is_ordered_by_file_and_line(repo_root: Path, tmp_path: Path
     )
     keys = [(fn["file"], fn["line"]) for fn in functions]
     assert keys == sorted(keys), "the catalog is not sorted by file then line"
+
+
+# One function per language whose control flow nests three deep, and one whose
+# braces nest just as far without a single decision in them. The pair is the
+# point: brace depth is not decision depth, and a metric that cannot tell them
+# apart reports a wide configuration table as complex.
+NESTING_CASES = {
+    "python": (
+        "def deep(rows):\n"
+        "    for row in rows:\n"
+        "        if row:\n"
+        "            while row.next:\n"
+        "                row = row.next\n"
+        "    return rows\n",
+        "def flat():\n"
+        "    table = {'a': {'b': {'c': 1}}}\n"
+        "    return table\n",
+    ),
+    "typescript": (
+        "export function deep(rows) {\n"
+        "  for (const row of rows) {\n"
+        "    if (row) {\n"
+        "      while (row.next) { row = row.next; }\n"
+        "    }\n"
+        "  }\n"
+        "  return rows;\n"
+        "}\n",
+        "export function flat() {\n"
+        "  const table = { a: { b: { c: 1 } } };\n"
+        "  return table;\n"
+        "}\n",
+    ),
+    "java": (
+        "public class Deep {\n"
+        "  public int deep(int[] rows) {\n"
+        "    for (int r : rows) {\n"
+        "      if (r > 0) {\n"
+        "        while (r > 1) { r--; }\n"
+        "      }\n"
+        "    }\n"
+        "    return 0;\n"
+        "  }\n"
+        "}\n",
+        "public class Flat {\n"
+        "  public int flat() {\n"
+        "    int[][] table = { { 1, 2 }, { 3, 4 } };\n"
+        "    return table[0][0];\n"
+        "  }\n"
+        "}\n",
+    ),
+    "rust": (
+        "pub fn deep(rows: Vec<i32>) -> i32 {\n"
+        "    for r in rows {\n"
+        "        if r > 0 {\n"
+        "            while r > 1 { break; }\n"
+        "        }\n"
+        "    }\n"
+        "    0\n"
+        "}\n",
+        "pub struct Cfg { pub a: i32 }\n"
+        "pub fn flat() -> Cfg {\n"
+        "    Cfg { a: 1 }\n"
+        "}\n",
+    ),
+    "c-family": (
+        "int deep(int n) {\n"
+        "    for (int i = 0; i < n; i++) {\n"
+        "        if (i > 0) {\n"
+        "            while (i > 1) { i--; }\n"
+        "        }\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n",
+        "struct Cfg { int a; };\n"
+        "int flat(void) {\n"
+        "    struct Cfg c = { .a = 1 };\n"
+        "    return c.a;\n"
+        "}\n",
+    ),
+}
+NESTING_FILES = {
+    "python": "deep.py", "typescript": "deep.ts", "java": "Deep.java",
+    "rust": "deep.rs", "c-family": "deep.c",
+}
+FLAT_FILES = {
+    "python": "flat.py", "typescript": "flat.ts", "java": "Flat.java",
+    "rust": "flat.rs", "c-family": "flat.c",
+}
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_nesting_counts_decisions_not_braces(
+    request, repo_root: Path, tmp_path: Path, which: str
+) -> None:
+    """`nesting` is how deeply control flow nests inside one body.
+
+    It replaced a `depth` the quality report derived from the flow graph — a
+    function's distance from its entry point — which measured something real but
+    something no function can do anything about: in a program with a deep call
+    structure everything past the threshold trips because of where it sits, not
+    how it is written. KISS is about how many cases a reader has to hold at once,
+    which is a property of the body.
+
+    Both halves are asserted because only the pair pins the definition. A
+    tracer counting every brace passes the first and fails the second, and brace
+    depth is what four of the five have to work with — Python is the one with a
+    parse tree to ask instead.
+    """
+    deep_src, flat_src = NESTING_CASES[which]
+    _write(tmp_path, NESTING_FILES[which], deep_src)
+    _write(tmp_path, FLAT_FILES[which], flat_src)
+    by_name = {fn["name"]: fn for fn in _rerun_in(repo_root, which, tmp_path, "thin")["functions"]}
+
+    assert by_name["deep"]["nesting"] == 3, (
+        f"{which}: a for/if/while stack should nest 3, got {by_name['deep']['nesting']}"
+    )
+    assert by_name["flat"]["nesting"] == 0, (
+        f"{which}: a nested literal is brace depth without a decision in it, "
+        f"got {by_name['flat']['nesting']}"
+    )
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_every_function_carries_a_nesting_count(request, which: str) -> None:
+    """The field is unconditional, and a count is never negative."""
+    trace = request.getfixturevalue(TRACERS[which])
+    for fn in trace["functions"]:
+        assert isinstance(fn.get("nesting"), int), f"{which}: {fn['id']} carries no `nesting`"
+        assert fn["nesting"] >= 0, f"{which}: {fn['id']} has a negative `nesting`"

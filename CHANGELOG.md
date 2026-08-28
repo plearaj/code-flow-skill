@@ -174,6 +174,18 @@ from this repository at the same version.
 - `inventory.json` may now carry a `components` array alongside `functions`.
 - The interactive viewer, the bundle and the quality report accept the new kinds and the
   new principle; existing artifacts render unchanged.
+- **`complexity-hotspot`'s depth metric now measures nesting inside the function.** It
+  measured a function's distance from its flow's entry node — real, but a property of
+  where a function sits rather than how it is written, and one nothing about the
+  function can change: in a program with a deep call structure everything past the
+  threshold tripped because of its position. Every tracer now emits `nesting`, how
+  deeply control flow nests within one body, and the detector reads that. Only blocks a
+  control keyword opens count, so an object literal, a struct initialiser and a nested
+  class are not levels, and a nested function ends the count because it is catalogued
+  in its own right. Python takes the measurement from its parse tree; the other four
+  read it off the masked source. The threshold is 5 — one above a linter's usual 4,
+  because this puts a `high` row in a report rather than a warning a writer clears as
+  they go, and the three KISS metrics have to be comparably selective.
 - **Three detectors now report each repeated fact once.** An aggregation rule left
   implicit is one the assistant re-decides per run, so two runs over the same map could
   legitimately disagree about how many findings it holds. Each is now stated:
