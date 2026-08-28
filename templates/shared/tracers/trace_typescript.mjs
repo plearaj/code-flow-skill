@@ -263,20 +263,6 @@ function matchParen(masked, open) {
   return masked.length;
 }
 
-/** Return the index just past the `]` matching the `[` at `open`. */
-function matchBracket(masked, open) {
-  let depth = 0;
-  for (let i = open; i < masked.length; i++) {
-    const c = masked[i];
-    if (c === "[") depth += 1;
-    else if (c === "]") {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    }
-  }
-  return masked.length;
-}
-
 /** Line number (1-based) of a character offset. */
 function lineAt(lineStarts, index) {
   let lo = 0;
@@ -539,22 +525,31 @@ function collectFunctions(rel, src, masked, lineStarts) {
       const afterParams = matchParen(masked, paren);
       signatureEnd = afterParams;
       body = bodyAfterParams(afterParams);
+    } else if (m[4].endsWith("=>")) {
+      // `const f = x => …`: the binding regex matched the arrow itself, so
+      // there is nothing to search for.
+      const arrow = m.index + m[0].length - 2;
+      signatureEnd = arrow;
+      body = arrowBody(arrow + 2);
     } else {
-      // An arrow: find the `=>` that belongs to this binding.
-      let scan = valueStart;
-      if (m[4] === "(" || m[4] === "<") {
-        if (m[4] === "<") {
-          const paren = masked.indexOf("(", valueStart);
-          if (paren === -1) continue;
-          scan = matchParen(masked, paren);
-        } else {
-          scan = matchParen(masked, valueStart);
-        }
+      // `(params) => …` or `<T>(params) => …`. Find where the parameter list
+      // closes, then require the binding's own `=>` to follow it.
+      let scan;
+      if (m[4] === "<") {
+        const paren = masked.indexOf("(", valueStart);
+        if (paren === -1) continue;
+        scan = matchParen(masked, paren);
       } else {
-        scan = valueStart;
+        scan = matchParen(masked, valueStart);
       }
       const arrow = masked.indexOf("=>", scan);
-      if (arrow === -1 || arrow > scan + 200) continue;
+      if (arrow === -1) continue;
+      // Only a return-type annotation may sit between the parameter list and
+      // the arrow. Anything else — a property access, a call, an operator —
+      // means the parentheses were a grouped expression, not a parameter list,
+      // and the arrow belongs to a callback inside it. Taking it would both
+      // invent a function and skip `lastIndex` past the real ones after it.
+      if (!/^\s*(:[^=]*)?$/.test(masked.slice(scan, arrow))) continue;
       signatureEnd = arrow;
       body = arrowBody(arrow + 2);
     }
@@ -1178,6 +1173,49 @@ function exportedFunctionIn(repo, rel, name) {
   return null;
 }
 
+/** The class a heritage clause names, and the file it was declared in. */
+function classByName(repo, file, name) {
+  const simple = name.split(".").pop();
+  const local = file.classes.get(simple);
+  if (local) return { file, cls: local };
+  const imported = file.imports.get(simple);
+  if (!imported) return null;
+  const rel = repo.resolve(file.rel, imported.module);
+  const other = rel && repo.files.get(rel);
+  if (!other) return null;
+  const named = imported.name && imported.name !== "default" ? imported.name : simple;
+  const cls = other.classes.get(named) || other.classes.get(simple);
+  return cls ? { file: other, cls } : null;
+}
+
+/**
+ * The base-class methods `fn` overrides, nearest base first.
+ *
+ * Only `extends` is followed. `implements` names an interface, and an interface
+ * declares no bodies, so there is no method record to check the name against --
+ * naming one anyway would report an override for every method of a class that
+ * happens to implement something. A base outside the repository resolves to
+ * nothing and is not named, the same silence a call that leaves keeps.
+ */
+function overriddenNames(repo, file, fn) {
+  if (!fn.class) return [];
+  const found = [];
+  const seen = new Set();
+  let context = { file, cls: file.classes.get(fn.class) };
+  while (context && context.cls && !seen.has(context.cls.name)) {
+    seen.add(context.cls.name);
+    if (!context.cls.extends) break;
+    const parent = classByName(repo, context.file, context.cls.extends);
+    if (!parent) break;
+    if (parent.cls.methods.has(fn.name)) {
+      const declaration = `${parent.cls.name}.${fn.name}`;
+      if (!found.includes(declaration)) found.push(declaration);
+    }
+    context = parent;
+  }
+  return found;
+}
+
 function methodOnClass(repo, file, className, method) {
   const local = file.classes.get(className);
   if (local && local.methods.has(method)) return local.methods.get(method);
@@ -1531,6 +1569,9 @@ function buildOutput(repo, detail) {
         decorators: fn.decorators || [],
         calls: fn.calls || [],
       };
+      if (fn.class) record.owner = fn.class;
+      const overrides = overriddenNames(repo, file, fn);
+      if (overrides.length) record.overrides = overrides;
       if (fn.componentId) record.component = fn.componentId;
       const snippet = snippetFor(file, fn, detail);
       if (snippet !== null) record.snippet = snippet;
@@ -1586,6 +1627,10 @@ function buildOutput(repo, detail) {
         "in ambiguousCalls rather than guessed into edges.",
       "Components are recognized per framework by declaration shape; one produced by a factory " +
         "or a higher-order component may be missed.",
+      "`overrides` names only a declaration this repository defines: a method that overrides " +
+        "one from a dependency, a framework base class or the standard library carries nothing.",
+      "`overrides` follows `extends` only. An interface declares no bodies, so a class that " +
+        "implements one carries nothing for the members it satisfies.",
     ],
   };
 }

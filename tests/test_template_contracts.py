@@ -30,6 +30,36 @@ def test_map_template_requires_index(repo_root: Path, host: str, name: str) -> N
     assert "index.json" in text
 
 
+@pytest.mark.parametrize("host,name", MAP_TEMPLATES)
+def test_map_template_documents_owner_and_overrides(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Both fields, and the two things a reader has to know to use `overrides`
+    without over-reading it.
+
+    It is a name and not an id, so a consumer that tries to join it against
+    `calls` gets nothing; and it names a supertype only where that supertype
+    really declares the member, which is what separates it from the
+    name-and-arity guess the quality command falls back to. A template that
+    documented the field without either of those would produce maps whose
+    `overrides` means something different from what the tracers put there.
+    """
+    text = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert "`owner`" in text, f"{host}/{name} never documents the `owner` field"
+    assert "`overrides`" in text, f"{host}/{name} never documents the `overrides` field"
+    assert re.search(r"`Supertype\.member`", text), (
+        f"{host}/{name} documents `overrides` without saying what one looks like"
+    )
+    assert re.search(r"name rather than an `id`", text), (
+        f"{host}/{name} never says `overrides` is a name and not an id, which is "
+        f"what stops a consumer joining it against the catalog"
+    )
+    assert re.search(r"really declares the member", text), (
+        f"{host}/{name} never says a supertype is named only where it declares "
+        f"the member — without it, `extends` alone reads as an override"
+    )
+
+
 INDEX_FIELD_NAMES = (
     "slug",
     "title",
@@ -539,6 +569,24 @@ DETECTOR_PRINCIPLES = (
     ("repeated-sequence", "DRY"),
     ("complexity-hotspot", "KISS"),
     ("unreached", "YAGNI"),
+    # The SOLID three are the SOLID principles a call graph carries evidence
+    # for. Open-closed and Liskov substitution are deliberately absent and must
+    # stay absent: a detector for either would have to read intent, which is
+    # the one thing this command refuses to report on.
+    ("single-responsibility", "SOLID"),
+    ("interface-segregation", "SOLID"),
+    ("dependency-cycle", "SOLID"),
+    # Ousterhout's deep modules: interface cost weighed against hidden
+    # functionality, plus the test-side corollary — a test that reaches past
+    # the interface freezes the implementation the module was free to change.
+    ("shallow-module", "DEPTH"),
+    ("pass-through", "DEPTH"),
+    ("internals-coupled-test", "DEPTH"),
+    # SOLID's other two. Neither can be settled from the map, so they run only
+    # under `--read-code`; they are still SOLID detectors, and the pairing is
+    # asserted here like every other.
+    ("open-closed", "SOLID"),
+    ("liskov-substitution", "SOLID"),
     # The fifth runs only when `--rules` was passed, but every host documents
     # it unconditionally: a detector a template never describes is one no run
     # can perform, whatever flag the user typed.
@@ -2249,4 +2297,424 @@ def test_quality_template_records_the_rules_in_the_report_data(
     for field in ("rules", "rulesLoaded", "rulesChecked", "rulesNotCheckable"):
         assert _field_reference(field).search(region), (
             f"{host}/{name} step 5 never names {field!r}"
+        )
+
+
+# --- SOLID and deep modules -------------------------------------------------
+#
+# The five call-graph detectors and the two SOLID principles that are never
+# checked are each a promise the templates make in prose. Neither is a shape a
+# schema can hold, so both are pinned here.
+
+# Every detector that reads `calls`, and so cannot run on a map built without a
+# tracer. shallow-module is deliberately absent: it reads `exported` and `loc`
+# only, which is why it survives that gate.
+_CALL_GRAPH_DETECTORS = (
+    "single-responsibility",
+    "interface-segregation",
+    "dependency-cycle",
+    "pass-through",
+    "internals-coupled-test",
+)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_gates_the_call_graph_detectors(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`calls` is a fact a tracer establishes; the map command says so outright.
+    A module graph inferred from file names and imports instead would be exactly
+    the confident-wrong evidence the gating rule exists to refuse, so a map
+    without `calls` must gate these five off and name the remedy.
+
+    shallow-module is asserted *absent* from the gated list, not merely
+    unmentioned: it is the one new detector that runs on an inventory alone, and
+    a template that gated it off too would silently narrow the report on every
+    tracer-less map.
+    """
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"no inventory entry carries `calls`", region, re.IGNORECASE), (
+        f"{host}/{name} never states the condition that gates the call-graph detectors"
+    )
+    for detector in _CALL_GRAPH_DETECTORS:
+        assert detector in region, (
+            f"{host}/{name} does not gate {detector} on the absence of `calls`"
+        )
+    assert re.search(r"--tracer\s+on", region), (
+        f"{host}/{name} gates the call-graph detectors off without naming the remedy"
+    )
+    # The sentence that keeps shallow-module out of the gate has to say so; the
+    # detector's mere absence from the list above would also hold for a template
+    # that forgot it existed.
+    assert "shallow-module" in region, (
+        f"{host}/{name} never says shallow-module survives the missing call graph"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_gates_open_closed_and_liskov_on_read_code(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """These two are the only detectors whose verdict is not in the map at all.
+    A dispatch table, a registry and a polymorphic call are all correct answers
+    to the problem open-closed describes, and the call graph cannot tell any of
+    them from a conditional chain — so the map locates candidates and source
+    decides, which means no `--read-code`, no detector.
+
+    The remedy is asserted alongside the gate: a detector named in
+    `detectorsSkipped` with no way to un-skip it is a hole the reader cannot
+    close, which is the whole reason step 2 pairs every gate with one.
+    """
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"`--read-code` was not\s+passed", region, re.IGNORECASE), (
+        f"{host}/{name} never states the condition that gates open-closed and Liskov"
+    )
+    for detector in ("open-closed", "liskov-substitution"):
+        assert detector in region, (
+            f"{host}/{name} does not gate {detector} on the absence of --read-code"
+        )
+    # Scoped to this gate's own sentence, not to the region: the thin-map rule a
+    # few paragraphs up also says "re-run with `--read-code`", so an unscoped
+    # search here passed with this gate's remedy deleted.
+    assert re.search(
+        r"[Rr]ecord both as skipped and name the remedy.{0,40}?--read-code",
+        region,
+    ), f"{host}/{name} gates the two off without naming the remedy"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_says_which_of_solids_five_it_checked(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Three of SOLID's five report from the call graph and two only from
+    source. Silence about the latter two reads as five principles clean, which
+    is the confident-wrong outcome this command is arranged around — and it is
+    worse here than for any other skipped detector, because a reader who never
+    passed `--read-code` has no other way to learn they went unchecked.
+    """
+    flat = _flatten((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    assert re.search(r"open-closed and liskov substitution", flat, re.IGNORECASE), (
+        f"{host}/{name}'s SOLID group never names the two by name"
+    )
+    assert re.search(
+        r"open-closed and liskov substitution.{0,120}?whether they were checked",
+        flat,
+        re.IGNORECASE,
+    ), f"{host}/{name} names the two without requiring the report to say if it checked them"
+    # The sentence has to survive an empty SOLID group: that is precisely the
+    # state in which its absence reads as a clean bill.
+    assert re.search(
+        r"even when SOLID produced no findings", flat, re.IGNORECASE
+    ), f"{host}/{name} lets the SOLID disclosure vanish when there are no findings"
+
+
+def test_the_report_scaffold_accepts_every_detector_the_templates_name(
+    repo_root: Path,
+) -> None:
+    """The templates decide what a run can emit; the scaffold decides what a
+    reader can see. They are edited in different files by different tasks, and
+    when they disagree the whole page renders as a validation error rather than
+    a report — which is how the rule-violation detector shipped broken once.
+
+    Derived from `DETECTOR_PRINCIPLES` rather than a second literal list, so a
+    detector added to the templates is checked here without anyone remembering
+    to add it twice.
+    """
+    scaffold = (
+        repo_root / "templates" / "shared" / "report.template.html"
+    ).read_text(encoding="utf-8")
+    allowlist = re.search(r"var DETECTOR = \{(.+?)\};", scaffold, re.DOTALL)
+    assert allowlist, "report.template.html has no DETECTOR allowlist"
+    for detector, _ in DETECTOR_PRINCIPLES:
+        assert f'"{detector}"' in allowlist.group(1), (
+            f"report.template.html rejects detector {detector!r}, which the "
+            f"quality templates can emit"
+        )
+
+
+@pytest.mark.parametrize(
+    "scaffold", ("report.template.html", "bundle.template.html")
+)
+def test_both_scaffolds_accept_every_principle_the_templates_name(
+    repo_root: Path, scaffold: str
+) -> None:
+    """The principle allowlist is duplicated across the two scaffolds and
+    neither derives from the other, so this asserts against both from the one
+    list the templates are checked against.
+    """
+    text = (repo_root / "templates" / "shared" / scaffold).read_text(encoding="utf-8")
+    allowlist = re.search(r"var PRINCIPLE = \{(.+?)\};", text)
+    assert allowlist, f"{scaffold} has no PRINCIPLE allowlist"
+    for _, principle in DETECTOR_PRINCIPLES:
+        assert re.search(rf"\b{principle}\s*:\s*1", allowlist.group(1)), (
+            f"{scaffold} rejects principle {principle!r}, which the quality "
+            f"templates can emit"
+        )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_forms_liskov_families_two_ways(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The Liskov detector has two family rules and they are not
+    interchangeable, so the template has to say which is which.
+
+    A stated family comes from `overrides`, which the source itself asserts —
+    `impl Trait for Type`, `extends`, `implements` — and a guessed one comes
+    from matching a name and a parameter count, which is the same evidence that
+    makes two unrelated `save` methods look like siblings. Reporting both under
+    one label would give the guess the authority of the fact, so the finding
+    carries `familyFrom` and the template names both of its values.
+    """
+    region = _detectors_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    )
+    assert "`overrides`" in region, (
+        f"{host}/{name} never has liskov-substitution read `overrides`"
+    )
+    assert re.search(r"`familyFrom`", region), (
+        f"{host}/{name} never records which way the family was formed"
+    )
+    for value in ("`overrides`", "`name`"):
+        assert re.search(rf"[Ss]et\s+`familyFrom`\s+to\s+{re.escape(value)}", region), (
+            f"{host}/{name} never says when familyFrom is {value}"
+        )
+    # The precedence rule. Without it a function could be counted in a stated
+    # family and a guessed one at once, and the same weakened member would be
+    # reported twice under two different levels of evidence.
+    assert re.search(
+        r"belongs to one family, not two.{0,200}?(stated|formed first)", region
+    ), f"{host}/{name} never says a stated family wins over a guessed one"
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_still_verifies_a_guessed_liskov_family(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """`overrides` settles the shared-supertype check, and only that one.
+
+    That check is the one doing the most work to keep two unrelated `save`
+    methods out of the report, so a template that let it lapse for *every*
+    family — rather than only where the tracer already made it — would turn the
+    field into a licence to skip verification.
+    """
+    region = _detectors_region(
+        (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+    )
+    assert re.search(
+        r"share a supertype or interface\s+rather than a name", region
+    ), f"{host}/{name} dropped the shared-supertype check entirely"
+    assert re.search(
+        r"(stated family|already did).{0,260}?(other two|nothing else)", region
+    ), (
+        f"{host}/{name} never limits the `overrides` shortcut to the check it "
+        f"actually settles"
+    )
+
+
+_FLOW_DETECTORS = ("repeated-sequence", "complexity-hotspot", "unreached")
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_gates_the_flow_detectors(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A map built from a tracer's output with no tracing pass has an empty flow
+    registry, and three detectors are defined over flow *nodes* rather than over
+    the inventory.
+
+    `unreached` is why this gate has to exist: with nothing reached, subtracting
+    the reached set from the catalogued one reports every function in the
+    repository as dead code — the most confidently wrong output this command can
+    produce, and exactly what the gating rule exists to prevent.
+    """
+    region = _flatten(_load_region((repo_root / "templates" / host / name).read_text(encoding="utf-8")))
+    assert re.search(r"flow registry is empty", region, re.IGNORECASE), (
+        f"{host}/{name} never states the condition that gates the flow detectors"
+    )
+    # Scoped to the gate's enumerated list, not to the region and not even to the
+    # gate's paragraph. `unreached` is named by the inventory-absent rule a few
+    # paragraphs up *and* again inside this gate's own rationale, so both looser
+    # searches pass with it struck from the list of what the gate actually skips.
+    listed = re.search(r"skip the three detectors[^.]*\.", region)
+    assert listed, f"{host}/{name} never names what the empty flow registry skips"
+    for detector in _FLOW_DETECTORS:
+        assert detector in listed.group(0), (
+            f"{host}/{name} does not gate {detector} on an empty flow registry; "
+            f"the gate lists {listed.group(0)!r}"
+        )
+    # Scoped to this gate's own sentence: three other rules in step 2 also name a
+    # remedy, and an unscoped search passes with this one's deleted.
+    assert re.search(
+        r"[Rr]ecord all three as skipped and name the remedy.{0,80}?--whole-code-base",
+        region,
+    ), f"{host}/{name} gates the three off without naming the remedy"
+
+
+@pytest.mark.parametrize(
+    "scaffold", ("report.template.html", "bundle.template.html")
+)
+def test_both_scaffolds_explain_every_skippable_detector(
+    repo_root: Path, scaffold: str
+) -> None:
+    """A skipped detector with no reason renders as "reason not recorded in this
+    report", which is the least useful thing the banner can say.
+
+    Every detector a step-2 gate can skip is asserted to have one, derived from
+    the gates rather than from a second hand-kept list.
+    """
+    skippable = set(_FLOW_DETECTORS) | set(_CALL_GRAPH_DETECTORS) | {
+        "duplicate-intent", "rule-violation", "open-closed", "liskov-substitution",
+    }
+    text = (repo_root / "templates" / "shared" / scaffold).read_text(encoding="utf-8")
+    table = re.search(r"var SKIP_REASONS = \{(.+?)\n\s*\};", text, re.DOTALL)
+    assert table, f"{scaffold} has no SKIP_REASONS table"
+    for detector in sorted(skippable):
+        assert f'"{detector}"' in table.group(1), (
+            f"{scaffold} records no reason for {detector!r}, which step 2 can skip"
+        )
+
+
+@pytest.mark.parametrize(
+    "scaffold", ("report.template.html", "bundle.template.html")
+)
+def test_both_scaffolds_name_the_detectors_that_ran_and_found_nothing(
+    repo_root: Path, scaffold: str
+) -> None:
+    """Found by reading a real report. Every SOLID and DEPTH detector was clean,
+    so no finding carried their names and the page never mentioned them — a
+    reader with 47 DRY, KISS and YAGNI rows in front of them concludes SOLID was
+    never checked. That is the inference `detectorsSkipped` exists to prevent,
+    reaching them through the other door: a detector absent from the findings is
+    silent for two opposite reasons and the page distinguished neither.
+
+    So the banner names the clean ones, and the list is derived — every
+    detector, less the skipped, less the reporting — rather than kept by hand.
+    `ALL_DETECTORS` is the derivation's input, so it is checked against the same
+    `DETECTOR_PRINCIPLES` the validator allowlists are checked against; a
+    detector added to the templates and missed here would be silently dropped
+    from the clean list and read, again, as unchecked.
+    """
+    text = (repo_root / "templates" / "shared" / scaffold).read_text(encoding="utf-8")
+    listed = re.search(r"var ALL_DETECTORS = \[(.+?)\];", text, re.DOTALL)
+    assert listed, f"{scaffold} has no ALL_DETECTORS list to derive the clean set from"
+    for detector, _ in DETECTOR_PRINCIPLES:
+        assert f'"{detector}"' in listed.group(1), (
+            f"{scaffold} leaves {detector!r} out of ALL_DETECTORS, so a run where it "
+            f"was clean would never mention it"
+        )
+    # The list alone proves nothing: it has to reach the banner, and it has to
+    # subtract both the skipped and the reporting or it will claim a detector
+    # was clean when it was neither.
+    assert re.search(r"!skippedBy\[name\] && !reportedBy\[name\]", text), (
+        f"{scaffold} does not subtract both the skipped and the reporting detectors"
+    )
+    assert "Ran and found nothing: " in text, (
+        f"{scaffold} never renders the clean detectors it derives"
+    )
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+def test_quality_template_collapses_repeated_sequences_that_share_endpoints(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """Found by reading a real report. `mask_source` dispatches to four masking
+    siblings that all call `blank`, so the detector emitted four `high` findings
+    naming the same dispatcher and the same terminator — one fact restated four
+    times, and four rows of severity count for it.
+
+    A reader who has read one has read all four, so the chains are grouped by
+    their endpoints and reported once with a count. The rule and the two fields
+    that carry it are asserted together: a rule that says to group without
+    saying what to emit leaves the shape to chance, and `occurrences` is what
+    keeps a collapsed row from reading as a single chain.
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    # Scoped to the rule's own paragraph, not the detector region. `variants` is
+    # also open-closed's evidence field and both names appear again in the
+    # evidence table below, so a region-wide search for either passes with the
+    # rule's emission clause deleted — which is how the first version of this
+    # test was vacuous.
+    opens = re.search(r"\bChains shar(?:e|ing) both endpoints\b", region)
+    assert opens, (
+        f"{name} does not say that chains sharing both endpoints are one finding"
+    )
+    closes = region.find("complexity-hotspot", opens.start())
+    rule = region[opens.start() : closes if closes != -1 else len(region)]
+    for field in ("variants", "occurrences"):
+        assert f"`{field}`" in rule, (
+            f"{name} states the grouping rule without naming `{field}`, so a "
+            f"grouped finding has nowhere to put what it collapsed"
+        )
+    # The counterpart matters as much as the rule: grouping chains that differ at
+    # an endpoint would merge two unrelated facts into one row.
+    assert re.search(r"differ(?:ing)? at (?:either|an) endpoint", rule), (
+        f"{name} does not say that chains differing at an endpoint stay separate"
+    )
+
+
+# Every detector that can restate one fact, and the phrase that opens the rule
+# forbidding it. Written as a table because the failure is identical in each
+# case and the fix is the same shape: group first, then report the group once.
+_AGGREGATION_RULES = (
+    (
+        "repeated-sequence",
+        r"\bOnly maximal chains are findings\b",
+        "complexity-hotspot",
+        ("no longer\\s+chain over the same set of flows",),
+    ),
+    (
+        "complexity-hotspot",
+        r"\bOne function is one finding\b",
+        "unreached",
+        # Pinned to the emission clause, not the bare field name: the paragraph
+        # names `alsoTripped` twice — once to say what goes in it and once to say
+        # it is empty rather than absent — so asserting the name alone passes
+        # with the first of those deleted.
+        (r"others (?:in|into) `alsoTripped`", r"empty array", r"per metric or one per flow"),
+    ),
+    (
+        "dependency-cycle",
+        r"\bOne knot is one finding\b",
+        "Deep modules",
+        (r"strongly connected components", r"`cycleCount`"),
+    ),
+)
+
+
+@pytest.mark.parametrize("host,name", QUALITY_TEMPLATES)
+@pytest.mark.parametrize("detector,opens,ends,required", _AGGREGATION_RULES)
+def test_quality_template_reports_each_repeated_fact_once(
+    repo_root: Path, host: str, name: str, detector: str, opens: str, ends: str,
+    required: tuple[str, ...],
+) -> None:
+    """A detector that reports one fact N times makes the report longer without
+    making it say more, and every one of those N rows counts separately toward
+    the severity totals a reader skims first.
+
+    Three detectors can do it, each a different way, and none of them showed on
+    the run that prompted this — the chains were all minimal, no function tripped
+    two thresholds, and the repository has no cycles. That is what makes them
+    worth pinning: an aggregation rule left implicit is one the assistant
+    re-decides per run, so two runs over the same map can legitimately disagree
+    about how many findings it contains.
+
+    `unreached` is deliberately absent. It subtracts ids from ids, so each id
+    appears once by construction and the same fact cannot be reported twice.
+
+    Each rule is scoped to its own paragraph — every name below also appears in
+    the evidence table inside the same region, so a region-wide search for
+    `alsoTripped` or `cycleCount` passes with the rule deleted.
+    """
+    region = _detectors_region((repo_root / "templates" / host / name).read_text(encoding="utf-8"))
+    start = re.search(opens, region)
+    assert start, (
+        f"{name} states no rule collapsing {detector}'s repeated findings into one"
+    )
+    stop = region.find(ends, start.end())
+    rule = region[start.start() : stop if stop != -1 else len(region)]
+    for pattern in required:
+        assert re.search(pattern, rule), (
+            f"{name}'s {detector} aggregation rule never states {pattern!r}, so it "
+            f"says to group without saying what a grouped finding looks like"
         )

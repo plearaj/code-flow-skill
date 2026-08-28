@@ -31,6 +31,30 @@ function extractValidate(templateName) {
   return new Function('"use strict";' + block + "; return validate;")();
 }
 
+// The bundle validates in two places, and only one of them is inside the
+// sentinels. `validate` checks the envelope — index, flows, report-or-null —
+// and the report's own shape is checked later by `checkReportShape`, below the
+// "nothing below this line is covered" line. That made a principle allowlist
+// the bundle owns outright untestable through `extractValidate`: a test that
+// fed a bad principle through `validate` passed no matter what the allowlist
+// said. This lifts the function itself, by name, so the assertion is about the
+// code the bundle actually runs.
+function extractFunction(templateName, name) {
+  const src = fs.readFileSync(
+    path.join(repoRoot, "templates", "shared", templateName),
+    "utf8"
+  );
+  const open = `function ${name}(`;
+  const from = src.indexOf(open);
+  assert.ok(from !== -1, `${templateName} does not declare ${name}`);
+  // Both scaffolds write top-level declarations flush left, so the function
+  // ends at the first column-0 closing brace after it.
+  const to = src.indexOf("\n}\n", from);
+  assert.ok(to !== -1, `${templateName}'s ${name} has no column-0 close`);
+  const block = src.slice(from, to + 2);
+  return new Function('"use strict";' + block + `; return ${name};`)();
+}
+
 // `wrongShape` is per-scaffold on purpose. `{nothing:"useful"}` breaks a rule in
 // the two data viewers, but the index legitimately *accepts* a registry carrying
 // neither `flows` nor `files` — it drops those sections rather than erroring, so
@@ -314,6 +338,48 @@ for (const [example, scaffold, token] of EXAMPLES) {
   });
 }
 
+test("both scaffolds accept every principle the quality command can emit", () => {
+  // The principle allowlist lives in both scaffolds and neither is derived from
+  // the other, so a principle added to one and forgotten in the other renders a
+  // full-page validation error in whichever was missed — which is how the
+  // rule-violation detector shipped broken once already.
+  const PRINCIPLES = ["DRY", "KISS", "YAGNI", "SOLID", "DEPTH", "RULES"];
+  const base = JSON.parse(
+    fs.readFileSync(path.join(repoRoot, "examples", "sample-report.json"), "utf8")
+  );
+  const reportScaffold = extractValidate("report.template.html");
+  const CASES = [
+    {
+      scaffold: "report.template.html",
+      check: (doc) => {
+        const v = reportScaffold(JSON.stringify(doc), "__REPORT_DATA__");
+        return v.ok ? [] : v.lines || [];
+      },
+    },
+    {
+      scaffold: "bundle.template.html",
+      check: (() => {
+        const shape = extractFunction("bundle.template.html", "checkReportShape");
+        return (doc) => shape(doc).problems;
+      })(),
+    },
+  ];
+  for (const { scaffold, check } of CASES) {
+    for (const principle of PRINCIPLES) {
+      const doc = {
+        ...base,
+        findings: [{ ...base.findings[0], principle, id: `${principle}-01` }],
+      };
+      const problems = check(doc);
+      assert.deepEqual(
+        problems,
+        [],
+        `${scaffold} rejects principle "${principle}": ${problems.join(" ")}`
+      );
+    }
+  }
+});
+
 test("report.template.html accepts every detector the quality command can emit", () => {
   // Named individually rather than inferred from the examples, so that adding a
   // detector to the templates without adding it here fails, instead of quietly
@@ -324,6 +390,14 @@ test("report.template.html accepts every detector the quality command can emit",
     "complexity-hotspot",
     "unreached",
     "rule-violation",
+    "single-responsibility",
+    "interface-segregation",
+    "dependency-cycle",
+    "shallow-module",
+    "pass-through",
+    "internals-coupled-test",
+    "open-closed",
+    "liskov-substitution",
   ];
   const validate = extractValidate("report.template.html");
   const base = JSON.parse(

@@ -209,6 +209,20 @@ per function or method you find:
   Go. **When the language or the convention is unclear, use `true`** — wrongly
   calling something private produces a false dead-code claim later, which is the
   more expensive mistake.
+- `owner` — the unqualified name of the type that declares the function: a class,
+  struct, trait, `impl` target, interface or `@implementation`. Omit it for a free
+  function. Present when a tracer produced it, absent otherwise.
+- `overrides` — the supertype declarations this function overrides, nearest first,
+  each written `Supertype.member`, or `Supertype::member` where the language spells
+  it that way. Like `calls`, a fact a tracer establishes rather than something to
+  infer by reading: each tracer reads the relationship its own language states —
+  `impl Trait for Type`, `extends`, `implements`, a base-class list — and names a
+  supertype only where that supertype really declares the member, so a subclass
+  method the parent never declared is not an override of anything. A supertype
+  outside the repository is not named at all. It is a name rather than an `id`
+  because half the declarations that matter — a Java interface method, a C++ pure
+  virtual, an Objective-C protocol selector — have no body and so are never
+  catalogued; where the declaration is catalogued, `owner` and `name` find it.
 - `calls` — the functions this one calls, each an `id` in this same catalog with a
   `confidence` of `exact` or `heuristic`. Present when a tracer produced it, absent
   otherwise: it is a fact the tracer establishes, not something to infer by reading.
@@ -222,7 +236,7 @@ per function or method you find:
 | `standard` (default) | include, capped at ~20 lines; omit for functions of 3 lines or fewer, since a trivial accessor tells a duplicate-detector nothing |
 | `verbose` | include the full body, uncapped |
 
-If a tracer ran, this catalog is its `functions[]` array: copy `id`, `name`, `file`, `line`, `loc`, `signature`, `purpose`, `role`, `exported`, `calls` and `snippet` straight across rather than deriving them again. Read source only for the entries you are about to describe in a flow, and for anything the tracer's `limits` say it could not see. Catalogue what the tracer found *and* what it says it missed; never report the first as if it were both.
+If a tracer ran, this catalog is its `functions[]` array: copy `id`, `name`, `file`, `line`, `loc`, `signature`, `purpose`, `role`, `exported`, `owner`, `overrides`, `calls` and `snippet` straight across rather than deriving them again. Read source only for the entries you are about to describe in a flow, and for anything the tracer's `limits` say it could not see. Catalogue what the tracer found *and* what it says it missed; never report the first as if it were both.
 
   Inside every `snippet`, replace each `</` with `<\/`, exactly as in step 5.
 

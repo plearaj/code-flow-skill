@@ -34,6 +34,30 @@
     {
       "id": "DRY-01",
       "principle": "DRY",
+      "detector": "repeated-sequence",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "Session setup repeated across two flows, two ways",
+      "rationale": "load_user runs, a token step follows, and audit_login closes, in both user_login and password_reset. Two chains share those endpoints and differ only in the token step, so they are reported once.",
+      "sites": [
+        { "file": "src/auth/session.py", "line": 22, "symbol": "load_user",
+          "snippet": "def load_user(request):\n    ..." },
+        { "file": "src/auth/session.py", "line": 40, "symbol": "refresh_token",
+          "snippet": "def refresh_token(user):\n    ..." },
+        { "file": "src/auth/session.py", "line": 49, "symbol": "rotate_token",
+          "snippet": "def rotate_token(user):\n    ..." },
+        { "file": "src/auth/session.py", "line": 58, "symbol": "audit_login",
+          "snippet": "def audit_login(user):\n    ..." }
+      ],
+      "flows": ["user_login", "password_reset"],
+      "variants": ["refresh_token", "rotate_token"],
+      "occurrences": 2,
+      "suggestion": "Extract the shared endpoints into one begin_session helper that takes the token step.",
+      "effort": "medium"
+    },
+    {
+      "id": "DRY-02",
+      "principle": "DRY",
       "detector": "duplicate-intent",
       "severity": "high",
       "confidence": "verified",
@@ -51,13 +75,17 @@
       "effort": "small"
     },
     {
-      "id": "DRY-02",
-      "principle": "DRY",
-      "detector": "repeated-sequence",
+      "id": "SOLID-01",
+      "principle": "SOLID",
+      "detector": "interface-segregation",
       "severity": "high",
       "confidence": "verified",
-      "title": "Session setup repeated across two flows",
-      "rationale": "load_user, refresh_token and audit_login run in sequence in both user_login and password_reset.",
+      "title": "src/auth/session.py exports 9 functions and no caller uses more than 2",
+      "rationale": "Nine exported functions, six consumer files, and the widest consumer calls two of them. One interface is standing where its callers want several: the request-side lookups and the audit writers have no consumer in common.",
+      "module": "src/auth/session.py",
+      "exports": 9,
+      "consumers": 6,
+      "widestConsumerUse": 2,
       "sites": [
         { "file": "src/auth/session.py", "line": 22, "symbol": "load_user",
           "snippet": "def load_user(request):\n    ..." },
@@ -66,8 +94,48 @@
         { "file": "src/auth/session.py", "line": 58, "symbol": "audit_login",
           "snippet": "def audit_login(user):\n    ..." }
       ],
-      "flows": ["user_login", "password_reset"],
-      "suggestion": "Extract the three-call sequence into one begin_session helper.",
+      "suggestion": "Split the module along the two groups its callers already use.",
+      "effort": "medium"
+    },
+    {
+      "id": "SOLID-02",
+      "principle": "SOLID",
+      "detector": "dependency-cycle",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "session, schemas and validators call each other in a ring",
+      "rationale": "Three files across two top-level packages depend on each other in a cycle, so none of them can be read, tested or changed on its own.",
+      "cycle": ["src/auth/session.py", "src/api/schemas.py", "src/auth/validators.py",
+                "src/auth/session.py"],
+      "cycleCount": 1,
+      "sites": [
+        { "file": "src/auth/session.py", "line": 31, "symbol": "load_user",
+          "snippet": "    payload = schemas.parse_session(raw)" },
+        { "file": "src/api/schemas.py", "line": 48, "symbol": "check_email",
+          "snippet": "    return validators.validate_email(raw)" },
+        { "file": "src/auth/validators.py", "line": 19, "symbol": "validate_email",
+          "snippet": "    session.audit_login(value)" }
+      ],
+      "suggestion": "Invert the validators-to-session edge behind an interface the session module implements, so the dependency points one way.",
+      "effort": "large"
+    },
+    {
+      "id": "DEPTH-01",
+      "principle": "DEPTH",
+      "detector": "internals-coupled-test",
+      "severity": "high",
+      "confidence": "verified",
+      "title": "Tests reach past src/auth/session.py's interface into 3 internals",
+      "rationale": "Two test functions call _decode_cookie, _rotate_key and _write_audit_row directly, and the module exports nine functions, so there was an interface to test through. `exported` is the map's per-language heuristic and defaults to true where the convention is unclear, so this under-reports rather than over-reports.",
+      "module": "src/auth/session.py",
+      "internals": ["_decode_cookie", "_rotate_key", "_write_audit_row"],
+      "sites": [
+        { "file": "tests/test_session.py", "line": 41, "symbol": "test_cookie_roundtrip",
+          "snippet": "def test_cookie_roundtrip():\n    assert _decode_cookie(raw) == payload" },
+        { "file": "tests/test_session.py", "line": 77, "symbol": "test_key_rotation",
+          "snippet": "def test_key_rotation():\n    _rotate_key(store)" }
+      ],
+      "suggestion": "Exercise the three through load_user and refresh_token, so the module stays free to change how it decodes and rotates.",
       "effort": "medium"
     },
     {
@@ -96,16 +164,98 @@
       "detector": "complexity-hotspot",
       "severity": "high",
       "confidence": "verified",
-      "title": "handle_request has a fan-out of 11",
-      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8.",
+      "title": "handle_request has a fan-out of 11 and a depth of 7",
+      "rationale": "handle_request calls 11 functions directly, above the fan-out threshold of 8, and sits 7 calls deep in user_login. Both describe the same function; fan-out is the further past its threshold.",
       "sites": [
         { "file": "src/web/views.py", "line": 63, "symbol": "handle_request",
           "snippet": "def handle_request(req):\n    ..." }
       ],
       "metric": "fan-out",
       "value": 11,
+      "alsoTripped": ["depth = 7"],
       "suggestion": "Group the validation, persistence and notification calls into three helpers.",
       "effort": "medium"
+    },
+    {
+      "id": "SOLID-03",
+      "principle": "SOLID",
+      "detector": "open-closed",
+      "severity": "medium",
+      "confidence": "verified",
+      "title": "export_view selects among 3 renderers with a conditional chain",
+      "rationale": "render_pdf, render_html and render_csv share a name shape and a signature, and export_view picks between them with an if/elif on a format string, so adding a fourth format means editing export_view. Confirmed by reading the selection: a lookup table, a registry or a polymorphic call here would not have been a finding.",
+      "variants": ["render_pdf", "render_html", "render_csv"],
+      "switchPoint": "src/web/views.py:164",
+      "sites": [
+        { "file": "src/web/views.py", "line": 164, "symbol": "export_view",
+          "snippet": "def export_view(request):\n    if fmt == \"pdf\":\n        return render_pdf(rows)\n    elif fmt == \"html\":\n        return render_html(rows)" },
+        { "file": "src/reports/render.py", "line": 12, "symbol": "render_pdf",
+          "snippet": "def render_pdf(rows):\n    ..." },
+        { "file": "src/reports/render.py", "line": 31, "symbol": "render_html",
+          "snippet": "def render_html(rows):\n    ..." },
+        { "file": "src/reports/render.py", "line": 49, "symbol": "render_csv",
+          "snippet": "def render_csv(rows):\n    ..." }
+      ],
+      "suggestion": "Register the three renderers by format key and have export_view look one up.",
+      "effort": "medium"
+    },
+    {
+      "id": "SOLID-04",
+      "principle": "SOLID",
+      "detector": "single-responsibility",
+      "severity": "medium",
+      "confidence": "verified",
+      "title": "src/web/views.py reaches into 7 other modules",
+      "rationale": "Its functions call into seven distinct files and four call in. This is a proxy for more than one reason to change rather than a proof of one: the module graph shows the spread, not the intent behind it.",
+      "module": "src/web/views.py",
+      "dependencies": 7,
+      "dependents": 4,
+      "sites": [
+        { "file": "src/web/views.py", "line": 63, "symbol": "handle_request",
+          "snippet": "def handle_request(req):\n    ..." },
+        { "file": "src/web/views.py", "line": 118, "symbol": "login_view",
+          "snippet": "def login_view(request):\n    ..." },
+        { "file": "src/web/views.py", "line": 164, "symbol": "export_view",
+          "snippet": "def export_view(request):\n    ..." }
+      ],
+      "suggestion": "Give the persistence and notification calls their own module, so views depends on two collaborators instead of seven.",
+      "effort": "large"
+    },
+    {
+      "id": "DEPTH-02",
+      "principle": "DEPTH",
+      "detector": "pass-through",
+      "severity": "medium",
+      "confidence": "verified",
+      "title": "2 pass-through functions in src/api/schemas.py",
+      "rationale": "Each takes the same parameters as the single function it calls and does nothing else, so it adds a name a caller must learn and hides no work.",
+      "module": "src/api/schemas.py",
+      "sites": [
+        { "file": "src/api/schemas.py", "line": 22, "symbol": "parse_session",
+          "snippet": "def parse_session(raw):\n    return session.decode(raw)" },
+        { "file": "src/api/schemas.py", "line": 30, "symbol": "dump_session",
+          "snippet": "def dump_session(payload):\n    return session.encode(payload)" }
+      ],
+      "suggestion": "Have the two callers reach session.decode and session.encode directly.",
+      "effort": "small"
+    },
+    {
+      "id": "SOLID-05",
+      "principle": "SOLID",
+      "detector": "liskov-substitution",
+      "severity": "medium",
+      "confidence": "verified",
+      "title": "ReadOnlyStore.write raises where its siblings return",
+      "rationale": "The map stated the family: all three stores carry overrides naming Store.write, so no name matching was involved. Verification confirmed the two counts left — dispatch_write holds one through the Store type, and only this member refuses; FileStore.write and MemoryStore.write both return, so a caller holding a Store cannot rely on write working.",
+      "family": "Store.write",
+      "familyFrom": "overrides",
+      "weakened": ["ReadOnlyStore.write"],
+      "sites": [
+        { "file": "src/store/readonly.py", "line": 18, "symbol": "write",
+          "snippet": "def write(self, key, value):\n    raise NotImplementedError(\"read-only\")" }
+      ],
+      "suggestion": "Give the read-only case a type callers cannot receive where a writable Store is expected.",
+      "effort": "large"
     },
     {
       "id": "YAGNI-01",

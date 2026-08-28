@@ -67,6 +67,7 @@ polyglot codebase.
       "signature": "authenticate(user_id, password)",
       "purpose": "Return the user when the password checks out.",
       "role": "source", "exported": true, "async": false, "io": false,
+      "owner": "UserService", "overrides": ["Describable.describe"],
       "decorators": [],
       "calls": [{ "to": "src_auth_store_get", "name": "get", "line": 15, "confidence": "exact" }],
       "snippet": "def authenticate(user_id, password):\n    ..."
@@ -114,6 +115,28 @@ them would make every helper only tests use look unreachable.
 **`exported`** is a per-language heuristic biased towards `true`, because
 wrongly calling something private produces a false dead-code claim, which is the
 more expensive mistake.
+
+**`owner`** is the unqualified name of the type that declares the function --
+class, struct, trait, `impl` target, interface, `@implementation`. Absent for a
+free function, which is how a consumer tells a method from a function without
+parsing `qualname`.
+
+**`overrides`** is the supertype declarations this function overrides, nearest
+first, each written `Supertype.member` (or `Supertype::member` where the
+language spells it that way). It is a *name*, not an id, and deliberately: a
+Java interface method and a C++ pure virtual are declarations with no body, and
+a tracer that catalogues bodies has no entry to point at, so an id-only field
+would report the same relationship in Java and stay silent in C++. Where the
+declaration is itself catalogued, `owner` and `name` find it.
+
+Nothing here is inferred from a name. Each tracer reads the relationship its own
+language states -- `impl Trait for Type` in Rust, `extends`/`implements` in Java
+and TypeScript, the base-class list in Python and C++ -- and names a supertype
+only where that supertype really declares the member: `AdminUserStore extends
+UserStore` does not make `findAdmin` an override. A supertype outside the
+repository is not named at all, the same silence `calls` keeps over a call that
+leaves. This is what lets a consumer group sibling implementations without
+guessing that two `save` methods in unrelated classes are a family.
 
 **`skipped`** is a file the tracer opened or listed and declined to read, with
 one reason: `vendored`, `generated`, `binary` or `unparsed`. It is not a

@@ -2,10 +2,12 @@
 
 #include <string>
 
+#include "describable.hpp"
+
 namespace demo {
 
 /// Authenticates users against the C store.
-class UserService {
+class UserService : public Describable {
 public:
     /// Builds a service reading from the given table.
     explicit UserService(std::string table);

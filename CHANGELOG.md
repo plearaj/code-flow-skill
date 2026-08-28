@@ -81,6 +81,72 @@ from this repository at the same version.
 - **New node kind `component` and new edge kind `render`**, rendered distinctly by the
   interactive viewer and the bundle, with matching entries in `.code-flow/theme.css`.
 
+### Added — SOLID and deep modules
+
+- **Six more detectors on `/code-flow.quality`, under two new principles.** `SOLID`
+  carries `single-responsibility` (a module reaching into many others),
+  `interface-segregation` (a wide export surface no single caller uses much of) and
+  `dependency-cycle` (modules depending on each other in a ring). `DEPTH` carries
+  Ousterhout's deep-module argument: `shallow-module` (more interface than
+  implementation behind it), `pass-through` (a function that only hands its arguments
+  to one other) and `internals-coupled-test` (a test reaching past a module's interface
+  into its internals, freezing the implementation that module was supposed to stay free
+  to change). Every threshold is a number, as everywhere else in this report, so
+  findings do not drift toward "medium".
+- **`open-closed` and `liskov-substitution` run under `--read-code`**, and only there.
+  Their evidence was never in the map: a dispatch table, a registry and a polymorphic
+  call are all correct answers to the problem open-closed describes, and no call graph
+  can tell any of them from a conditional chain. So the map locates candidates — a
+  variant family with a caller that selects among it, an override family with a member
+  whose body refuses — and the source settles them. A candidate the verify pass does
+  not confirm is dropped there, which makes these two the only detectors whose every
+  finding is `verified`. Liskov's candidate survives only if the family really shares
+  a supertype, a caller really holds one through it, and the member really weakens the
+  contract; two unrelated `save` methods are the false positive it is most exposed to,
+  and the first check is what removes it.
+- **The SOLID group says which of the five it checked.** Under `--read-code` all five
+  report; without it the two above are named as not checked, with the flag named as
+  the remedy. The sentence is written even when SOLID produced no findings, because
+  three principles reported and two never mentioned reads as five principles clean.
+- **The three flow detectors gate off when the map registers no traced flows** —
+  repeated-sequence, complexity-hotspot and unreached are defined over flow *nodes*,
+  and a map built from a tracer's output with no tracing pass has none. `unreached`
+  is why the gate has to exist: with nothing reached, subtracting the reached set
+  from the catalogued one reports every function in the repository as dead code.
+  Both scaffolds now carry a reason for all three, so the banner names the cause and
+  the remedy instead of "reason not recorded in this report".
+- **The five call-graph detectors gate off when the map has no `calls`**, naming each
+  one and the remedy — re-map with `--tracer on` — in the same coverage banner that
+  already reports a skipped duplicate-intent. `shallow-module` reads only export counts
+  and function lengths, so it still runs on any map that carries an inventory.
+- Findings from the new detectors carry the measurement their threshold was applied to,
+  the way `complexity-hotspot` carries `metric` and `value`: `module` plus
+  `dependencies`/`dependents`, `exports`/`consumers`/`widestConsumerUse`, `cycle`,
+  `interface`/`hiddenLoc`, and `internals`. Both HTML scaffolds render them beside the
+  cited sites, so a reader can check the number rather than take it.
+- **`owner` and `overrides` on every inventory entry, from every tracer.** `owner` is
+  the type that declares the function — class, struct, trait, `impl` target, interface,
+  `@implementation` — absent for a free function. `overrides` is the supertype
+  declarations it implements, nearest first, written `Supertype.member`. Like `calls`,
+  neither is inferred by reading: each tracer reads the relationship its own language
+  states outright — `impl Trait for Type`, `extends`, `implements`, a base-class list —
+  and names a supertype only where that supertype really declares the member, so
+  `AdminUserStore extends UserStore` does not make `findAdmin` an override of anything.
+  A supertype outside the repository is not named at all. It is a name and not an `id`
+  because a Java interface method, a C++ pure virtual and an Objective-C protocol
+  selector have no body to catalogue, and an id-only field would report the same
+  relationship in one language and stay silent in the next.
+- **`liskov-substitution` forms its family from `overrides` where the map carries it.**
+  A family is then the set of functions naming the same declaration — stated by the
+  source rather than matched by name — and the shared-supertype check, the one doing
+  the most work to keep two unrelated `save` methods out of the report, is settled
+  before verification starts. Where `overrides` is absent the detector falls back to
+  the previous name-and-parameter-count rule and verification does all three checks. A
+  function belongs to one family, not two: stated families form first. Every finding
+  carries `familyFrom`, `overrides` or `name`, and both scaffolds print it beside the
+  family — *stated by the source* or *matched by name* — so a reader never has to
+  assume which kind they are looking at.
+
 ### Added — checking your own rules
 
 - **`--rules [source ...]`** on `/code-flow.quality`, off by default. A source is a path
@@ -108,9 +174,45 @@ from this repository at the same version.
 - `inventory.json` may now carry a `components` array alongside `functions`.
 - The interactive viewer, the bundle and the quality report accept the new kinds and the
   new principle; existing artifacts render unchanged.
+- **Three detectors now report each repeated fact once.** An aggregation rule left
+  implicit is one the assistant re-decides per run, so two runs over the same map could
+  legitimately disagree about how many findings it holds. Each is now stated:
+  `repeated-sequence` reports only maximal chains — every contiguous run of 3 or more
+  calls inside a repeated chain repeats over exactly the same flows, so a shared path of
+  6 calls contained ten findings; `complexity-hotspot` reports one finding per function
+  however many of its three thresholds it trips and however many flows reach it, citing
+  the metric furthest past its threshold and carrying the rest in `alsoTripped`; and
+  `dependency-cycle` reports one finding per strongly connected component rather than
+  one per rotation or per ring, citing the shortest ring as an exemplar with
+  `cycleCount` beside it. `unreached` is deliberately untouched — it subtracts ids from
+  ids, so each id appears once by construction and the same fact cannot repeat.
+- **`repeated-sequence` reports one finding per group of chains, not one per chain.** A
+  dispatcher handing off to a family of siblings that all return to the same place
+  produced one `high` finding per sibling — the same fact restated, four times over on
+  this repository's own map, each row counting separately toward the severity totals.
+  Chains sharing both endpoints are now grouped and reported once, carrying `variants`
+  (the interiors that differ) and `occurrences` (how many chains the row stands for).
+  Chains differing at either endpoint are different facts and stay separate.
+- **Both HTML scaffolds name the detectors that ran and found nothing.** A clean detector
+  was indistinguishable from one that never ran: neither put a row in the findings list.
+  On a report where all eight SOLID and DEPTH detectors were clean, that read as SOLID
+  never having been checked — the inference `detectorsSkipped` exists to prevent,
+  arriving through the other door. The banner now lists them, derived as every detector
+  less the skipped less the reporting rather than kept by hand.
 
 ### Fixed
 
+- **The TypeScript tracer no longer invents arrow functions, or loses real ones.** A
+  `const` binding whose value began with `(` had the next `=>` within 200 characters
+  read as its own arrow, so `const xs = (a || []).map((f) => f)` was catalogued as a
+  function — and, worse, the scan then resumed past that arrow's body, skipping every
+  real binding in between. One grouped expression swallowed an exported arrow function
+  three lines below it, and the map simply did not contain it. Only whitespace or a
+  return-type annotation may now sit between a parameter list and the arrow.
+- **Three unreachable branches removed**, all surfaced by running the tool over its own
+  source: `_snippet` in the Python tracer, `matchBracket` in the TypeScript tracer, and
+  an `interface` test in the Java tracer's `_is_exported` that returned exactly what the
+  line below it returned unconditionally.
 - **A generated flow page can be shared through corporate mail and chat again.** The
   viewer and the bundle drew their edge arrowheads with an SVG `<marker>`, which can
   only be reached by referencing it as `url(#id)` — a signature several corporate

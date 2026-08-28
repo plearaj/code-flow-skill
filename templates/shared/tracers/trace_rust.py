@@ -308,6 +308,7 @@ class RustFile:
             "qualname": qualname,
             "owner": owner,
             "traitName": block["trait"] if block else None,
+            "traitDecl": bool(block and block["kind"] == "trait"),
             "line": line,
             "endLine": self.index.line_of(body_end),
             "signature": " ".join(signature.split()),
@@ -746,6 +747,23 @@ def collect_entry_points(repo: Repository) -> List[Dict[str, Any]]:
 # --- output ----------------------------------------------------------------
 
 
+def _overridden_names(fn: Dict[str, Any]) -> List[str]:
+    """The trait member an `impl Trait for Type` method implements, if any.
+
+    Rust states the relationship outright and the language enforces it: every
+    method in an `impl Describe for UserStore` block implements a member of
+    `Describe`, or the crate does not compile. So there is nothing to look up
+    here and nothing to infer -- unlike the tracers that have to find a
+    declaration before they can name it, this one reads the answer off the
+    block header. That also means a trait's *required* methods, which have no
+    body and so are never catalogued, are covered anyway.
+    """
+    trait = fn["traitName"]
+    if not trait or fn["traitDecl"]:
+        return []
+    return [trait + "::" + fn["name"]]
+
+
 def build_functions(repo: Repository) -> List[Dict[str, Any]]:
     records = []
     for fn in repo.functions:
@@ -766,6 +784,11 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
             "decorators": fn["decorators"],
             "calls": fn["calls"],
         }
+        if fn["owner"]:
+            record["owner"] = fn["owner"]
+        overrides = _overridden_names(fn)
+        if overrides:
+            record["overrides"] = overrides
         snippet = common.snippet_for(
             source.lines, fn["line"], fn["endLine"], record["loc"], repo.detail
         )
@@ -776,6 +799,9 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
 
 
 LIMITS = common.BASE_LIMITS + (
+    "`overrides` is read off the `impl Trait for Type` header, so it covers a trait's "
+    "required methods as well as its defaults -- but only for traits, since an inherent "
+    "`impl` block overrides nothing.",
     "Trait dispatch through `dyn Trait` or a generic bound is resolved to the trait's "
     "own method where one exists, and left ambiguous otherwise: which impl runs is not "
     "a static fact about the text.",

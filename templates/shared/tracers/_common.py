@@ -26,7 +26,7 @@ import os
 import re
 import subprocess
 import sys
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 TRACER_SCHEMA = 1
 ID_RULE = "code-flow/v1"
@@ -653,6 +653,59 @@ def snippet_for(lines: List[str], start_line: int, end_line: int, loc: int, deta
     return body.replace("</", "<\\/")
 
 
+# --- inheritance -----------------------------------------------------------
+
+
+def overridden_names(
+    types: Dict[str, Dict[str, Any]],
+    methods: Dict[Tuple[str, str], List[Dict[str, Any]]],
+    owner: Optional[str],
+    name: str,
+    separator: str = ".",
+) -> List[str]:
+    """The supertype declarations `owner.name` overrides, nearest first.
+
+    Shared by the two tracers whose languages spell inheritance the same way --
+    a type naming its supertypes, walked upward until the names run out. Two
+    rules keep it from inventing anything. It searches supertypes only, never
+    `owner` itself, because a method does not override its own type's other
+    overload -- an overload set inside one type is exactly what a
+    name-and-arity guess mistakes for a family. And it names a supertype only
+    where that supertype really declares this member: `AdminUserStore extends
+    UserStore` does not make `findAdmin` an override of anything.
+
+    The result is a *name*, `Supertype.member`, not an id, because the id would
+    often not exist. A Java interface method and a C++ pure virtual are
+    declarations with no body, and a tracer that catalogues bodies has no entry
+    to point at -- Java's abstract declarations are catalogued and C++'s are
+    not, so an id-only field would report the same relationship in one language
+    and stay silent in the other. The name is what makes two implementations of
+    one declaration recognizable as siblings, which is what a consumer asks for;
+    where the declaration is itself catalogued, `owner` and `name` locate it.
+
+    A supertype outside this repository -- `Object`, a class from a jar -- is
+    not in `types`, so nothing above it is named. That is the refusal `calls`
+    makes, for the reason `calls` makes it: what the tracer cannot see, it does
+    not report.
+    """
+    if not owner:
+        return []
+    found: List[str] = []
+    seen: Set[str] = {owner}
+    frontier: List[str] = list(types.get(owner, {}).get("supers", []))
+    while frontier:
+        parent = frontier.pop(0)
+        if not parent or parent in seen:
+            continue
+        seen.add(parent)
+        if methods.get((parent, name)):
+            declaration = parent + separator + name
+            if declaration not in found:
+                found.append(declaration)
+        frontier.extend(types.get(parent, {}).get("supers", []))
+    return found
+
+
 # --- resolution bookkeeping ------------------------------------------------
 
 
@@ -766,6 +819,8 @@ BASE_LIMITS = (
     "injection, registry lookups and configuration-declared entry points are invisible to it.",
     "Calls resolved by unique name carry confidence 'heuristic'; ambiguous ones are "
     "listed in ambiguousCalls rather than guessed into edges.",
+    "`overrides` names only a declaration this repository defines: a method that overrides "
+    "one from a dependency, a framework base class or the standard library carries nothing.",
 )
 
 

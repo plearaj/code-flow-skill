@@ -262,6 +262,37 @@ def test_ids_follow_the_documented_derivation(request, which: str) -> None:
 
 
 @pytest.mark.parametrize("which", ALL_TRACERS)
+def test_ids_are_unique_within_one_trace(request, which: str) -> None:
+    """Two catalogued functions may never share an `id`.
+
+    Everything downstream joins on it — a flow node against the inventory, a
+    reached set against a catalogued one — so a duplicate does not degrade the
+    map, it corrupts it: one entry silently stands in for two.
+
+    This is a canary rather than a proof. The id rule drops the extension from
+    the path's last segment, so `service.cpp` and `service.hpp` derive the same
+    stem, while `assign_ids` decides its `_l<line>` collision suffix from one
+    file's own contents. Two same-named function bodies across such a pair —
+    an inline method in a header and another class's method in the source
+    beside it, which is ordinary C++ — therefore collide, and nothing in the
+    rule prevents it. This assertion is what makes that loud the next time a
+    fixture reaches it.
+    """
+    trace = _trace(request, which)
+    seen: dict[str, dict] = {}
+    clashes = []
+    for fn in trace["functions"]:
+        first = seen.get(fn["id"])
+        if first is None:
+            seen[fn["id"]] = fn
+        else:
+            clashes.append(
+                f"{fn['id']}: {first['file']}:{first['line']} and {fn['file']}:{fn['line']}"
+            )
+    assert not clashes, f"{which}: two functions share one id: " + "; ".join(clashes)
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
 def test_snippets_follow_the_detail_flag(request, repo_root: Path, which: str) -> None:
     """`--detail` means the same thing here as it does in the map, because the
     map hands its own flag straight through."""
@@ -302,6 +333,149 @@ def test_limits_are_stated_rather_than_implied(request, which: str) -> None:
     trace = _trace(request, which)
     assert trace["limits"], f"{which} tracer states no limits"
     assert any("static" in limit.lower() for limit in trace["limits"])
+
+
+# --- owner and overrides ---------------------------------------------------
+#
+# `overrides` is the field the quality command's Liskov detector forms a family
+# from, so what it must never do is name a relationship the source does not
+# state. These assertions are written from that direction: one per tracer for
+# the family it does find, and shared ones for everything it must not invent.
+
+# The override family each fixture is built around: the declaration, and the two
+# members that name it. One per tracer, so a tracer that stops reading its
+# language's inheritance is caught by the tracer's own case rather than by a
+# shared assertion that could pass on somebody else's evidence.
+OVERRIDE_FAMILIES = {
+    "python": ("UserStore.get", {"app_store_get_l22", "app_service_get"}),
+    "typescript": ("UserService.load", {"src_services_cachinguserservice_load"}),
+    "rust": ("Describe::describe", {"src_store_describe_l62", "src_store_describe_l68"}),
+    "java": (
+        "Describable.describe",
+        {"src_main_java_com_demo_userservice_describe",
+         "src_main_java_com_demo_userstore_describe"},
+    ),
+    "c-family": ("Describable::describe", {"src_service_describe"}),
+}
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_overrides_names_the_declaration_the_source_states(request, which: str) -> None:
+    """Each tracer finds its language's inheritance, spelled its language's way.
+
+    Five languages state the relationship five ways -- `impl Trait for Type`,
+    `implements`, `extends`, a base-class list, a `: public Base` -- and this is
+    the assertion that each tracer reads its own rather than a paraphrase of
+    Java's.
+    """
+    trace = _trace(request, which)
+    declaration, members = OVERRIDE_FAMILIES[which]
+    found = {
+        fn["id"] for fn in trace["functions"] if declaration in fn.get("overrides", [])
+    }
+    assert found == members, (
+        f"{which}: {declaration} should be named by {sorted(members)}, "
+        f"got {sorted(found)}"
+    )
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_every_override_is_well_formed(request, which: str) -> None:
+    """`Supertype.member`, where `member` is this function's own name and
+    `Supertype` is not the type it already belongs to.
+
+    A consumer forms a family by grouping on this string, so a malformed one is
+    not a cosmetic problem: it either splits a real family or joins two.
+    """
+    trace = _trace(request, which)
+    wrong = []
+    for fn in trace["functions"]:
+        for declaration in fn.get("overrides", []):
+            separator = "::" if "::" in declaration else "."
+            supertype, _, member = declaration.rpartition(separator)
+            if member != fn["name"] or not supertype:
+                wrong.append(f"{fn['id']} names {declaration!r}")
+            elif supertype == fn.get("owner"):
+                wrong.append(f"{fn['id']} claims to override its own type")
+    assert not wrong, f"{which}: " + "; ".join(wrong)
+
+
+# One method per fixture that its type inherits nothing for: the class extends
+# or implements something, and this particular member is its own. Naming an
+# override here would be the field's characteristic failure -- reading the
+# heritage clause and stopping there, without checking that the supertype
+# really declares the member.
+INHERITS_NOTHING = {
+    "python": "app_store_warm",
+    "typescript": "src_services_cachinguserservice_prime",
+    "rust": "src_store_get_l38",
+    "java": "src_main_java_com_demo_adminuserstore_findadmin",
+    "c-family": "src_service_authenticate",
+}
+
+
+@pytest.mark.parametrize("which", ALL_TRACERS)
+def test_extending_something_does_not_make_every_method_an_override(
+    request, which: str
+) -> None:
+    """A subclass of a class is not an override of all of it."""
+    trace = _trace(request, which)
+    target = INHERITS_NOTHING[which]
+    functions = _by_id(trace)
+    assert target in functions, f"{which} fixture no longer defines {target}"
+    assert functions[target].get("overrides") is None, (
+        f"{which}: {target} was reported as overriding "
+        f"{functions[target].get('overrides')}, which its type never declares"
+    )
+
+
+# Java is absent by construction: every method belongs to a type, so there is no
+# free function for this to be true of. Listing it here rather than skipping it
+# inside the test keeps that a stated fact about the language instead of a
+# fixture that happens to have none.
+HAS_FREE_FUNCTIONS = ("c-family", "python", "rust", "typescript")
+
+
+@pytest.mark.parametrize("which", HAS_FREE_FUNCTIONS)
+def test_a_free_function_carries_no_owner_and_no_overrides(request, which: str) -> None:
+    """`owner` is how a consumer tells a method from a function without parsing
+    `qualname`, which only works if a free function really does omit it."""
+    trace = _trace(request, which)
+    free = [fn for fn in trace["functions"] if "owner" not in fn]
+    assert free, f"{which} fixture has no free function to check"
+    assert all("overrides" not in fn for fn in free), (
+        f"{which}: a function belonging to no type was given an override"
+    )
+
+
+def test_python_tracer_resolves_a_base_class_through_an_import(py_trace: dict) -> None:
+    """The half of Python inheritance a same-file walk cannot see.
+
+    `AuditedUserStore` lives in `app/service.py` and extends a class imported
+    from `app/store.py`, so naming its override means resolving the import the
+    way a call through one is resolved. `CachingUserStore` in the same fixture
+    covers the same-file half.
+    """
+    functions = _by_id(py_trace)
+    assert functions["app_service_get"]["overrides"] == ["UserStore.get"], (
+        "a base class reached through `from app.store import UserStore` was not resolved"
+    )
+    assert functions["app_store_get_l22"]["overrides"] == ["UserStore.get"]
+    assert functions["app_store_get_l10"].get("overrides") is None, (
+        "the base class's own method was given an override of itself"
+    )
+
+
+def test_rust_tracer_reads_an_override_off_the_impl_header(rust_trace: dict) -> None:
+    """Rust's required trait methods have no body and so are never catalogued.
+    The relationship is still stated -- by `impl Describe for UserStore` -- and
+    reading it off the header rather than by finding a declaration is what lets
+    this tracer name the family that a body-driven lookup would miss."""
+    functions = _by_id(rust_trace)
+    assert functions["src_store_describe_l62"]["overrides"] == ["Describe::describe"], (
+        "the trait `Describe` declares `describe` without a body, so a tracer that "
+        "looked for a declaration to point at would have found nothing"
+    )
 
 
 # --- the Python tracer -----------------------------------------------------
@@ -828,3 +1002,44 @@ def test_a_skip_reason_matches_a_path_segment_not_a_substring(
     assert {record["path"]: record["reason"] for record in trace["skipped"]}.get(marked) == "generated", (
         f"{which}: {marked} was left out without being reported as generated"
     )
+
+
+def test_typescript_tracer_does_not_mistake_a_callback_arrow_for_the_binding(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    """A parenthesised expression is not a parameter list.
+
+    Found by running the tracer over this repository. `const xs = (a || []).map((f) => f)`
+    matches the binding regex with `(` as its value start; the old rule then took
+    the *next* `=>` within 200 characters as the binding's own. Two failures came
+    out of that, and the second is the worse one:
+
+    - the binding is catalogued as a function it is not, and
+    - `lastIndex` advances past everything up to that arrow, so the real arrow
+      function the callback's arrow was borrowed from is never catalogued at all.
+
+    A phantom entry is noise. A silently dropped export is a hole, and the map
+    gives a reader no way to see it. So the fix is asserted from both sides: the
+    expression must not appear, and the real function after it must.
+
+    The four shapes below are each a real arrow the fix must keep — parameter
+    list, bare single parameter, generic, and a return-type annotation between
+    the parameter list and the arrow — because a rule tight enough to reject the
+    expression is exactly the rule that could reject these.
+    """
+    _write(
+        tmp_path,
+        "src/bindings.ts",
+        "export const grouped = ([\"a\"] || []).map((s) => s.trim());\n"
+        "export const plain = (word: string) => word.length;\n"
+        "export const bare = word => word;\n"
+        "export const generic = <T,>(v: T) => v;\n"
+        "export const annotated = (word: string): string => word.toUpperCase();\n",
+    )
+    catalogued = {fn["name"]: fn for fn in _rerun_in(repo_root, "typescript", tmp_path)["functions"]}
+
+    assert "grouped" not in catalogued, (
+        "a grouped expression whose callback contains `=>` was catalogued as a function"
+    )
+    for name in ("plain", "bare", "generic", "annotated"):
+        assert name in catalogued, f"{name} is a real arrow function and was not catalogued"

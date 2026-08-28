@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-PRINCIPLES = {"DRY", "KISS", "YAGNI", "RULES"}
+PRINCIPLES = {"DRY", "KISS", "YAGNI", "SOLID", "DEPTH", "RULES"}
 SEVERITIES = {"high", "medium", "low"}
 CONFIDENCES = {"verified", "unverified"}
 EFFORTS = {"small", "medium", "large"}
@@ -27,6 +27,14 @@ DETECTORS = {
     "complexity-hotspot",
     "unreached",
     "rule-violation",
+    "single-responsibility",
+    "interface-segregation",
+    "dependency-cycle",
+    "shallow-module",
+    "pass-through",
+    "internals-coupled-test",
+    "open-closed",
+    "liskov-substitution",
 }
 SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2}
 
@@ -46,13 +54,23 @@ REQUIRED_FIELDS = {
     "effort",
 }
 
-# Step 3: "Three detectors carry evidence the fields above have no home for.
-# Add exactly these, and nothing else." Each detector not listed here
+# Step 3: "Most detectors carry evidence the fields above have no home for.
+# Add exactly these, and nothing else." Each detector whose entry is empty
 # (duplicate-intent) adds none.
 EVIDENCE_FIELDS_BY_DETECTOR = {
     "duplicate-intent": frozenset(),
-    "repeated-sequence": frozenset({"flows"}),
-    "complexity-hotspot": frozenset({"metric", "value"}),
+    # `variants` and `occurrences` carry the collapse: every chain sharing a pair
+    # of endpoints is one finding, so the row has to say how many chains it
+    # stands for or four restatements of one fact read as one fact. Both are
+    # unconditional — a group of one carries its single interior and a count of
+    # 1, so no reader has to tell a missing field from a count of one.
+    "repeated-sequence": frozenset({"flows", "variants", "occurrences"}),
+    # `alsoTripped` carries the thresholds this function exceeded besides the one
+    # in `metric`. The three are joined by `or`, so a function can trip all of
+    # them and is then the worst function in the report — one thing to simplify
+    # at one `file:line`, not three findings. Unconditional: an empty array says
+    # "tripped once", which a missing field cannot.
+    "complexity-hotspot": frozenset({"metric", "value", "alsoTripped"}),
     # `reachedBy` is what gives `production-unreached` a home in the JSON. Both
     # outcomes emit `detector: "unreached"` with different severity rules, and
     # before this field the distinction survived only in `title`/`rationale`
@@ -64,6 +82,34 @@ EVIDENCE_FIELDS_BY_DETECTOR = {
     # `ruleSource` a reader cannot tell a real violation from a misreading of
     # the rule, which is the failure mode this detector is most exposed to.
     "rule-violation": frozenset({"rule", "ruleId", "ruleSource"}),
+    # The SOLID and DEPTH detectors each claim something about a whole file, so
+    # each carries the file (`module`) and the numbers its own threshold was
+    # applied to. Without them a reader can see the cited functions but not the
+    # measurement the finding rests on, which is the same gap `metric`/`value`
+    # closed for complexity-hotspot.
+    "single-responsibility": frozenset({"module", "dependencies", "dependents"}),
+    "interface-segregation": frozenset(
+        {"module", "exports", "consumers", "widestConsumerUse"}
+    ),
+    # `cycle` is the ring itself. It is the one piece of evidence that cannot be
+    # reconstructed from the sites: the sites say which functions carry the
+    # edges, not what order the edges close in.
+    # `cycle` is one ring; `cycleCount` says how many the component holds. A knot
+    # of five mutually-reaching modules contains dozens of simple cycles and one
+    # problem, so the finding is per strongly connected component and the count
+    # is what tells a reader the cited ring is an exemplar rather than the whole
+    # of it.
+    "dependency-cycle": frozenset({"cycle", "cycleCount"}),
+    "shallow-module": frozenset({"module", "interface", "hiddenLoc"}),
+    "pass-through": frozenset({"module"}),
+    "internals-coupled-test": frozenset({"module", "internals"}),
+    # The two detectors whose evidence is never in the map. `switchPoint` is the
+    # place a new variant has to edit, and `weakened` is the subset of the family
+    # the verify pass actually confirmed narrows the contract — not the whole
+    # family, which is why it is a field of its own rather than a slice of
+    # `sites`.
+    "open-closed": frozenset({"variants", "switchPoint"}),
+    "liskov-substitution": frozenset({"family", "familyFrom", "weakened"}),
 }
 
 # Step 3: `reachedBy` has exactly two values. `"tests"` is the
@@ -82,7 +128,7 @@ _INSTRUCTS_DELETION = re.compile(r"\b(delete|remove|drop)\b", re.IGNORECASE)
 # check alone would miss it entirely.
 _DRIVE_LETTER_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
 
-_ID = re.compile(r"^(DRY|KISS|YAGNI|RULES)-\d{2}$")
+_ID = re.compile(r"^(DRY|KISS|YAGNI|SOLID|DEPTH|RULES)-\d{2}$")
 
 
 # Every example report this repository ships. The fixture below is

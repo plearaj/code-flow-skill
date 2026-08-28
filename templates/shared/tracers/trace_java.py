@@ -265,7 +265,7 @@ class JavaFile:
             "signature": " ".join((name + params).split()),
             "returns": returns,
             "purpose": common.doc_comment_before(self.text, above),
-            "exported": _is_exported(head, owner),
+            "exported": _is_exported(head),
             "async": False,
             "io": bool(IO_RE.search(self.text[body_start : body_end + 1])),
             "decorators": annotations,
@@ -336,17 +336,17 @@ _MODIFIERS = frozenset(
 )
 
 
-def _is_exported(head: str, owner: Dict[str, Any]) -> bool:
+def _is_exported(head: str) -> bool:
     """Public API, biased towards true.
 
     Wrongly calling something private produces a false dead-code claim, which is
-    the more expensive mistake. An interface member is public whether or not it
-    says so, and a package-private method is reachable from its own package.
+    the more expensive mistake. `private` is the only modifier that settles it:
+    an interface member is public whether or not it says so, and a
+    package-private method is reachable from its own package. The declaring type
+    is therefore not consulted — it cannot change the answer.
     """
     if "private" in head.split():
         return False
-    if owner["keyword"] == "interface":
-        return True
     return True
 
 
@@ -669,6 +669,17 @@ def build_functions(repo: Repository) -> List[Dict[str, Any]]:
             "decorators": fn["decorators"],
             "calls": fn["calls"],
         }
+        if fn["owner"]:
+            record["owner"] = fn["owner"]
+        # A constructor shares its class's name, so it can only ever collide
+        # with a supertype the class is named after -- never an override.
+        overrides = (
+            []
+            if fn["isConstructor"]
+            else common.overridden_names(repo.types, repo.methods, fn["owner"], fn["name"])
+        )
+        if overrides:
+            record["overrides"] = overrides
         snippet = common.snippet_for(source.lines, fn["line"], fn["endLine"], loc, repo.detail)
         if snippet is not None:
             record["snippet"] = snippet

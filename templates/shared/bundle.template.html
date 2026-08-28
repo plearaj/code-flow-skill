@@ -838,7 +838,7 @@ function repFail(title, lines){
 }
 function checkReportShape(data){
   var SEVERITY = { high:1, medium:1, low:1 };
-  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, RULES:1 };
+  var PRINCIPLE = { DRY:1, KISS:1, YAGNI:1, SOLID:1, DEPTH:1, RULES:1 };
   var CONFIDENCE = { unverified:1, verified:1 };
   var problems = [];
   if (data.schema !== 1) problems.push("`schema` must be 1, got " + JSON.stringify(data.schema) + ".");
@@ -856,7 +856,7 @@ function checkReportShape(data){
     if (Object.prototype.hasOwnProperty.call(seen, id)) problems.push("duplicate finding id \"" + id + "\".");
     seen[id] = 1;
     if (!SEVERITY[f.severity]) problems.push(id + " has severity " + JSON.stringify(f.severity) + "; want high, medium or low.");
-    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS, YAGNI or RULES.");
+    if (!PRINCIPLE[f.principle]) problems.push(id + " has principle " + JSON.stringify(f.principle) + "; want DRY, KISS, YAGNI, SOLID, DEPTH or RULES.");
     if (!CONFIDENCE[f.confidence]) problems.push(id + " has confidence " + JSON.stringify(f.confidence) + "; want unverified or verified.");
     if (!Array.isArray(f.sites) || !f.sites.length){
       problems.push(id + " must cite at least one site; a finding without file:line evidence is not reportable.");
@@ -949,11 +949,38 @@ function renderReport(){
       " could not be read and " + plural(coverage.flowsUnreadable, "was", "were") + " not analyzed", true);
   }
 
+  /* The five call-graph detectors share one cause and one remedy: a map built
+     without a tracer carries no `calls`, so there is no module graph to walk, and
+     a graph guessed from file names would be exactly the evidence the quality
+     command refuses to invent. */
+  var NO_GRAPH = "the map carries no `calls`, so there was no module graph to walk — re-map with " +
+    "/code-flow.map --whole-code-base --tracer on";
+  var NO_SOURCE = "this detector reads source, not the map, and --read-code was not passed — " +
+    "re-run the quality command with --read-code to check it";
+  /* The three detectors defined over flow nodes rather than over the inventory.
+     A map built from a tracer's output with no tracing pass has an empty flow
+     registry, which is ordinary rather than broken -- and `unreached` there
+     would call the whole catalog dead code. */
+  var NO_FLOWS = "the map registers no traced flows, so there were no flow nodes to read \u2014 " +
+    "re-map with /code-flow.map --whole-code-base to trace them";
   var SKIP_REASONS = {
     "duplicate-intent": "a thin map carries no snippet, so this detector had no evidence to compare — " +
       "re-run the quality command with --read-code, or re-map with --detail standard",
+    "repeated-sequence": NO_FLOWS,
+    "complexity-hotspot": NO_FLOWS,
+    "unreached": NO_FLOWS,
     "rule-violation": "no rule could be read from the sources given to --rules, so there was " +
-      "nothing to check against — the other four detectors are unaffected"
+      "nothing to check against — every other detector is unaffected",
+    "single-responsibility": NO_GRAPH,
+    "interface-segregation": NO_GRAPH,
+    "dependency-cycle": NO_GRAPH,
+    "pass-through": NO_GRAPH,
+    "internals-coupled-test": NO_GRAPH,
+    /* The only two whose evidence was never in the map. They locate candidates
+       from it and let --read-code settle them, so without the flag there is
+       nothing for them to report rather than something they got wrong. */
+    "open-closed": NO_SOURCE,
+    "liskov-substitution": NO_SOURCE
   };
   var skipped = Array.isArray(coverage.detectorsSkipped) ? coverage.detectorsSkipped : [];
   if (skipped.length){
@@ -963,6 +990,30 @@ function renderReport(){
     });
   } else {
     fact("No detectors were skipped");
+  }
+  /* A detector that ran and found nothing looks exactly like one that never ran:
+     the findings list simply carries no row with its name. On a report where every
+     SOLID and DEPTH detector was clean, that reads as SOLID never having been
+     checked -- the inference `detectorsSkipped` exists to prevent, arriving
+     through the other door. So the clean ones are named too. The set is derived
+     rather than kept: every detector, less the ones step 2 skipped, less the ones
+     that reported. */
+  var ALL_DETECTORS = ["duplicate-intent", "repeated-sequence", "complexity-hotspot",
+    "unreached", "single-responsibility", "interface-segregation", "dependency-cycle",
+    "shallow-module", "pass-through", "internals-coupled-test", "open-closed",
+    "liskov-substitution", "rule-violation"];
+  var reportedBy = {};
+  findings.forEach(function(f){ if (f && f.detector) reportedBy[String(f.detector)] = 1; });
+  var skippedBy = {};
+  skipped.forEach(function(name){ skippedBy[String(name)] = 1; });
+  var clean = ALL_DETECTORS.filter(function(name){
+    /* rule-violation checks rules somebody wrote down. With none loaded it neither
+       ran nor was skipped, so it is not clean -- it has nothing to be clean about. */
+    if (name === "rule-violation" && !coverage.rulesLoaded) return false;
+    return !skippedBy[name] && !reportedBy[name];
+  });
+  if (clean.length){
+    fact("Ran and found nothing: " + clean.join(", "));
   }
   el("p", "note", "Discovery was Glob, Grep and Read — not a parser. These counts describe " +
     "what the map catalogued, and anything it never reached was never examined.", banner);
@@ -999,7 +1050,8 @@ function renderReport(){
     var bySeverity = chooser("filter-severity", "Severity",
       [["", "any"], ["high", "high"], ["medium", "medium"], ["low", "low"]]);
     var byPrinciple = chooser("filter-principle", "Principle",
-      [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"], ["RULES", "RULES"]]);
+      [["", "any"], ["DRY", "DRY"], ["KISS", "KISS"], ["YAGNI", "YAGNI"],
+      ["SOLID", "SOLID"], ["DEPTH", "DEPTH"], ["RULES", "RULES"]]);
     var shownCount = el("div", "count", null, bar);
     el("div", "hint", "Findings appear in the order the analysis produced them — by severity, " +
       "then site count, then principle. The filters hide rows; they never reorder them.", section);
@@ -1036,13 +1088,64 @@ function renderReport(){
       if (f.rule) evidence.push([f.ruleId ? "rule " + f.ruleId : "rule", String(f.rule)]);
       if (f.ruleSource) evidence.push(["rule source", String(f.ruleSource)]);
       if (f.metric != null){
-        evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "")]);
+        /* A function can exceed all three thresholds and is then one finding, so the
+           others ride beside the one that decided the row. Without them the report
+           understates its own worst function. */
+        evidence.push(["metric", String(f.metric) + (f.value != null ? " = " + f.value : "") +
+          (Array.isArray(f.alsoTripped) && f.alsoTripped.length
+            ? ", also " + f.alsoTripped.join(", ") : "")]);
       } else if (f.value != null){
         evidence.push(["value", String(f.value)]);
       }
       if (typeof f.exported === "boolean") evidence.push(["exported", f.exported ? "yes" : "no"]);
       if (f.reachedBy){
         evidence.push(["reached by", f.reachedBy === "tests" ? "its own tests only" : String(f.reachedBy)]);
+      }
+      // The SOLID and DEPTH detectors are the only ones whose claim is a number about
+      // a whole file rather than about a line of code. Show that number beside the
+      // sites: without it a reader sees five cited functions and no way to check the
+      // threshold the finding says they tripped.
+      if (f.module) evidence.push(["module", String(f.module)]);
+      if (f.dependencies != null){
+        evidence.push(["module dependencies", String(f.dependencies) + " out" +
+          (f.dependents != null ? ", " + f.dependents + " in" : "")]);
+      }
+      if (f.exports != null){
+        evidence.push(["exported surface", String(f.exports) + " exported, " + String(f.consumers) +
+          " " + plural(f.consumers, "consumer", "consumers") + ", widest uses " + String(f.widestConsumerUse)]);
+      }
+      if (Array.isArray(f.cycle) && f.cycle.length){
+        /* The cited ring is an exemplar: one knot of mutually-reaching modules holds
+           many. The count is what stops a reader taking it for the whole cycle. */
+        evidence.push(["cycle", f.cycle.join(" \u2192 ") +
+          (f.cycleCount > 1 ? " (1 of " + f.cycleCount + " through this component)" : "")]);
+      }
+      if (f.interface != null){
+        evidence.push(["module depth", String(f.interface) + " exported, " + String(f.hiddenLoc) +
+          " lines behind them"]);
+      }
+      if (Array.isArray(f.internals) && f.internals.length){
+        evidence.push(["internals reached", f.internals.join(", ")]);
+      }
+      if (Array.isArray(f.variants) && f.variants.length){
+        /* repeated-sequence collapses every chain sharing a pair of endpoints
+           into one row, so the count says how much this single row stands for.
+           Without it a group of four reads as a group of one. */
+        evidence.push(["variants", f.variants.join(", ") +
+          (f.occurrences != null ? " (" + f.occurrences + " " +
+            plural(f.occurrences, "chain", "chains") + ")" : "")]);
+      }
+      if (f.switchPoint) evidence.push(["selected at", String(f.switchPoint)]);
+      if (f.family){
+        /* Whether the family was stated by the source or matched by name is the one
+           thing that decides how much a reader should trust the finding, so it rides
+           beside the family rather than in the rationale where it can be skipped. */
+        evidence.push(["override family", String(f.family) +
+          (f.familyFrom === "overrides" ? " (stated by the source)" :
+           f.familyFrom === "name" ? " (matched by name)" : "")]);
+      }
+      if (Array.isArray(f.weakened) && f.weakened.length){
+        evidence.push(["weakens the contract", f.weakened.join(", ")]);
       }
       if (evidence.length){
         var dl = el("dl", "evidence", null, card);

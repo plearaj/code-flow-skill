@@ -239,7 +239,7 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 |---|---|
 | `/code-flow.map <flow name>` | Traces one flow and writes its markdown, HTML and JSON |
 | `/code-flow.map` (no argument) | Surveys the project and suggests 3–5 flows to pick from |
-| `/code-flow.quality` | Reports DRY, KISS and YAGNI findings from what the map recorded |
+| `/code-flow.quality` | Reports DRY, KISS, YAGNI, SOLID and module-depth findings from what the map recorded |
 | `/code-flow.quality --rules auto` | The same, plus violations of the rules your project already wrote down |
 
 | Flag | On | Default | Does |
@@ -249,7 +249,7 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 | `--output files\|bundle\|both` | map | `files` | Which HTML gets written. `both` adds the single-file bundle; `bundle` writes only it. Never skips the JSON. [Details](#one-file-you-can-send-someone) |
 | `--frontend auto\|react\|vue\|angular\|svelte\|off` | map | `auto` | Whether to map UI components as well as functions. [Details](#frontend-component-mapping) |
 | `--tracer auto\|on\|off` | map | `auto` | Whether to run the installed static tracers before tracing anything. [Details](#automated-tracing) |
-| `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. [Details](#quality-reporting) |
+| `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. Also unlocks the two SOLID detectors that read source rather than the map. [Details](#quality-reporting) |
 | `--rules [source ...]` | quality | off | Also checks the map against rules your project has already written down. [Details](#checking-your-own-rules) |
 
 ```text
@@ -362,9 +362,10 @@ install alongside the templates and do that reading in one pass:
 | C, C++, Objective-C, C# | `.code-flow/tracers/trace_c_family.py` | any CPython 3.9+ |
 
 Each writes one JSON document: every function with its `file:line`, signature,
-purpose, role and export status; the resolved call graph between them; the entry
-points execution arrives through; and, for the TypeScript one, the component tree
-and the routes. The map then walks that graph instead of re-reading the
+purpose, role and export status; the type that declares it and the supertype
+declarations it overrides; the resolved call graph between them; the entry points
+execution arrives through; and, for the TypeScript one, the component tree and
+the routes. The map then walks that graph instead of re-reading the
 repository once per entry point, which is the difference between finishing a
 large map in one pass and finishing it in four.
 
@@ -452,8 +453,8 @@ writes `Code_Flows/quality-report.json`, `Code_Flows/quality-report.md` and
 renderings of it, and none of the three may contradict another. The `.html` is a
 single self-contained page — no server, no build step, no internet required —
 that you open straight from disk, with the same coverage banner, the same
-"catalogued, never all" wording, and filters by severity and principle. Four
-detectors run, and a fifth when you pass `--rules`:
+"catalogued, never all" wording, and filters by severity and principle. Ten
+detectors run, two more when you pass `--read-code`, and one more with `--rules`:
 
 | Detector | Principle | Reports |
 |---|---|---|
@@ -461,10 +462,61 @@ detectors run, and a fifth when you pass `--rules`:
 | repeated-sequence | DRY | Call chains repeated across flows |
 | complexity-hotspot | KISS | High fan-out, deep nesting, very long functions |
 | unreached | YAGNI | Catalogued functions no mapped flow reaches |
+| single-responsibility | SOLID | A module reaching into many others — more than one reason to change |
+| interface-segregation | SOLID | A wide export surface no single caller uses much of |
+| dependency-cycle | SOLID | Modules that depend on each other in a ring |
+| shallow-module | DEPTH | More interface than implementation behind it |
+| pass-through | DEPTH | Functions that only hand their arguments to one other |
+| internals-coupled-test | DEPTH | Tests reaching past a module's interface into its internals |
+| open-closed | SOLID | A conditional chain that must be edited to add a variant — only with `--read-code` |
+| liskov-substitution | SOLID | An override that refuses what its siblings promise — only with `--read-code` |
 | rule-violation | RULES | Code contradicting a rule you pointed it at — only with `--rules` |
 
 Severity is rule-based — thresholds, not impressions — so findings do not all
 drift toward "medium".
+
+**SOLID's five, split by where the evidence lives.** Three of them —
+single-responsibility, interface-segregation and dependency-cycle — are settled by
+the call graph. The other two are not, and they are not dropped for it:
+open-closed and liskov-substitution locate candidates in the map and let
+`--read-code` settle them against real source, so they run only under that flag
+and every finding they produce is `verified`. Without it, both are reported as not
+checked, by name, with `--read-code` named as the remedy.
+
+That split is the point. A dispatch table, a registry and a polymorphic call are
+all correct answers to the problem open-closed describes, and no call graph can
+tell any of them from a conditional chain — so the map says where to look and the
+source says whether it is a finding. Liskov gets the stricter treatment: a
+candidate survives only if the family really shares a supertype, a caller really
+holds one through it, and the member really weakens the contract.
+
+**Where a Liskov family comes from.** The first of those three checks is the one
+doing the most work — two unrelated `save` methods in unrelated classes are the
+false positive this detector is most exposed to — and on a traced map it is
+already settled before verification starts. Every tracer records `overrides` on
+the functions it catalogues: the supertype declarations each one implements, read
+off the relationship its language states outright (`impl Trait for Type`,
+`extends`, `implements`, a base-class list) and named only where that supertype
+really declares the member. A family is then the set of functions naming the same
+declaration — a fact, not a guess.
+
+Where `overrides` is absent — a map built without a tracer has none, and even a
+traced map has none where the declaration lives outside the repository — the
+detector falls back to matching an unqualified name and a parameter count, and
+verification does all three checks. Both kinds can appear in one report, so every
+finding carries `familyFrom`, `overrides` or `name`, and the viewers print it
+beside the family: *stated by the source* or *matched by name*. A reader never has
+to assume which one they are looking at.
+
+**The DEPTH three** are Ousterhout's deep-module argument — a module earns its
+keep when it hides more than it asks a caller to learn — including its test-side
+corollary: a test that reaches around the interface into the internals freezes
+the implementation that module was supposed to stay free to change.
+
+Five of the nine new detectors read the call graph, so they need a map built with
+a tracer. On a map without one, they are gated off and the banner names each with
+its remedy; shallow-module reads only export counts and function lengths, so it
+runs on any map that has an inventory.
 
 `--read-code` opens the files the candidate findings cite and confirms each
 against current source, marking the survivors `verified` and dropping the rest;
@@ -492,11 +544,16 @@ and counted in the banner.
 
 On a `--detail thin` map, duplicate-intent is skipped unless you pass
 `--read-code`: a thin map carries no code snippets, so that detector has no
-evidence to cite.
+evidence to cite. On a map whose inventory carries no `calls` — one built with
+`--tracer off`, or in a language no tracer covers — the five call-graph detectors
+are skipped for the same kind of reason, and named in the banner rather than
+quietly omitted. Without `--read-code`, open-closed and liskov-substitution are
+skipped too: their evidence was never in the map to begin with.
 
 #### Checking your own rules
 
-DRY, KISS and YAGNI are everybody's rules. `--rules` checks yours:
+DRY, KISS, YAGNI, SOLID and deep modules are everybody's rules. `--rules`
+checks yours:
 
 ```text
 /code-flow.quality --rules auto
