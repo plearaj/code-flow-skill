@@ -7,6 +7,61 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Both
 package (`@htst/code-flow-skill`) and the Python package (`htst-code-flow-skill`) ship
 from this repository at the same version.
 
+## [1.3.0]
+
+### Added — two new commands
+
+- **`/code-flow.qa` walks the map against the code and says what still holds.** A map
+  is a claim — *this function calls that one, this page renders that component* — and
+  until now nothing checked the claim after the code moved on. QA runs five checks per
+  flow (the entry still exists, every node resolves, every edge is still a call the
+  caller makes, every node is reachable, the files have not changed since mapping), then
+  walks every documented component and route. Everything checked gets one of four
+  statuses — `pass`, `drifted`, `broken`, `unchecked` — and **`broken` outranks
+  `drifted` outranks `pass`**, because a flow that works four steps out of five does not
+  work. Every status carries the named checks that produced it, so a reader who
+  disagrees can go and look at the same line.
+- **`--live` on QA runs the application.** It finds the project's own way of starting a
+  dev server, visits each documented route in a browser, confirms the component the map
+  says renders there actually appeared, and records every console error and failed
+  request. That is the case static checking cannot reach: a page that renders nothing
+  while every function it needs is still sitting in the source. The boundary is hard —
+  it navigates, reads, and clicks things that only navigate or reveal; it **never
+  submits a form or fires a mutating request on purpose**, and it refuses a
+  `--base-url` that is not obviously local until the user confirms the environment is
+  disposable. A live pass that cannot start the app is recorded as `unchecked` with the
+  command that was tried; the static results stand, and the report says on its face that
+  the application was never run.
+- **`/code-flow.violations` checks one rule you name.** `--rules` on the quality command
+  checks written-down rules as one detector among thirteen, inside a sweep. This is for
+  the other case: a rule you care about right now, answered properly. Three things
+  differ. It **reads source by default** (`--no-read-code` turns that off), because "the
+  map does not carry that evidence" is a poor answer when the files are right there.
+  **Every rule gets a row** — violated, clean, partially checked or not settled — since
+  on a report listing only violations, a rule that passed and a rule nobody looked at
+  produce the same silence. And it **will not report a rule clean that it could not
+  enumerate**: for "every X must Y", a site is an X that does not Y, so it has to be able
+  to list every X, and when it cannot the rule is unsettled rather than passing.
+- **A QA report scaffold**, `.code-flow/qa.template.html`, installed like the other four:
+  one self-contained page, self-validating on load, theme-aware in both modes, filterable
+  by status and by kind, and free of the `url(#...)` references that get a shared HTML
+  attachment quarantined. The four per-status colours are in `theme.css` like every other
+  token, so a user theme reaches this page too.
+- **Both commands ship to all four hosts** — Claude Code, Gemini CLI, GitHub Copilot and
+  the `.agents/skills/` standard that Codex and Antigravity read — bringing the installed
+  set to four commands and four skills.
+
+### Changed
+
+- **The report scaffold knows which report it is rendering.** A violations report uses the
+  quality report's findings shape, field for field, so both render through the same page
+  and a reader learns one layout. But the banner derives its "ran and found nothing" list
+  from every detector the quality command has, and a violations report rendered that way
+  would claim twelve detectors ran clean when none of them ran at all — the same
+  confident-wrong statement the banner exists to prevent, arriving through the other door.
+  `meta.kind` now tells the page which it is; it defaults to quality, so every report
+  written before it existed renders exactly as it always did.
+
 ## [1.2.0]
 
 ### Added — automated tracing

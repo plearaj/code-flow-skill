@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "htst-code-flow-skill"
-version = "1.2.0"
+version = "1.3.0"
 description = "Installable Code Flow skill and command templates for Claude Code, GitHub Copilot, OpenAI Codex, Antigravity and Gemini CLI."
 readme = "README.md"
 requires-python = ">=3.11"

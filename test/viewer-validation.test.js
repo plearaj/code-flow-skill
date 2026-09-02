@@ -85,6 +85,17 @@ const SCAFFOLDS = [
     wrongShape: { flows: "not-an-array" },
     expect: [/`flows` must be an array when present/],
   },
+  {
+    file: "qa.template.html",
+    token: "__QA_DATA__",
+    wrongShape: { nothing: "useful" },
+    expect: [
+      /`schema` must be 1/,
+      /`meta` must be an object/,
+      /`coverage` must be an object/,
+      /`flows` must be an array/,
+    ],
+  },
 ];
 
 for (const { file, token, wrongShape, expect } of SCAFFOLDS) {
@@ -433,4 +444,84 @@ test("the bundle accepts a bundle built from the shipped examples", () => {
     "__BUNDLE" + "_DATA__"
   );
   assert.equal(v.ok, true, `${v.title || ""} ${(v.lines || []).join(" ")}`);
+});
+
+// --- the QA scaffold's own rules -------------------------------------------
+//
+// A QA report's statuses are the whole product: everything else on the page is
+// the evidence behind one of four words. A status the viewer does not recognise
+// would render as a word nobody defined, in a card coloured like a pass.
+
+const VALID_QA = {
+  schema: 1,
+  meta: { root: "/p", generated: "2026-09-02", live: false, frontend: true },
+  coverage: { flowsInRegistry: 1, flowsChecked: 1, checksRun: 2, checksFailed: 0,
+              liveStatus: "not-run", liveReason: "--live was not passed" },
+  flows: [{
+    slug: "user_login", title: "User Login", status: "pass",
+    checks: [{ check: "entry-exists", outcome: "pass", detail: "" },
+             { check: "edge-holds", outcome: "pass", detail: "" }],
+  }],
+};
+
+function qa(overrides) {
+  return JSON.stringify({ ...VALID_QA, ...overrides });
+}
+
+test("qa.template.html: a valid report produces no problems", () => {
+  const validate = extractValidate("qa.template.html");
+  const v = validate(qa({}), "__QA_DATA__");
+  assert.equal(v.ok, true, v.ok ? "" : v.title + ": " + (v.lines || []).join(" "));
+  assert.equal(v.flows.length, 1);
+  assert.equal(v.components.length, 0, "an absent components array reads as empty, not as an error");
+  assert.equal(v.routes.length, 0);
+});
+
+test("qa.template.html: an unknown status is reported", () => {
+  const validate = extractValidate("qa.template.html");
+  const v = validate(qa({ flows: [{ ...VALID_QA.flows[0], status: "probably-fine" }] }), "__QA_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /want pass, drifted, broken or unchecked/);
+});
+
+test("qa.template.html: an unknown check outcome is reported", () => {
+  const validate = extractValidate("qa.template.html");
+  const bad = { ...VALID_QA.flows[0], checks: [{ check: "edge-holds", outcome: "probably" }] };
+  const v = validate(qa({ flows: [bad] }), "__QA_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /want pass, fail or unchecked/);
+});
+
+test("qa.template.html: a pass with no checks behind it is reported", () => {
+  // The failure mode this rule exists for: a walk that never ran produces
+  // exactly the same shape as one where everything held, and only the empty
+  // `checks` array tells them apart.
+  const validate = extractValidate("qa.template.html");
+  const v = validate(qa({ flows: [{ ...VALID_QA.flows[0], checks: [] }] }), "__QA_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /passed with no checks recorded/);
+});
+
+test("qa.template.html: a broken flow with no checks is accepted", () => {
+  // The inverse is legitimate: a flow whose sidecar could not be read has
+  // nothing to record, and refusing it would leave the report unable to say so.
+  const validate = extractValidate("qa.template.html");
+  const v = validate(qa({ flows: [{ slug: "gone", status: "unchecked", checks: [] }] }), "__QA_DATA__");
+  assert.equal(v.ok, true, "an unchecked flow must be reportable with no checks behind it");
+});
+
+test("qa.template.html: a components array of the wrong type is reported", () => {
+  const validate = extractValidate("qa.template.html");
+  const v = validate(qa({ components: "nope" }), "__QA_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /`components` must be an array when present/);
+});
+
+test("qa.template.html: a backslash path is reported", () => {
+  const validate = extractValidate("qa.template.html");
+  const bad = { ...VALID_QA.flows[0], status: "broken",
+                checks: [{ check: "edge-holds", outcome: "fail", file: "src\\web\\views.py", line: 4 }] };
+  const v = validate(qa({ flows: [bad] }), "__QA_DATA__");
+  assert.equal(v.ok, false);
+  assert.match(v.lines.join(" "), /forward-slash and repo-relative/);
 });

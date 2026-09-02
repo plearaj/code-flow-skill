@@ -57,7 +57,7 @@ Given a feature or flow name (e.g. `user login`, `password reset`, `checkout`), 
    - A bullet list of all functions in the diagram.
    - A reference table with each function's description and exact `file:line` location.
 5. **Generate `Code_Flows/<feature_name>.html`** — an interactive, self-contained view of the same flow (see below).
-6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — create or update the shared `Code_Flows/index.json` registry with an entry for this flow, and rebuild `Code_Flows/index.html` from that registry: the landing page listing every mapped flow, rewritten whenever the registry is. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` / `Code_Flows/quality-report.html` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below.)
+6. **Write `Code_Flows/<feature_name>.json`** — the same flow data as plain JSON — create or update the shared `Code_Flows/index.json` registry with an entry for this flow, and rebuild `Code_Flows/index.html` from that registry: the landing page listing every mapped flow, rewritten whenever the registry is. (Also written: `Code_Flows/inventory.json` — the function catalog — written by whole-codebase mode only; and `Code_Flows/quality-report.json` / `Code_Flows/quality-report.md` / `Code_Flows/quality-report.html` — written by `/code-flow.quality`, see [Quality reporting](#quality-reporting) below. `/code-flow.qa` and `/code-flow.violations` write their own `qa-report.*` and `violations-report.*` trios from the same artifacts — see [QA walkthroughs](#qa-walkthroughs) and [Checking one violation you name](#checking-one-violation-you-name).)
 7. **Report** the paths to the generated files.
 
 If you invoke the skill with no argument, the assistant will survey the project and suggest 3–5 candidate flows to pick from.
@@ -184,45 +184,58 @@ From the project root where you want the skill available:
 mkdir -p .claude/commands
 cp /path/to/code-flow-skill/templates/claude/code-flow.map.md .claude/commands/code-flow.map.md
 cp /path/to/code-flow-skill/templates/claude/code-flow.quality.md .claude/commands/code-flow.quality.md
+cp /path/to/code-flow-skill/templates/claude/code-flow.qa.md .claude/commands/code-flow.qa.md
+cp /path/to/code-flow-skill/templates/claude/code-flow.violations.md .claude/commands/code-flow.violations.md
 
 # Claude Code — the skill form; Claude Code does not read .agents/skills/
-mkdir -p .claude/skills/code-flow-map .claude/skills/code-flow-quality
+mkdir -p .claude/skills/code-flow-map .claude/skills/code-flow-quality .claude/skills/code-flow-qa .claude/skills/code-flow-violations
 cp /path/to/code-flow-skill/templates/shared/code-flow-map/SKILL.md .claude/skills/code-flow-map/SKILL.md
 cp /path/to/code-flow-skill/templates/shared/code-flow-quality/SKILL.md .claude/skills/code-flow-quality/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-qa/SKILL.md .claude/skills/code-flow-qa/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-violations/SKILL.md .claude/skills/code-flow-violations/SKILL.md
 
 # Agent Skills — read by Copilot, both Antigravity surfaces, OpenAI Codex and
 # Gemini CLI. The openai.yaml files carry Codex's invocation policy; the other
 # hosts ignore them.
-mkdir -p .agents/skills/code-flow-map/agents .agents/skills/code-flow-quality/agents
+mkdir -p .agents/skills/code-flow-map/agents .agents/skills/code-flow-quality/agents .agents/skills/code-flow-qa/agents .agents/skills/code-flow-violations/agents
 cp /path/to/code-flow-skill/templates/shared/code-flow-map/SKILL.md .agents/skills/code-flow-map/SKILL.md
 cp /path/to/code-flow-skill/templates/shared/code-flow-map/agents/openai.yaml .agents/skills/code-flow-map/agents/openai.yaml
 cp /path/to/code-flow-skill/templates/shared/code-flow-quality/SKILL.md .agents/skills/code-flow-quality/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-qa/SKILL.md .agents/skills/code-flow-qa/SKILL.md
+cp /path/to/code-flow-skill/templates/shared/code-flow-violations/SKILL.md .agents/skills/code-flow-violations/SKILL.md
 cp /path/to/code-flow-skill/templates/shared/code-flow-quality/agents/openai.yaml .agents/skills/code-flow-quality/agents/openai.yaml
+cp /path/to/code-flow-skill/templates/shared/code-flow-qa/agents/openai.yaml .agents/skills/code-flow-qa/agents/openai.yaml
+cp /path/to/code-flow-skill/templates/shared/code-flow-violations/agents/openai.yaml .agents/skills/code-flow-violations/agents/openai.yaml
 
 # Gemini CLI — only if you actually use it; see the note on --tool all above
 mkdir -p .gemini/commands
 cp /path/to/code-flow-skill/templates/gemini/code-flow.map.toml .gemini/commands/code-flow.map.toml
 cp /path/to/code-flow-skill/templates/gemini/code-flow.quality.toml .gemini/commands/code-flow.quality.toml
+cp /path/to/code-flow-skill/templates/gemini/code-flow.qa.toml .gemini/commands/code-flow.qa.toml
+cp /path/to/code-flow-skill/templates/gemini/code-flow.violations.toml .gemini/commands/code-flow.violations.toml
 
 # GitHub Copilot
 mkdir -p .github/prompts
 cp /path/to/code-flow-skill/templates/copilot/code-flow.map.prompt.md .github/prompts/code-flow.map.prompt.md
 cp /path/to/code-flow-skill/templates/copilot/code-flow.quality.prompt.md .github/prompts/code-flow.quality.prompt.md
+cp /path/to/code-flow-skill/templates/copilot/code-flow.qa.prompt.md .github/prompts/code-flow.qa.prompt.md
+cp /path/to/code-flow-skill/templates/copilot/code-flow.violations.prompt.md .github/prompts/code-flow.violations.prompt.md
 
-# Flow index, interactive viewer and quality report scaffolds (needed for all tools)
+# Flow index, interactive viewer, report and QA scaffolds (needed for all tools)
 mkdir -p .code-flow
 cp /path/to/code-flow-skill/templates/shared/viewer.template.html .code-flow/viewer.template.html
 cp /path/to/code-flow-skill/templates/shared/report.template.html .code-flow/report.template.html
+cp /path/to/code-flow-skill/templates/shared/qa.template.html .code-flow/qa.template.html
 cp /path/to/code-flow-skill/templates/shared/index.template.html .code-flow/index.template.html
 ```
 
 On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` for `cp`.
 
-If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer. If you skip the `.code-flow/report.template.html` step, `/code-flow.quality` still works too, but there is no fallback page for it: the command says so and still writes `quality-report.json` and `quality-report.md`. Skipping `.code-flow/index.template.html` costs you only `Code_Flows/index.html`, the page that links the flows together — every individual flow page still opens on its own.
+If you skip the `.code-flow/viewer.template.html` step, the command still works — the assistant just falls back to a minimal Mermaid-based HTML page instead of the full interactive viewer. If you skip the `.code-flow/report.template.html` step, `/code-flow.quality` and `/code-flow.violations` still work too, but there is no fallback page for either: they say so and still write their JSON and markdown. `.code-flow/qa.template.html` is the same story for `/code-flow.qa`. Skipping `.code-flow/index.template.html` costs you only `Code_Flows/index.html`, the page that links the flows together — every individual flow page still opens on its own.
 
 The `.agents/skills/` step is not optional in the same way. It is the *entirety* of the OpenAI Codex and Antigravity integration — neither host reads a command or prompt file — so skipping it leaves those two with nothing installed at all.
 
-**3. Verify.** Restart your assistant (or start a new session). In Claude Code, typing `/` should list **four** new entries — the commands `/code-flow.map` and `/code-flow.quality`, and the skills `/code-flow-map` and `/code-flow-quality`. In Gemini CLI, typing `/` should list the two commands; how it surfaces skills has not been checked here. For Copilot in VS Code, look for both prompts in the Prompts picker (or try `/code-flow.map` in chat), and both skills alongside them; on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*. On Codex the skills are `$code-flow-map` and `$code-flow-quality`, or the `/skills` menu, not a slash command; on Antigravity IDE, which documents no slash syntax, mention the skill by name.
+**3. Verify.** Restart your assistant (or start a new session). In Claude Code, typing `/` should list **eight** new entries — the commands `/code-flow.map`, `/code-flow.quality`, `/code-flow.qa` and `/code-flow.violations`, and the skills `/code-flow-map`, `/code-flow-quality`, `/code-flow-qa` and `/code-flow-violations`. In Gemini CLI, typing `/` should list the four commands; how it surfaces skills has not been checked here. For Copilot in VS Code, look for all four prompts in the Prompts picker (or try `/code-flow.map` in chat), and all four skills alongside them; on other Copilot surfaces, see the **GitHub Copilot** notes under *Usage*. On Codex the skills are `$code-flow-map`, `$code-flow-quality`, `$code-flow-qa` and `$code-flow-violations`, or the `/skills` menu, not a slash command; on Antigravity IDE, which documents no slash syntax, mention the skill by name.
 
 That's it — no install step runs any code on your machine. If you later want to update the skill, just re-copy the template files.
 
@@ -230,10 +243,15 @@ That's it — no install step runs any code on your machine. If you later want t
 
 ### Commands and flags
 
-Two commands, and every flag either one takes. Both read and write the same
-`Code_Flows/` artifacts, so anything mapped by one is available to the other. Use the
-hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts whose row in
+Four commands, and every flag any of them takes. All four read and write the same
+`Code_Flows/` artifacts, so anything mapped by one is available to the rest. Use the
+hyphenated names — `/code-flow-map`, `/code-flow-quality`, `/code-flow-qa`,
+`/code-flow-violations` — on the hosts whose row in
 [the table at the top](#code-flow-skill) says so.
+
+`/code-flow.map` writes the map. The other three read it and ask different questions
+of it: **is it good code** (quality), **does it still work** (QA), and **does it
+follow the rule I care about** (violations).
 
 | Command | Does |
 |---|---|
@@ -241,6 +259,9 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 | `/code-flow.map` (no argument) | Surveys the project and suggests 3–5 flows to pick from |
 | `/code-flow.quality` | Reports DRY, KISS, YAGNI, SOLID and module-depth findings from what the map recorded |
 | `/code-flow.quality --rules auto` | The same, plus violations of the rules your project already wrote down |
+| `/code-flow.qa` | Walks every mapped flow, component and route and reports what still holds. [Details](#qa-walkthroughs) |
+| `/code-flow.qa --live` | The same, and additionally starts the app and clicks through it |
+| `/code-flow.violations "<rule>"` | Checks one rule you name, reading source to settle it. [Details](#checking-one-violation-you-name) |
 
 | Flag | On | Default | Does |
 |---|---|---|---|
@@ -251,6 +272,11 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 | `--tracer auto\|on\|off` | map | `auto` | Whether to run the installed static tracers before tracing anything. [Details](#automated-tracing) |
 | `--read-code` | quality | off | Opens the files findings cite, drops the ones current source contradicts, and marks survivors verified. Also unlocks the two SOLID detectors that read source rather than the map. [Details](#quality-reporting) |
 | `--rules [source ...]` | quality | off | Also checks the map against rules your project has already written down. [Details](#checking-your-own-rules) |
+| `--live` | qa | off | After the static walk, starts the application and exercises it through a browser. [Details](#qa-walkthroughs) |
+| `--base-url <url>` | qa | — | Attaches to an app already running there instead of starting one. Implies `--live` |
+| `--frontend off` | qa | off | Skips the component and route walk even where the map recorded a frontend |
+| `--no-read-code` | violations | off | Settles rules from the map alone. Violations reads source **by default** — this is the one flag that turns it off. [Details](#checking-one-violation-you-name) |
+| `--severity high\|medium\|low` | violations | `medium` | Severity for an inline rule whose wording carries no modal verb |
 
 ```text
 /code-flow.map user login
@@ -259,6 +285,9 @@ hyphenated names — `/code-flow-map`, `/code-flow-quality` — on the hosts who
 /code-flow.map --whole-code-base --tracer on
 /code-flow.quality --read-code
 /code-flow.quality --rules auto
+/code-flow.qa
+/code-flow.qa user login --live
+/code-flow.violations "Validation belongs in src/auth/ and nowhere else"
 ```
 
 Flags work identically in the command and skill forms — see
@@ -591,6 +620,113 @@ which is the one thing this must never imply.
 `quality-report.json` carries the whole rule set it loaded — checkable or not — so
 the banner's counts can be reconciled against the array behind them.
 
+### QA walkthroughs
+
+A map is a claim about the code: *this function calls that one, execution arrives
+here from there, this page renders that component.* `/code-flow.qa` checks the
+claim against the code as it is now.
+
+```text
+/code-flow.qa
+/code-flow.qa user login password reset
+/code-flow.qa --live
+/code-flow.qa --base-url http://localhost:5173
+```
+
+It walks every flow in the registry and runs five checks on each: the entry still
+exists, every node still resolves to a definition, every edge is still a call the
+caller makes, every node is still reachable from the entry, and the flow's files
+have not changed since mapping. Where the map recorded a frontend it also walks
+the components — each one still declared, its documented children still rendered,
+its documented props still accepted — and every route, whose component must still
+be in the catalog.
+
+Everything checked gets exactly one status, and **`broken` outranks `drifted`
+outranks `pass`**: a flow that works four steps out of five does not work.
+
+| Status | Means | Remedy |
+|---|---|---|
+| `pass` | Every check that ran held | — |
+| `drifted` | Still works; the map no longer describes it accurately | Re-map |
+| `broken` | A check failed in a way that means it cannot work | Fix the code |
+| `unchecked` | Nothing here could be settled | Named, with the reason |
+
+Every status carries the checks that produced it, each named, each with its own
+outcome — so a reader who disagrees with a verdict can see which check decided it
+and go and look at the same line.
+
+**`--live` additionally runs the application.** It finds the project's own way of
+starting a dev server — a `package.json` script, a `Procfile`,
+`docker-compose.yml`, `manage.py runserver`, a `Makefile` target — visits each
+documented route in a browser, confirms the component the map says renders there
+actually appeared, and records every console error and failed request. That last
+one is the whole reason the mode exists: a page that renders nothing while every
+function it needs is still sitting in the source is invisible to every static
+check.
+
+There is a hard line on what live checking may do. It navigates, reads, and clicks
+things that only navigate or reveal — links, tabs, accordions, pagination. It
+**never submits a form and never fires a mutating request on purpose**, and it
+refuses to touch a `--base-url` that is not obviously local until you confirm the
+environment is disposable. This is a report; a report is not worth one row written
+to a real database.
+
+A live pass that cannot start the app is not a failed QA run: those checks are
+recorded as `unchecked` with the command that was tried, the static results stand,
+and the report says on its face that the application was never run. That line
+appears on every report, including the static ones — a static pass read as a live
+one is the misreading it exists to prevent.
+
+Output is `Code_Flows/qa-report.json`, `qa-report.md` and `qa-report.html`. The
+markdown leads with the verdict and puts `broken` first, and closes with what was
+*not* checked — flows you narrowed away, the component walk if you passed
+`--frontend off`, the live pass if it did not run. That closing section is what
+keeps a green report honest.
+
+This command never edits source and never fixes what it finds. A QA pass that
+quietly repaired things would be a QA pass nobody can reproduce.
+
+### Checking one violation you name
+
+`/code-flow.quality --rules` checks written-down rules as one detector among
+thirteen, as part of a sweep. `/code-flow.violations` is for the other case: one
+rule, or a few, that you want answered properly right now.
+
+```text
+/code-flow.violations "Validation belongs in src/auth/ and nowhere else"
+/code-flow.violations "No handler may exceed 40 lines" "Every store is injected, never imported"
+/code-flow.violations docs/style.md
+/code-flow.violations auto --no-read-code
+```
+
+Three things make it different from the flag:
+
+- **It reads source by default.** `--read-code` is off in the quality command
+  because that sweep already has thirteen detectors' worth of results. Here you
+  named one thing and want an answer about it, and "the map does not carry that
+  evidence" is a poor answer when the files are right there. `--no-read-code`
+  restores map-only checking.
+- **Every rule gets a row**, violated or not. On a report that lists only
+  violations, a rule that passed and a rule nobody looked at produce the same
+  silence — and you asked specifically about these rules. The markdown leads with
+  a rule ledger before any finding: "3 sites", "checked, clean", "not checked:
+  needs source and `--no-read-code` was passed", "partially checked: 40 of 900
+  files read".
+- **It will not report a rule clean that it could not enumerate.** For a rule of
+  the form "every X must Y", a site is an X that does not Y — so it has to be able
+  to list every X. When it cannot, the rule is *not settled*, and it says which
+  half it could not establish. Reporting zero violations there would be a claim it
+  did not check.
+
+It refuses to guess what you meant: with no violation named it stops and says what
+it needs rather than falling back to `auto`. A rule is quoted, never paraphrased
+and never sharpened — a report citing your own words is arguable, and one citing a
+tightened version of them is not.
+
+Output is `Code_Flows/violations-report.json`, `violations-report.md` and
+`violations-report.html`. The findings use the same shape as the quality report's,
+so both render through the same page and you learn one layout rather than two.
+
 ### Example map output
 
 Back to `/code-flow.map`: `Code_Flows/user_login.md` will look roughly like:
@@ -758,18 +894,31 @@ code-flow-skill --tool gemini
 |------|---------|------|
 | Claude Code | `/code-flow.map` | `.claude/commands/code-flow.map.md` |
 | Claude Code | `/code-flow.quality` | `.claude/commands/code-flow.quality.md` |
+| Claude Code | `/code-flow.qa` | `.claude/commands/code-flow.qa.md` |
+| Claude Code | `/code-flow.violations` | `.claude/commands/code-flow.violations.md` |
 | Claude Code | `/code-flow-map` | `.claude/skills/code-flow-map/SKILL.md` |
 | Claude Code | `/code-flow-quality` | `.claude/skills/code-flow-quality/SKILL.md` |
+| Claude Code | `/code-flow-qa` | `.claude/skills/code-flow-qa/SKILL.md` |
+| Claude Code | `/code-flow-violations` | `.claude/skills/code-flow-violations/SKILL.md` |
 | Gemini CLI | `/code-flow.map` | `.gemini/commands/code-flow.map.toml` |
 | Gemini CLI | `/code-flow.quality` | `.gemini/commands/code-flow.quality.toml` |
+| Gemini CLI | `/code-flow.qa` | `.gemini/commands/code-flow.qa.toml` |
+| Gemini CLI | `/code-flow.violations` | `.gemini/commands/code-flow.violations.toml` |
 | GitHub Copilot | `/code-flow.map` | `.github/prompts/code-flow.map.prompt.md` |
 | GitHub Copilot | `/code-flow.quality` | `.github/prompts/code-flow.quality.prompt.md` |
+| GitHub Copilot | `/code-flow.qa` | `.github/prompts/code-flow.qa.prompt.md` |
+| GitHub Copilot | `/code-flow.violations` | `.github/prompts/code-flow.violations.prompt.md` |
 | Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-map` | `.agents/skills/code-flow-map/SKILL.md` |
 | Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-quality` | `.agents/skills/code-flow-quality/SKILL.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-qa` | `.agents/skills/code-flow-qa/SKILL.md` |
+| Copilot, Antigravity, Codex, Gemini CLI | `/code-flow-violations` | `.agents/skills/code-flow-violations/SKILL.md` |
 | Codex | — | `.agents/skills/code-flow-map/agents/openai.yaml` (invocation policy) |
 | Codex | — | `.agents/skills/code-flow-quality/agents/openai.yaml` (invocation policy) |
+| Codex | — | `.agents/skills/code-flow-qa/agents/openai.yaml` (invocation policy) |
+| Codex | — | `.agents/skills/code-flow-violations/agents/openai.yaml` (invocation policy) |
 | _All tools_ | — | `.code-flow/viewer.template.html` (interactive HTML scaffold) |
-| _All tools_ | — | `.code-flow/report.template.html` (quality report viewer scaffold) |
+| _All tools_ | — | `.code-flow/report.template.html` (quality and violations report viewer scaffold) |
+| _All tools_ | — | `.code-flow/qa.template.html` (QA walkthrough viewer scaffold) |
 | _All tools_ | — | `.code-flow/index.template.html` (flow index scaffold) |
 | _All tools_ | — | `.code-flow/theme.css` (your theme) |
 | _All tools_ | — | `.code-flow/bundle.template.html` (single-file bundled viewer scaffold) |
@@ -786,7 +935,7 @@ exception to "`--tool all` writes all of these" — see [`--tool all` and Gemini
 CLI](#--tool-all-and-gemini-cli). Every other row, the skills included, is written on
 every `--tool all` install.
 
-The `.code-flow/viewer.template.html`, `.code-flow/report.template.html`, `.code-flow/index.template.html`, `.code-flow/bundle.template.html` and `.code-flow/theme.css` files are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of the scaffolds and every scaffold inlines the theme.
+The `.code-flow/viewer.template.html`, `.code-flow/report.template.html`, `.code-flow/qa.template.html`, `.code-flow/index.template.html`, `.code-flow/bundle.template.html` and `.code-flow/theme.css` files are tool-agnostic and are installed regardless of which `--tool` you select, since every command template references one of the scaffolds and every scaffold inlines the theme.
 
 `.agents/skills/` is **not** unconditional: it installs when your `--tool` selection
 includes `copilot`, `codex`, `antigravity`, or `gemini` — the hosts that read it — and
@@ -848,16 +997,21 @@ never for how a browser draws it. That gap is accepted (see
 `docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md`, Decision 1), on the
 condition that a human closes it by hand before every release:
 
-1. Run `/code-flow.map` and `/code-flow.quality` against any project and open the resulting
-   `Code_Flows/index.html`, `Code_Flows/<flow>.html` and `Code_Flows/quality-report.html` in a
-   browser. Confirm each renders its registry, diagram or findings instead of a blank page or a
-   raw JSON dump, that every edge in a diagram ends in an arrowhead pointing at its target, and
-   that the index's flow cards and the pages' `Flows` links actually navigate.
+1. Run `/code-flow.map`, `/code-flow.quality`, `/code-flow.qa` and `/code-flow.violations`
+   against any project and open the resulting `Code_Flows/index.html`,
+   `Code_Flows/<flow>.html`, `Code_Flows/quality-report.html`, `Code_Flows/qa-report.html` and
+   `Code_Flows/violations-report.html` in a
+   browser. Confirm each renders its registry, diagram, findings or checked flows instead of a
+   blank page or a raw JSON dump, that every edge in a diagram ends in an arrowhead pointing at
+   its target, and that the index's flow cards and the pages' `Flows` links actually navigate.
+   `violations-report.html` renders through the quality scaffold with `meta.kind` set to
+   `violations`: confirm its heading reads **Violations** and that its banner names only
+   `rule-violation` as having run clean, never the twelve quality detectors that never ran.
    Then run again with `--output both` or `--output bundle`, open the resulting
    `Code_Flows/code-flow.html`, and confirm it does the same three things in one document: its
    landing view lists the same flows as `index.html`, opening a flow shows its graph, and the
    quality report is reachable from the same page.
-2. Corrupt one of the four files' embedded JSON (edit a character inside the
+2. Corrupt one of the five files' embedded JSON (edit a character inside the
    `<script type="application/json">` block so it no longer parses) and reload it. Confirm
    the page shows the red error card instead of a blank page or a silent failure.
 3. Uncomment one property in a generated project's `.code-flow/theme.css`, regenerate any page,
@@ -869,8 +1023,11 @@ condition that a human closes it by hand before every release:
    well-shaped, empty-graph document. Confirm `entryPointsFound` is not zero, `callEdges` is in
    the thousands rather than the dozens, and `componentsFound` matches roughly what the app has.
 
-Do this for all four files, every release — a change to any scaffold's rendering re-opens the
-gap and the test suite will not tell you.
+Do this for all five files, every release — a change to any scaffold's rendering re-opens the
+gap and the test suite will not tell you. The five are
+`templates/shared/viewer.template.html`, `templates/shared/report.template.html`,
+`templates/shared/index.template.html`, `templates/shared/bundle.template.html` and
+`templates/shared/qa.template.html`.
 
 Add the release's entry to [CHANGELOG.md](CHANGELOG.md) before bumping the version.
 `tests/test_packaging.py` fails if the changelog's leading `## [version]` heading does not

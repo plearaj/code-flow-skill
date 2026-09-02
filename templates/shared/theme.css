@@ -57,6 +57,12 @@
   /* Index page — section headings */
   /* --section:#262a60; */
   /* --section-ghost:#4c5397; */
+
+  /* QA walkthrough — per-status accent on every checked flow, component and route */
+  /* --broken:#d98a95; */
+  /* --drifted:#b5abfc; */
+  /* --pass:#796cbf; */
+  /* --unchecked:#595d6c; */
 }
 [data-theme="light"]{
   /* --bg:#f3f5fe; */
@@ -105,4 +111,10 @@
   /* Index page — section headings */
   /* --section:#d2cefd; */
   /* --section-ghost:#9690c9; */
+
+  /* QA walkthrough — per-status accent on every checked flow, component and route */
+  /* --broken:#8d3f4a; */
+  /* --drifted:#423a6a; */
+  /* --pass:#796cbf; */
+  /* --unchecked:#75798c; */
 }

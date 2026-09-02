@@ -58,9 +58,18 @@ BASELINE_QUALITY = 0
 # restore it. More means new divergence was introduced.
 BASELINE_MAP = 27
 
+# The QA and violations templates were written the same way the quality ones were
+# — one canonical body applied to every host — so they inherit the same zero, and
+# for the same reason: nothing in either body names a host-specific tool, needs a
+# nested fence, or is non-ASCII where the other is not.
+BASELINE_QA = 0
+BASELINE_VIOLATIONS = 0
+
 TEMPLATE_PAIRS = (
     ("quality", "code-flow.quality.md", "code-flow.quality.toml", BASELINE_QUALITY),
     ("map", "code-flow.map.md", "code-flow.map.toml", BASELINE_MAP),
+    ("qa", "code-flow.qa.md", "code-flow.qa.toml", BASELINE_QA),
+    ("violations", "code-flow.violations.md", "code-flow.violations.toml", BASELINE_VIOLATIONS),
 )
 
 # Both bodies are compared from this marker onward. Everything above it is each
@@ -115,10 +124,15 @@ def test_claude_and_gemini_bodies_match_their_baseline(
     )
 
 
-def test_the_quality_baseline_is_zero() -> None:
+def test_the_generated_baselines_are_zero() -> None:
     """Pinned separately from the comparison above so that lowering the bar is
-    itself a test failure, not a quiet edit to a constant the diff test reads."""
+    itself a test failure, not a quiet edit to a constant the diff test reads.
+
+    Three of the four pairs are zero. Only `map` carries inherited divergence,
+    and only because it predates the practice of writing one body per command."""
     assert BASELINE_QUALITY == 0
+    assert BASELINE_QA == 0
+    assert BASELINE_VIOLATIONS == 0
     assert BASELINE_MAP == 27
 
 

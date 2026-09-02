@@ -24,6 +24,7 @@ SCAFFOLDS = (
     "report.template.html",
     "index.template.html",
     "bundle.template.html",
+    "qa.template.html",
 )
 
 # The two scaffolds that draw a flow graph, and so need an arrowhead.

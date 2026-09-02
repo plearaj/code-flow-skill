@@ -2722,3 +2722,291 @@ def test_quality_template_reports_each_repeated_fact_once(
             f"{name}'s {detector} aggregation rule never states {pattern!r}, so it "
             f"says to group without saying what a grouped finding looks like"
         )
+
+
+# --- QA and violations -----------------------------------------------------
+#
+# The same three-host parametrization the map and quality tables use. Both
+# commands were generated from one canonical body per command, so a contract
+# that holds in one host holds in all three by construction — but these assert
+# it rather than assume it, because the generator is a scratch tool that does
+# not ship and nothing stops a later hand edit to a single file.
+
+QA_TEMPLATES = (
+    ("claude", "code-flow.qa.md"),
+    ("gemini", "code-flow.qa.toml"),
+    ("copilot", "code-flow.qa.prompt.md"),
+)
+
+VIOLATIONS_TEMPLATES = (
+    ("claude", "code-flow.violations.md"),
+    ("gemini", "code-flow.violations.toml"),
+    ("copilot", "code-flow.violations.prompt.md"),
+)
+
+
+def _template(repo_root: Path, host: str, name: str) -> str:
+    return (repo_root / "templates" / host / name).read_text(encoding="utf-8")
+
+
+def _flat(text: str) -> str:
+    """Return ``text`` with every run of whitespace collapsed to one space.
+
+    Prose assertions have to be wrap-insensitive. The three hosts carry the same
+    sentences at different wraps -- Copilot indents its whole body by three
+    spaces to sit inside a numbered list -- so a plain substring test for a
+    phrase spanning a line break passes on one host and fails on the other two,
+    which says nothing about the contract and everything about the column the
+    sentence happened to break at.
+    """
+    return " ".join(text.split())
+
+
+@pytest.mark.parametrize("host,name", QA_TEMPLATES)
+@pytest.mark.parametrize(
+    "check",
+    ("entry-exists", "node-resolves", "edge-holds", "reachable", "current",
+     "component-exists", "children-render", "props-match", "route-resolves"),
+)
+def test_qa_template_names_every_check(repo_root: Path, host: str, name: str, check: str) -> None:
+    """Each check is a promise the report's `checks` array makes good on. A check
+    named in the scaffold's vocabulary but not in the prompt is one no run ever
+    emits, and a reader looking for it in the output finds silence."""
+    assert check in _template(repo_root, host, name), (
+        f"{name} never names the {check!r} check"
+    )
+
+
+@pytest.mark.parametrize("host,name", QA_TEMPLATES)
+def test_qa_template_states_the_status_precedence(repo_root: Path, host: str, name: str) -> None:
+    """Four statuses are only useful if one thing gets exactly one of them. Without
+    the precedence rule a flow with one broken check and four passing ones is
+    reportable as either, and two runs over the same repository disagree."""
+    text = _template(repo_root, host, name)
+    for status in ("pass", "drifted", "broken", "unchecked"):
+        assert f"`{status}`" in text, f"{name} never names the {status!r} status"
+    assert re.search(r"broken`?\*?\*? outranks `?\*?\*?drifted", text), (
+        f"{name} states no precedence between statuses, so one thing can carry two"
+    )
+    assert "does not work" in _flat(text), (
+        f"{name} states the precedence without the reason it exists"
+    )
+
+
+@pytest.mark.parametrize("host,name", QA_TEMPLATES)
+def test_qa_template_forbids_mutating_requests_when_live(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The one rule in this whole repository whose cost is measured in somebody
+    else's data. `--live` runs the project's own code against the project's own
+    dev server; the boundary on what it may do there is the reason that is safe,
+    and it is not a style preference."""
+    text = _template(repo_root, host, name)
+    assert "never submit a form" in _flat(text).lower(), (
+        f"{name} does not forbid submitting a form during a live pass"
+    )
+    assert re.search(r"never fire a mutating request", text, re.IGNORECASE), (
+        f"{name} does not forbid firing a mutating request during a live pass"
+    )
+    assert "--base-url" in _flat(text) and "throwaway" in _flat(text), (
+        f"{name} does not require confirmation before exercising a non-local --base-url"
+    )
+
+
+@pytest.mark.parametrize("host,name", QA_TEMPLATES)
+def test_qa_template_treats_an_unstartable_app_as_unchecked(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A live pass that cannot start is the ordinary case on somebody else's
+    machine. Reported as a failure it would drown the real findings; reported as
+    a pass it would be a lie. `unchecked` with the command that was tried is the
+    only honest third answer, and the static results still stand."""
+    text = _template(repo_root, host, name)
+    assert "A live pass that could not run is not a failed QA run" in _flat(text), (
+        f"{name} does not say that a live pass which never started is not a failure"
+    )
+    assert "the command you tried" in _flat(text), (
+        f"{name} records an unstartable app without recording what was tried"
+    )
+
+
+@pytest.mark.parametrize("host,name", QA_TEMPLATES)
+def test_qa_template_never_edits_source(repo_root: Path, host: str, name: str) -> None:
+    """The map command edits source (it adds docstrings). This one must not: a QA
+    pass that repaired what it found would report on a tree nobody else has."""
+    text = _template(repo_root, host, name)
+    assert "never edits source code" in text, f"{name} does not refuse to edit source"
+    assert "Never edit anything to make a check pass" in _flat(text), (
+        f"{name} does not forbid editing to make a check pass"
+    )
+
+
+@pytest.mark.parametrize("host,name", QA_TEMPLATES)
+def test_qa_template_writes_all_three_artifacts(repo_root: Path, host: str, name: str) -> None:
+    """The JSON is the data and the other two are renderings of it. A template
+    that names only the page would let the three drift apart."""
+    text = _template(repo_root, host, name)
+    for artifact in ("Code_Flows/qa-report.json", "Code_Flows/qa-report.md",
+                     "Code_Flows/qa-report.html"):
+        assert artifact in text, f"{name} never writes {artifact}"
+    assert "__QA_DATA__" in text and "__THEME_CSS__" in text, (
+        f"{name} does not name both tokens the QA scaffold needs replaced"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_stops_when_no_violation_is_named(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The whole command is "answer this question about my code". With no question
+    it has nothing to answer, and falling back to `auto` would produce a
+    confident report about rules the user never asked about."""
+    text = _template(repo_root, host, name)
+    flat = _flat(text)
+    assert "If the request names no violation, stop" in flat, (
+        f"{name} does not stop when the request names no violation"
+    )
+    assert "Do not fall back to `auto`" in flat, (
+        f"{name} does not forbid falling back to auto"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_reads_code_by_default(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The inversion against the quality command's default is the point of the
+    command existing, so it is stated with its reason rather than left as a
+    default somebody could 'correct' into line with the other one."""
+    text = _template(repo_root, host, name)
+    assert "--no-read-code" in text, f"{name} offers no way to turn source reading off"
+    assert "**On by default**" in _flat(text), (
+        f"{name} does not say that --read-code is on by default"
+    )
+    assert "opposite of the quality command's default" in _flat(text), (
+        f"{name} inverts the default without saying it is deliberate"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_reports_every_rule(repo_root: Path, host: str, name: str) -> None:
+    """A rule that passed and a rule nobody checked produce the same silence on a
+    report that lists only violations — and the user asked specifically about
+    these rules. Every rule gets a row, and a clean one is named as clean."""
+    text = _template(repo_root, host, name)
+    assert "A rule with no violating site is checked and clean" in _flat(text), (
+        f"{name} does not report a clean rule as clean"
+    )
+    assert '`violated`, `clean`, `partial` or `not-checked`' in _flat(text), (
+        f"{name} does not fix the four statuses a rule row can carry"
+    )
+    assert "rule ledger" in _flat(text), (
+        f"{name}'s report does not lead with a row per rule"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_refuses_to_infer_a_clean_rule_from_absence(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """The subtlest way this command could lie. "Every X must Y" is only checkable
+    if X can be enumerated; without that, finding no violation means nothing at
+    all, and reporting it clean is a claim about work that never happened."""
+    text = _template(repo_root, host, name)
+    assert "Absence is not evidence" in _flat(text), (
+        f"{name} never states that a rule it could not enumerate is unsettled"
+    )
+    assert "enumerate" in _flat(text) and "not settled" in _flat(text), (
+        f"{name} states the rule without the verdict it forces"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_quotes_rules_rather_than_paraphrasing(
+    repo_root: Path, host: str, name: str
+) -> None:
+    """A finding that cites the user's own sentence is arguable. One that cites a
+    tightened version of it is not, and the reader cannot tell which they have."""
+    text = _template(repo_root, host, name)
+    assert "Never invent a rule" in _flat(text) and "never sharpen a soft one" in _flat(text), (
+        f"{name} does not forbid inventing or sharpening a rule"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_marks_the_report_kind(repo_root: Path, host: str, name: str) -> None:
+    """The shared report scaffold renders both documents and decides from
+    `meta.kind` which one it has. Omitted, the page claims twelve detectors ran
+    clean when none of them ran."""
+    text = _template(repo_root, host, name)
+    assert '"kind": "violations"' in _flat(text), f"{name} does not set meta.kind"
+    assert "twelve detectors" in _flat(text), (
+        f"{name} sets meta.kind without saying what goes wrong without it"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_writes_all_three_artifacts(
+    repo_root: Path, host: str, name: str
+) -> None:
+    text = _template(repo_root, host, name)
+    for artifact in ("Code_Flows/violations-report.json", "Code_Flows/violations-report.md",
+                     "Code_Flows/violations-report.html"):
+        assert artifact in text, f"{name} never writes {artifact}"
+    assert ".code-flow/report.template.html" in text, (
+        f"{name} does not render through the shared report scaffold"
+    )
+
+
+@pytest.mark.parametrize("host,name", VIOLATIONS_TEMPLATES)
+def test_violations_template_never_edits_source(repo_root: Path, host: str, name: str) -> None:
+    assert "never edits source code" in _template(repo_root, host, name), (
+        f"{name} does not refuse to edit source"
+    )
+
+
+def test_report_scaffold_decides_its_heading_from_the_report_kind(repo_root: Path) -> None:
+    """Two commands render through one page. The banner derives its
+    "ran and found nothing" list from every detector the quality command has, so
+    a violations report rendered as a quality one names twelve detectors that
+    never ran — the confident-wrong statement the banner exists to prevent,
+    arriving through the other door.
+
+    The default matters as much as the gate: every report written before
+    `meta.kind` existed carries no `kind`, and must keep rendering as the quality
+    report it is.
+    """
+    text = (repo_root / "templates" / "shared" / "report.template.html").read_text(encoding="utf-8")
+    assert re.search(r'var KIND = meta\.kind === "violations" \? "violations" : "quality"', text), (
+        "report.template.html does not default an absent meta.kind to quality"
+    )
+    assert re.search(r'var KIND_DETECTORS = KIND === "violations" \? \["rule-violation"\]', text), (
+        "report.template.html does not narrow the clean-detector set for a violations report"
+    )
+    assert "KIND_DETECTORS.filter" in text, (
+        "report.template.html computes a per-kind detector set and then ignores it"
+    )
+
+
+def test_qa_scaffold_validates_its_own_vocabularies(repo_root: Path) -> None:
+    """The scaffold is the last thing between a malformed report and a reader who
+    believes it. It has to reject a status or an outcome it does not know rather
+    than rendering it as a word nobody defined.
+
+    The empty-checks rule is the one that is not obvious: a `pass` carrying no
+    checks is exactly what a walk that never ran would produce, and the two must
+    not look the same.
+    """
+    text = (repo_root / "templates" / "shared" / "qa.template.html").read_text(encoding="utf-8")
+    assert "var STATUS = { pass:1, drifted:1, broken:1, unchecked:1 };" in text, (
+        "qa.template.html does not allowlist the four statuses"
+    )
+    assert "var OUTCOME = { pass:1, fail:1, unchecked:1 };" in text, (
+        "qa.template.html does not allowlist the three check outcomes"
+    )
+    assert "passed with no checks recorded" in text, (
+        "qa.template.html accepts a pass with nothing behind it"
+    )
+    assert "__QA_DATA__" in text and "__THEME_CSS__" in text, (
+        "qa.template.html is missing one of its two substitution tokens"
+    )

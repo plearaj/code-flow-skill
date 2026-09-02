@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Flow — QA Walkthrough</title>
+<style>
+/* ============ theme tokens (shared vocabulary with the flow viewer) ============ */
+:root{
+  color-scheme:dark;
+  /* Nocturne, inlined: this page is a single self-contained file, so the design
+     system's tokens are carried here rather than linked. */
+  --bg:#161826; --bg-2:#1b1d2c; --panel:#232532; --raise:#2b2d3b; --code:#14161f;
+  --border:#3f424d; --border-strong:#595d6c;
+  --text:#e9e9ed; --dim:#9397ab; --faint:#75798c;
+  --accent:#9184d9; --accent-dim:#5d5294; --err:#d98a95;
+  /* status is coded by lightness AND by fill, never hue alone, and every chip
+     names its status in words as well */
+  --broken:#d98a95; --drifted:#b5abfc; --pass:#796cbf; --unchecked:#595d6c;
+  --shadow:0 0 0 1px #3f424d, 0 6px 18px rgba(0,0,0,.5);
+}
+[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3f5fe; --bg-2:#e9ebf6; --panel:#fbfbff; --raise:#eceffb; --code:#eef0fa;
+  --border:#cfd3e5; --border-strong:#b2b6ca;
+  --text:#292b31; --dim:#595d6c; --faint:#75798c;
+  --accent:#5d5294; --accent-dim:#b5abfc; --err:#8d3f4a;
+  --broken:#8d3f4a; --drifted:#423a6a; --pass:#796cbf; --unchecked:#75798c;
+  --shadow:0 0 0 1px #cfd3e5, 0 6px 18px rgba(41,43,49,.08);
+}
+__THEME_CSS__
+/* ============ page frame ============ */
+*{box-sizing:border-box; margin:0}
+[hidden]{display:none !important}
+body{background:
+    radial-gradient(120% 60% at 50% 0%, var(--bg-2) 0%, transparent 60%),
+    var(--bg);
+  background-attachment:fixed; color:var(--text);
+  font:14px/1.65 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased}
+#app{max-width:880px; margin:0 auto; padding:0 28px 96px}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+a{color:var(--accent)} a:hover{color:var(--text)}
+/* ============ error card ============ */
+#err{max-width:880px; margin:28px auto; padding:0 28px}
+#err>div{border:1px solid var(--border); border-top:2px solid var(--err); border-radius:12px;
+  background:var(--panel); box-shadow:var(--shadow); padding:20px 22px}
+#err h2{color:var(--err); font-size:12px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:10px}
+#err pre{white-space:pre-wrap; word-break:break-word; font-size:12.5px; line-height:1.7;
+  font-family:ui-monospace,"Cascadia Code",Menlo,Consolas,monospace}
+/* ============ header ============ */
+.topbar{display:flex; align-items:flex-start; gap:14px; padding:34px 0 20px; border-bottom:1px solid var(--border)}
+.topbar h1{font-size:22px; line-height:1.2; letter-spacing:-.02em; font-weight:500}
+.topbar .sub{margin-top:8px; font-size:11.5px; line-height:1.8; color:var(--faint); word-break:break-word;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.topbar .spacer{flex:1}
+button.ghost{height:32px; min-width:32px; padding:0 12px; border:1px solid var(--border); border-radius:9px;
+  background:var(--bg-2); color:var(--dim); font:12px/1 "Inter",system-ui,sans-serif; cursor:pointer; flex:none;
+  transition:border-color .14s,color .14s}
+button.ghost:hover,a.ghost:hover{border-color:var(--border-strong); color:var(--text)}
+a.ghost{display:inline-flex; align-items:center; height:32px; padding:0 12px; border:1px solid var(--border);
+  border-radius:9px; background:var(--bg-2); color:var(--dim); font-size:12px; text-decoration:none; flex:none;
+  transition:border-color .14s,color .14s}
+/* ============ verdict banner: leads the page, never collapsible ============ */
+.coverage-banner{margin-top:26px; border:1px solid var(--border); border-radius:14px;
+  background:linear-gradient(180deg, var(--raise), var(--panel)); box-shadow:var(--shadow);
+  padding:20px 22px; position:relative; overflow:hidden}
+.coverage-banner::before{content:""; position:absolute; inset:0 0 auto 0; height:2px;
+  background:linear-gradient(90deg, var(--accent), transparent 70%)}
+.coverage-banner h2{font-size:10px; letter-spacing:.18em; text-transform:uppercase; font-weight:700; color:var(--accent)}
+.coverage-banner .lead{margin-top:11px; font-size:15px; line-height:1.6; text-wrap:pretty}
+.coverage-banner .lead.bad{font-weight:600}
+.coverage-banner ul.facts{list-style:none; margin-top:16px; display:grid; gap:0}
+.coverage-banner ul.facts li{font-size:13px; line-height:1.5; padding:8px 0 8px 22px; position:relative;
+  border-top:1px solid var(--border)}
+.coverage-banner ul.facts li:first-child{border-top:0}
+.coverage-banner ul.facts li::before{content:""; position:absolute; left:4px; top:15px;
+  width:6px; height:6px; border-radius:50%; background:var(--faint)}
+.coverage-banner ul.facts li.warn{color:var(--err)}
+.coverage-banner ul.facts li.warn::before{background:var(--err)}
+.coverage-banner .note{margin-top:14px; padding-top:13px; border-top:1px solid var(--border);
+  font-size:12px; line-height:1.7; color:var(--faint); text-wrap:pretty}
+/* ============ the everything-passed screen ============ */
+.no-findings{margin-top:26px; border:1px solid var(--accent-dim); border-radius:14px;
+  background:var(--panel); box-shadow:var(--shadow); padding:22px 24px}
+.no-findings h2{font-size:17px; line-height:1.35; font-weight:500; letter-spacing:-.01em}
+.no-findings p{margin-top:11px; font-size:13.5px; line-height:1.7; color:var(--dim); text-wrap:pretty}
+/* ============ filters ============ */
+.filters{display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:38px;
+  position:sticky; top:0; z-index:5; padding:12px 14px; border:1px solid var(--border); border-radius:12px;
+  background:color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter:blur(8px); box-shadow:var(--shadow)}
+.filters .filter{display:flex; align-items:center; gap:7px; font-size:11px; color:var(--faint);
+  letter-spacing:.08em; text-transform:uppercase}
+.filters select{height:28px; padding:0 8px; border:1px solid var(--border); border-radius:8px;
+  background:var(--bg-2); color:var(--text); font:12px "Inter",system-ui,sans-serif; cursor:pointer;
+  letter-spacing:0; text-transform:none}
+.filters select:hover{border-color:var(--border-strong)}
+.filters .count{margin-left:auto; font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums;
+  font-family:ui-monospace,Menlo,monospace}
+.hint{margin-top:12px; font-size:11.5px; line-height:1.7; color:var(--faint); text-wrap:pretty}
+.filter-empty{margin-top:18px; border:1px dashed var(--border-strong); border-radius:12px;
+  padding:16px 18px; font-size:13px; line-height:1.65; color:var(--dim)}
+/* ============ subject list ============ */
+/* minmax(0,1fr), not the default: grid items keep min-width:auto, so a single
+   column would be sized to the WIDEST item's min-content width — one long detail
+   line anywhere would then set the width of every card and push the document
+   into horizontal overflow. */
+.subject-list{margin-top:18px; display:grid; grid-template-columns:minmax(0,1fr); gap:18px}
+.subject{border:1px solid var(--border); border-radius:14px; background:var(--panel);
+  box-shadow:var(--shadow); padding:18px 20px 20px; position:relative; overflow:hidden;
+  transition:border-color .16s}
+.subject::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--unchecked)}
+.subject:hover{border-color:var(--border-strong)}
+.subject.st-broken::before{background:var(--broken)}
+.subject.st-drifted::before{background:var(--drifted)}
+.subject.st-pass::before{background:var(--pass)}
+.subject.st-unchecked::before{background:var(--unchecked)}
+.shead{display:flex; align-items:center; flex-wrap:wrap; gap:7px}
+.chip{font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; line-height:1.6;
+  color:var(--dim); border:1px solid var(--border); border-radius:6px; padding:2px 8px; background:var(--bg-2)}
+/* status is coded by fill, not hue alone: broken is solid, drifted is outlined in
+   its own colour, pass and unchecked stay neutral — and each names itself */
+.chip.st-broken{background:var(--broken); border-color:var(--broken); color:#161826; font-weight:700}
+.chip.st-drifted{color:var(--drifted); border-color:var(--drifted); background:transparent}
+.chip.st-pass{color:var(--pass); border-color:var(--pass); background:transparent}
+.chip.st-unchecked{color:var(--dim); border:1px dashed var(--border-strong); background:transparent}
+.subject h3{margin-top:13px; font-size:16.5px; line-height:1.35; font-weight:500; letter-spacing:-.015em; text-wrap:pretty}
+.subject .where{margin-top:5px; font-size:11.5px; color:var(--faint);
+  font-family:ui-monospace,Menlo,Consolas,monospace; word-break:break-all}
+.subject h4{margin-top:18px; font-size:10px; letter-spacing:.14em; text-transform:uppercase; font-weight:700;
+  color:var(--faint); display:flex; align-items:center; gap:9px}
+.subject h4::after{content:""; flex:1; height:1px; background:var(--border)}
+ul.checks{list-style:none; margin-top:10px; display:grid; grid-template-columns:minmax(0,1fr); gap:8px}
+ul.checks li{border:1px solid var(--border); border-radius:11px; background:var(--bg-2); padding:9px 12px 10px}
+ul.checks li.out-fail{border-color:var(--broken)}
+ul.checks .row{display:flex; align-items:baseline; flex-wrap:wrap; gap:8px}
+ul.checks .name{font-size:12.5px; font-weight:650; font-family:ui-monospace,Menlo,Consolas,monospace}
+ul.checks .outcome{font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--faint)}
+ul.checks li.out-fail .outcome{color:var(--broken)}
+ul.checks .detail{margin-top:5px; font-size:13px; line-height:1.6; color:var(--dim); text-wrap:pretty}
+ul.checks .loc{margin-top:5px; font-size:11.5px; color:var(--faint); word-break:break-all;
+  font-family:ui-monospace,Menlo,Consolas,monospace}
+.allpassed{margin-top:9px; font-size:12.5px; color:var(--faint); font-style:italic}
+@media (max-width:600px){ .filters .count{margin-left:0; width:100%} }
+</style>
+</head>
+<body>
+<div id="err" hidden></div>
+<main id="app"></main>
+
+<!-- QA data. The token below is replaced verbatim with a JSON object matching the
+     qa-report schema. IMPORTANT for whoever fills this in: any literal "</"
+     inside detail strings must be written as "<\/" (e.g. "<\/div>"), otherwise a
+     "</script>" sequence inside the JSON would terminate this script block.
+     Everything downstream of the parse renders with textContent, so a detail that
+     survives the parse can never be interpreted as markup. -->
+<script type="application/json" id="qa-data">__QA_DATA__</script>
+<script>
+(function(){
+"use strict";
+/* built dynamically so the installer's string replacement cannot touch the check itself */
+var TOKEN = "__QA" + "_DATA__";
+var errBox = document.getElementById("err");
+function fail(title, lines){
+  errBox.hidden = false;
+  errBox.innerHTML = "";
+  var card = document.createElement("div");
+  var h = document.createElement("h2"); h.textContent = title; card.appendChild(h);
+  var pre = document.createElement("pre"); pre.textContent = lines.join("\n"); card.appendChild(pre);
+  errBox.appendChild(card);
+}
+
+/* ==== validate:start ==== */
+function validate(raw, TOKEN){
+  raw = (raw || "").trim();
+  if (raw === TOKEN){
+    return { ok:false, title:"No QA data", lines:[
+      "The " + TOKEN + " placeholder was never replaced.",
+      "This template must be filled with a JSON data block before viewing."
+    ]};
+  }
+  var data;
+  try { data = JSON.parse(raw); }
+  catch(e){
+    return { ok:false, title:"Invalid JSON in #qa-data", lines:[
+      String(e.message || e), "",
+      "Tip: literal </ inside detail strings must be escaped as <\\/."
+    ]};
+  }
+  var STATUS = { pass:1, drifted:1, broken:1, unchecked:1 };
+  var OUTCOME = { pass:1, fail:1, unchecked:1 };
+  var problems = [];
+  if (!data || typeof data !== "object" || Array.isArray(data)){
+    return { ok:false, title:"QA data failed validation", lines:["The document must be a JSON object."] };
+  }
+  if (data.schema !== 1) problems.push("`schema` must be 1, got " + JSON.stringify(data.schema) + ".");
+  var meta = (data.meta && typeof data.meta === "object") ? data.meta : null;
+  if (!meta) problems.push("`meta` must be an object.");
+  var coverage = (data.coverage && typeof data.coverage === "object") ? data.coverage : null;
+  if (!coverage) problems.push("`coverage` must be an object.");
+  var flows = Array.isArray(data.flows) ? data.flows : null;
+  if (!flows) problems.push("`flows` must be an array.");
+  /* Optional, because a repository with no UI has neither. Present-but-wrong is
+     an error; absent is the ordinary case and renders as no section. */
+  var components = data.components === undefined ? [] :
+    (Array.isArray(data.components) ? data.components : null);
+  if (!components) problems.push("`components` must be an array when present.");
+  var routes = data.routes === undefined ? [] :
+    (Array.isArray(data.routes) ? data.routes : null);
+  if (!routes) problems.push("`routes` must be an array when present.");
+
+  function checkSubjects(list, kind, label){
+    var seen = {};
+    (list || []).forEach(function(s, i){
+      var at = kind + "[" + i + "]";
+      if (!s || typeof s !== "object"){ problems.push(at + " is not an object."); return; }
+      var key = typeof s[label] === "string" && s[label] ? s[label] : null;
+      if (!key){ problems.push(at + " is missing a string `" + label + "`."); return; }
+      if (Object.prototype.hasOwnProperty.call(seen, key)) problems.push("duplicate " + kind + " " + label + " \"" + key + "\".");
+      seen[key] = 1;
+      if (!STATUS[s.status]) problems.push(key + " has status " + JSON.stringify(s.status) + "; want pass, drifted, broken or unchecked.");
+      if (!Array.isArray(s.checks)){ problems.push(key + " must carry a `checks` array; a status with no check behind it is a verdict with no evidence."); return; }
+      /* A pass is the one status that may not be empty-handed: "everything held"
+         has to name what held, or it is indistinguishable from a walk that never
+         ran — the same inference the report's skipped-detector list exists to
+         prevent, arriving here through a different door. */
+      if (s.status === "pass" && !s.checks.length) problems.push(key + " passed with no checks recorded; a pass has to say what held.");
+      s.checks.forEach(function(c, j){
+        if (!c || typeof c !== "object"){ problems.push(key + " check " + j + " is not an object."); return; }
+        if (typeof c.check !== "string" || !c.check) problems.push(key + " check " + j + " is missing `check`.");
+        if (!OUTCOME[c.outcome]) problems.push(key + " check " + j + " has outcome " + JSON.stringify(c.outcome) + "; want pass, fail or unchecked.");
+        if (c.file !== undefined && typeof c.file === "string" && c.file.indexOf("\\") !== -1){
+          problems.push(key + " check " + j + " uses backslashes; paths are forward-slash and repo-relative.");
+        }
+        if (c.line !== undefined && (typeof c.line !== "number" || c.line < 1)){
+          problems.push(key + " check " + j + " has a `line` that is not a positive number.");
+        }
+      });
+    });
+  }
+  checkSubjects(flows, "flows", "slug");
+  checkSubjects(components, "components", "id");
+  checkSubjects(routes, "routes", "path");
+
+  if (problems.length) return { ok:false, title:"QA data failed validation", lines:problems };
+  return { ok:true, data:data, meta:meta, coverage:coverage,
+           flows:flows, components:components, routes:routes };
+}
+/* ==== validate:end ==== */
+
+var node = document.getElementById("qa-data");
+var v = validate(node ? node.textContent : "", TOKEN);
+if (!v.ok){ fail(v.title, v.lines); return; }
+var meta = v.meta, coverage = v.coverage;
+
+var app = document.getElementById("app");
+function el(tag, cls, text, parent){
+  var n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== null && text !== undefined) n.textContent = text;
+  (parent || app).appendChild(n);
+  return n;
+}
+function count(x){ return (typeof x === "number" && isFinite(x)) ? x : null; }
+function plural(n, one, many){ return n === 1 ? one : many; }
+
+/* Every checked thing in one list, each carrying what kind it is, so the banner,
+   the filters and the cards all count the same population. */
+var SUBJECTS = [];
+v.flows.forEach(function(f){ SUBJECTS.push({ kind:"flow", key:f.slug, name:f.title || f.slug, s:f }); });
+v.components.forEach(function(c){ SUBJECTS.push({ kind:"component", key:c.id, name:c.name || c.id, s:c }); });
+v.routes.forEach(function(r){ SUBJECTS.push({ kind:"route", key:r.path, name:r.path, s:r }); });
+
+var TALLY = { broken:0, drifted:0, unchecked:0, pass:0 };
+SUBJECTS.forEach(function(x){ TALLY[x.s.status] += 1; });
+
+/* ---- header ---- */
+var topbar = el("header", "topbar");
+var titles = el("div", "titles", null, topbar);
+el("h1", null, "Code Flow — QA Walkthrough", titles);
+var sub = [];
+if (meta.generated) sub.push("generated " + meta.generated);
+if (meta.mapGenerated) sub.push("from a map of " + meta.mapGenerated);
+if (meta.mapMode) sub.push(String(meta.mapMode));
+sub.push(meta.live ? "exercised live" : "static walk only");
+el("div", "sub", sub.join("  ·  "), titles);
+el("div", "spacer", null, topbar);
+var up = el("a", "ghost up", "Flows", topbar);
+up.href = "index.html";
+up.title = "All mapped flows";
+var themeBtn = el("button", "ghost", "◐", topbar);
+themeBtn.title = "Toggle light/dark";
+themeBtn.setAttribute("aria-label", "Toggle light and dark theme");
+
+/* ---- verdict banner: leads the page, structurally and visually, and is not
+   collapsible. Everything below it is only as trustworthy as these numbers. ---- */
+var banner = el("section", "coverage-banner");
+el("h2", null, "Verdict", banner);
+var bad = TALLY.broken > 0;
+var lead = el("p", bad ? "lead bad" : "lead", null, banner);
+if (!SUBJECTS.length){
+  lead.textContent = "Nothing was checked. The map registered no flows, components or routes " +
+    "for this walk to read.";
+} else if (bad){
+  lead.textContent = TALLY.broken + " of " + SUBJECTS.length + " checked " +
+    plural(SUBJECTS.length, "thing", "things") + " " + plural(TALLY.broken, "is", "are") +
+    " broken: a check failed in a way that means it cannot work as the map describes it.";
+} else {
+  lead.textContent = "Nothing is broken. " + TALLY.pass + " of " + SUBJECTS.length +
+    " checked " + plural(SUBJECTS.length, "thing", "things") + " passed every check that ran.";
+}
+
+var facts = el("ul", "facts", null, banner);
+function fact(text, warn){ return el("li", warn ? "warn" : null, text, facts); }
+
+["broken", "drifted", "unchecked", "pass"].forEach(function(st){
+  if (!TALLY[st]) return;
+  fact(TALLY[st] + " " + st, st === "broken" || st === "unchecked");
+});
+if (count(coverage.flowsInRegistry) !== null && count(coverage.flowsChecked) !== null &&
+    coverage.flowsChecked < coverage.flowsInRegistry){
+  fact(coverage.flowsChecked + " of " + coverage.flowsInRegistry +
+    " registered flows were checked — the rest were not asked for", true);
+}
+if (count(coverage.checksRun) !== null){
+  fact(coverage.checksRun + " " + plural(coverage.checksRun, "check", "checks") + " run, " +
+    (count(coverage.checksFailed) === null ? "failures not recorded" : coverage.checksFailed + " failed"),
+    count(coverage.checksFailed) > 0);
+}
+if (count(coverage.filesChanged) !== null){
+  fact(coverage.filesChanged + " of the files the map recorded " +
+    plural(coverage.filesChanged, "has", "have") + " changed since mapping",
+    coverage.filesChanged > 0);
+}
+if (count(coverage.flowsUnreadable)){
+  fact(coverage.flowsUnreadable + " " + plural(coverage.flowsUnreadable, "flow", "flows") +
+    " could not be read and " + plural(coverage.flowsUnreadable, "was", "were") + " not checked", true);
+}
+/* The live pass is the one thing a reader is most likely to assume happened. It
+   is stated on every report, including the ones where it did not run — a static
+   pass read as a live one is the misreading this whole line exists to prevent. */
+var liveStatus = typeof coverage.liveStatus === "string" ? coverage.liveStatus : (meta.live ? "ran" : "not-run");
+if (liveStatus === "ran"){
+  fact("The application was started and exercised" + (meta.baseUrl ? " at " + meta.baseUrl : ""));
+} else {
+  fact("The application was never run: " +
+    (coverage.liveReason || (liveStatus === "failed-to-start" ? "it could not be started" : "--live was not passed")) +
+    " — nothing here reflects runtime behaviour", true);
+}
+if (meta.frontend === false){
+  fact("The component and route walk was skipped: --frontend off was passed", true);
+}
+el("p", "note", "Every check here compares the map against source, or against a page the map " +
+  "says should render. A call made through a variable, a registry, a decorator or dependency " +
+  "injection is invisible to a static check, so drift is a thing to confirm rather than a verdict.", banner);
+
+/* ---- everything passed ---- */
+if (SUBJECTS.length && !TALLY.broken && !TALLY.drifted && !TALLY.unchecked){
+  var clean = el("section", "no-findings");
+  el("h2", null, "Every check held.", clean);
+  el("p", null, "Each flow starts where the map says it does, every node resolves to a " +
+    "definition, and every edge is still a call the caller makes. That is a clean result " +
+    "for what was checked" + (liveStatus === "ran" ? ", live and static." : ", statically — " +
+    "the application was never run.") , clean);
+}
+
+/* ---- filters ---- */
+var order = { broken:0, drifted:1, unchecked:2, pass:3 };
+SUBJECTS.sort(function(a, b){
+  if (order[a.s.status] !== order[b.s.status]) return order[a.s.status] - order[b.s.status];
+  if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
+  return a.key < b.key ? -1 : (a.key > b.key ? 1 : 0);
+});
+
+var section = el("section", "filters");
+function chooser(id, label, values, parent){
+  var wrap = el("label", "filter", label, parent);
+  var sel = document.createElement("select");
+  sel.id = id;
+  values.forEach(function(val){
+    var o = document.createElement("option");
+    o.value = val[0]; o.textContent = val[1];
+    sel.appendChild(o);
+  });
+  wrap.appendChild(sel);
+  return sel;
+}
+function options(all, key){
+  var seen = {}, out = [["", "All"]];
+  all.forEach(function(x){ seen[key(x)] = 1; });
+  Object.keys(seen).sort().forEach(function(k){ out.push([k, k]); });
+  return out;
+}
+var byStatus = chooser("filter-status", "Status",
+  [["", "All"]].concat(["broken", "drifted", "unchecked", "pass"]
+    .filter(function(s){ return TALLY[s]; }).map(function(s){ return [s, s]; })), section);
+var byKind = chooser("filter-kind", "Kind", options(SUBJECTS, function(x){ return x.kind; }), section);
+var counter = el("span", "count", null, section);
+el("p", "hint", "Ordered broken first, then drifted, unchecked and passing. The filters hide " +
+  "rows; they never reorder them.", section);
+
+var list = el("section", "subject-list");
+var empty = el("div", "filter-empty", "No row matches this combination of filters.", section);
+empty.hidden = true;
+
+var cards = [];
+SUBJECTS.forEach(function(x){
+  var card = el("article", "subject st-" + x.s.status, null, list);
+  var head = el("div", "shead", null, card);
+  el("span", "chip", x.kind, head);
+  el("span", "chip st-" + x.s.status, x.s.status, head);
+  el("h3", null, x.name, card);
+
+  var where = [];
+  if (x.s.file) where.push(x.s.line ? x.s.file + ":" + x.s.line : x.s.file);
+  if (x.kind === "flow" && x.s.entry) where.push("entry " + x.s.entry);
+  if (x.kind === "route" && x.s.component) where.push("renders " + x.s.component);
+  if (where.length) el("div", "where", where.join("  ·  "), card);
+
+  var checks = Array.isArray(x.s.checks) ? x.s.checks : [];
+  var failed = checks.filter(function(c){ return c.outcome !== "pass"; });
+  el("h4", null, checks.length + " " + plural(checks.length, "check", "checks"), card);
+  if (!checks.length){
+    el("p", "allpassed", "No check was recorded against this.", card);
+  } else {
+    var ul = el("ul", "checks", null, card);
+    checks.forEach(function(c){
+      var li = el("li", c.outcome === "pass" ? "out-pass" : "out-" + c.outcome, null, ul);
+      var row = el("div", "row", null, li);
+      el("span", "name", c.check, row);
+      el("span", "outcome", c.outcome, row);
+      if (c.detail) el("div", "detail", c.detail, li);
+      if (c.file) el("div", "loc", c.line ? c.file + ":" + c.line : c.file, li);
+    });
+    if (!failed.length) el("p", "allpassed", "Every one of them held.", card);
+  }
+  cards.push({ el:card, x:x });
+});
+
+function apply(){
+  var wantStatus = byStatus.value, wantKind = byKind.value;
+  var shown = 0;
+  cards.forEach(function(c){
+    var ok = (!wantStatus || c.x.s.status === wantStatus) && (!wantKind || c.x.kind === wantKind);
+    c.el.hidden = !ok;
+    if (ok) shown += 1;
+  });
+  counter.textContent = shown + " of " + cards.length + " shown";
+  empty.hidden = shown !== 0 || !cards.length;
+  list.hidden = cards.length === 0;
+}
+byStatus.addEventListener("change", apply);
+byKind.addEventListener("change", apply);
+apply();
+if (!cards.length){ section.hidden = true; }
+
+/* ---- theme: same control and same localStorage key as the flow viewer, so the
+   choice a reader makes on one generated page holds on all of them ---- */
+var rootEl = document.documentElement;
+function setTheme(t){ rootEl.setAttribute("data-theme", t); try { localStorage.setItem("codeflow-theme", t); } catch (e) {} }
+var saved = null; try { saved = localStorage.getItem("codeflow-theme"); } catch (e) {}
+if (saved === "light" || saved === "dark") rootEl.setAttribute("data-theme", saved);
+themeBtn.addEventListener("click", function(){
+  setTheme(rootEl.getAttribute("data-theme") === "light" ? "dark" : "light");
+});
+})();
+</script>
+</body>
+</html>

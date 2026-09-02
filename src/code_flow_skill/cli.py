@@ -36,6 +36,7 @@ _SHARED_FILES = (
     ("index.template.html", "flow index"),
     ("theme.css", "your theme"),
     ("bundle.template.html", "bundled viewer"),
+    ("qa.template.html", "QA walkthrough viewer"),
     ("tracers/_common.py", "shared tracer core"),
     ("tracers/trace_python.py", "Python tracer"),
     ("tracers/trace_typescript.mjs", "TypeScript tracer"),
@@ -80,10 +81,20 @@ _TOOL_FILES = {
     "claude": (
         (("claude", "code-flow.map.md"), (".claude", "commands", "code-flow.map.md")),
         (("claude", "code-flow.quality.md"), (".claude", "commands", "code-flow.quality.md")),
+        (("claude", "code-flow.qa.md"), (".claude", "commands", "code-flow.qa.md")),
+        (
+            ("claude", "code-flow.violations.md"),
+            (".claude", "commands", "code-flow.violations.md"),
+        ),
     ),
     "gemini": (
         (("gemini", "code-flow.map.toml"), (".gemini", "commands", "code-flow.map.toml")),
         (("gemini", "code-flow.quality.toml"), (".gemini", "commands", "code-flow.quality.toml")),
+        (("gemini", "code-flow.qa.toml"), (".gemini", "commands", "code-flow.qa.toml")),
+        (
+            ("gemini", "code-flow.violations.toml"),
+            (".gemini", "commands", "code-flow.violations.toml"),
+        ),
     ),
     "copilot": (
         (
@@ -93,6 +104,14 @@ _TOOL_FILES = {
         (
             ("copilot", "code-flow.quality.prompt.md"),
             (".github", "prompts", "code-flow.quality.prompt.md"),
+        ),
+        (
+            ("copilot", "code-flow.qa.prompt.md"),
+            (".github", "prompts", "code-flow.qa.prompt.md"),
+        ),
+        (
+            ("copilot", "code-flow.violations.prompt.md"),
+            (".github", "prompts", "code-flow.violations.prompt.md"),
         ),
     ),
 }
@@ -112,7 +131,7 @@ _TOOL_LABELS = {"claude": "Claude", "gemini": "Gemini", "copilot": "Copilot"}
 # must still leave no `.claude/` behind. This table and the one in
 # bin/install.js must stay in step; the installed-file-set tests in both
 # languages hold them there.
-_SKILL_NAMES = ("code-flow-map", "code-flow-quality")
+_SKILL_NAMES = ("code-flow-map", "code-flow-quality", "code-flow-qa", "code-flow-violations")
 
 # What one installed skill is made of, per destination. SKILL.md goes to every
 # discovery root. `agents/openai.yaml` carries the implicit-invocation policy for

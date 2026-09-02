@@ -19,6 +19,7 @@ THEMED_SCAFFOLDS = (
     "report.template.html",
     "index.template.html",
     "bundle.template.html",
+    "qa.template.html",
 )
 
 

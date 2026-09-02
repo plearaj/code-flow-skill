@@ -27,6 +27,7 @@ export function tempTarget() {
 const SHARED = [
   ".code-flow/bundle.template.html",
   ".code-flow/index.template.html",
+  ".code-flow/qa.template.html",
   ".code-flow/report.template.html",
   ".code-flow/theme.css",
   ".code-flow/tracers/README.md",
@@ -40,23 +41,35 @@ const SHARED = [
 ];
 const CLAUDE = [
   ".claude/commands/code-flow.map.md",
+  ".claude/commands/code-flow.qa.md",
   ".claude/commands/code-flow.quality.md",
+  ".claude/commands/code-flow.violations.md",
   ".claude/skills/code-flow-map/SKILL.md",
+  ".claude/skills/code-flow-qa/SKILL.md",
   ".claude/skills/code-flow-quality/SKILL.md",
+  ".claude/skills/code-flow-violations/SKILL.md",
 ];
 const AGENTS = [
   ".agents/skills/code-flow-map/SKILL.md",
   ".agents/skills/code-flow-map/agents/openai.yaml",
+  ".agents/skills/code-flow-qa/SKILL.md",
+  ".agents/skills/code-flow-qa/agents/openai.yaml",
   ".agents/skills/code-flow-quality/SKILL.md",
   ".agents/skills/code-flow-quality/agents/openai.yaml",
+  ".agents/skills/code-flow-violations/SKILL.md",
+  ".agents/skills/code-flow-violations/agents/openai.yaml",
 ];
 const GEMINI = [
   ".gemini/commands/code-flow.map.toml",
+  ".gemini/commands/code-flow.qa.toml",
   ".gemini/commands/code-flow.quality.toml",
+  ".gemini/commands/code-flow.violations.toml",
 ];
 const COPILOT = [
   ".github/prompts/code-flow.map.prompt.md",
+  ".github/prompts/code-flow.qa.prompt.md",
   ".github/prompts/code-flow.quality.prompt.md",
+  ".github/prompts/code-flow.violations.prompt.md",
 ];
 
 // One row per --tool value. This is the contract the two installers are held
