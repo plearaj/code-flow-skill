@@ -127,6 +127,76 @@ export function deriveId(file, name) {
   return combined.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
 }
 
+/**
+ * Set a unique `id` on every record in `functions`, in place.
+ *
+ * Called once with the whole repository's functions, and the exact counterpart
+ * of `assign_ids` in `_common.py` -- the five tracers have to agree on this or
+ * a map built from two of them joins against nothing. Three suffixes, each one
+ * applied only where the step before it left two records sharing a string, so
+ * code with no collisions gets the bare `deriveId` result the templates state:
+ *
+ * - `_l<line>` when one file derives one id twice. Counted by derived id, not
+ *   by name: `_render` and `render`, `F` and `f`, a getter and its setter all
+ *   slug to one string, and counting names left 107 duplicated ids across
+ *   PrimeVue's 5,817 functions.
+ * - `_<n>` when two of those are on the same line -- a bundled file's
+ *   `function f(){}function F(){}` is one line and two definitions, and no
+ *   record carries a column. `n` is the 1-based position among that line's
+ *   same-id definitions, in source order. 105 of PrimeVue's 107 were this.
+ * - `_f<rank>` when two files derive one id: the rule drops the extension, so
+ *   `store.ts` and `store.js` beside each other fold to one stem, and it
+ *   collapses underscore runs, so `ui/_Button.tsx` and `ui/Button.tsx` do too.
+ *   The one suffix not decided from a single file's contents, because the
+ *   collision is not inside one file, and applied only to the ids two files
+ *   actually both derived, so a pair that shares a stem does not rename the
+ *   functions that never collided. `rank` is the file's 1-based position among
+ *   those files' paths, sorted in code-point order, so it is fixed by the
+ *   repository's file names rather than by traversal order.
+ */
+export function assignIds(functions) {
+  const groups = new Map();
+  for (const fn of functions) {
+    const key = `${fn.file}\u0000${deriveId(fn.file, fn.name)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(fn);
+  }
+  for (const group of groups.values()) {
+    const base = deriveId(group[0].file, group[0].name);
+    if (group.length === 1) {
+      group[0].id = base;
+      continue;
+    }
+    const byLine = new Map();
+    for (const fn of group) {
+      if (!byLine.has(fn.line)) byLine.set(fn.line, []);
+      byLine.get(fn.line).push(fn);
+    }
+    for (const [line, onLine] of byLine) {
+      if (onLine.length === 1) onLine[0].id = `${base}_l${line}`;
+      else onLine.forEach((fn, i) => (fn.id = `${base}_l${line}_${i + 1}`));
+    }
+  }
+
+  const filesById = new Map();
+  for (const fn of functions) {
+    if (!filesById.has(fn.id)) filesById.set(fn.id, new Set());
+    filesById.get(fn.id).add(fn.file);
+  }
+  const ranks = new Map();
+  for (const [id, paths] of filesById) {
+    if (paths.size < 2) continue;
+    const byPath = new Map();
+    [...paths].sort().forEach((file, i) => byPath.set(file, i + 1));
+    ranks.set(id, byPath);
+  }
+  if (ranks.size === 0) return;
+  for (const fn of functions) {
+    const byPath = ranks.get(fn.id);
+    if (byPath) fn.id = `${fn.id}_f${byPath.get(fn.file)}`;
+  }
+}
+
 // --- lexing ----------------------------------------------------------------
 
 /**
@@ -1871,12 +1941,7 @@ export function trace(rootDir, detail) {
     const { imports } = collectImports(src, masked);
     const isTest = isTestPath(rel);
 
-    // Ids, with the same-name collision suffix decided from this file alone.
-    const counts = new Map();
-    for (const fn of functions) counts.set(fn.name, (counts.get(fn.name) || 0) + 1);
     for (const fn of functions) {
-      const base = deriveId(rel, fn.name);
-      fn.id = counts.get(fn.name) === 1 ? base : `${base}_l${fn.line}`;
       fn.role = isTest ? "test" : "source";
       fn.purpose = docCommentFor(src, fn);
     }
@@ -1893,11 +1958,6 @@ export function trace(rootDir, detail) {
       template,
       varTypes: collectVarTypes(src, masked, classes),
     });
-    for (const fn of functions) {
-      repo.byId.set(fn.id, fn);
-      if (!repo.byName.has(fn.name)) repo.byName.set(fn.name, []);
-      repo.byName.get(fn.name).push(fn);
-    }
     let size = 0;
     try {
       size = fs.statSync(abs).size;
@@ -1905,6 +1965,17 @@ export function trace(rootDir, detail) {
       size = 0;
     }
     repo.census.push({ path: rel, size, hash: fileHash(abs) });
+  }
+
+  // Ids last, and for every file at once: two of the three collision suffixes
+  // are decided inside one file, but the third compares one file's path against
+  // every other's, so nothing can be indexed by id until the walk is over.
+  const catalogued = [...repo.files.values()].flatMap((file) => file.functions);
+  assignIds(catalogued);
+  for (const fn of catalogued) {
+    repo.byId.set(fn.id, fn);
+    if (!repo.byName.has(fn.name)) repo.byName.set(fn.name, []);
+    repo.byName.get(fn.name).push(fn);
   }
 
   resolveAllCalls(repo);

@@ -94,11 +94,25 @@ the keys, so a consumer never has to branch on which tracer wrote the file.
 **`id`** is the map's own id rule, applied by the tracer instead of by hand:
 drop the extension from the path's last segment, append `_` and the function's
 unqualified name, lowercase, replace every character outside `[a-z0-9_]`,
-collapse runs, trim — with `_l<line>` appended when one file defines that name
-more than once. A flow node and this file's entry for the same function
+collapse runs, trim. A flow node and this file's entry for the same function
 therefore carry the same `id`, which is what lets `/code-flow-quality` join
 them. `idRule` names the version of that rule, so a future change to it is
 detectable rather than silent.
+
+Three suffixes keep that id unique, each applied only where the one before it
+left two functions sharing a string — so on code where nothing collides, every
+id is the bare derivation above:
+
+| Suffix | When | Example |
+|---|---|---|
+| `_l<line>` | one file derives the same id twice | Python's `__add__` and `add` both slug to `add`; two classes with a `get`; an overload set |
+| `_<n>` | two of those share a line, and no record carries a column | a bundled file's `function f(){}function F(){}`, `n` counting in source order |
+| `_f<rank>` | two files derive the same id | `service.cpp` and `service.hpp`, since the rule drops the extension; `distutils/_msvccompiler.py` and `distutils/msvccompiler.py`, since it collapses underscore runs. `rank` sorts those two paths |
+
+The first two are decided from a single file's contents, so an unrelated file
+moving never renames anything. The third cannot be — the collision is between
+two files — so it is applied as narrowly as possible: only to the ids the two
+files actually both derived, never to the rest of either file.
 
 **`confidence`** on a call is `exact` when an import, a `self.`/`this.`
 receiver, a constructor binding, a header the calling file includes, or a

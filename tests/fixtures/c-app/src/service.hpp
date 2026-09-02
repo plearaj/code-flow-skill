@@ -2,9 +2,14 @@
 
 #include <string>
 
-#include "describable.hpp"
-
 namespace demo {
+
+/// Anything that can say what it is, for the log.
+class Describable {
+public:
+    /// Returns a human-readable description.
+    virtual std::string describe() const { return "thing"; }
+};
 
 /// Authenticates users against the C store.
 class UserService : public Describable {

@@ -31,6 +31,7 @@ language's suite can see both halves of it.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -256,8 +257,11 @@ def test_ids_follow_the_documented_derivation(request, which: str) -> None:
     wrong = []
     for fn in trace["functions"]:
         base = derive_id(fn["file"], fn["name"])
-        if fn["id"] not in (base, f"{base}_l{fn['line']}"):
-            wrong.append(f"{fn['id']} should be {base} (or {base}_l{fn['line']})")
+        allowed = re.compile(
+            rf"^{re.escape(base)}(_l{fn['line']}(_\d+)?)?(_f\d+)?$"
+        )
+        if not allowed.match(fn["id"]):
+            wrong.append(f"{fn['id']} should be {base}, with a collision suffix at most")
     assert not wrong, f"{which}: ids do not follow the rule: " + "; ".join(wrong)
 
 
@@ -269,14 +273,12 @@ def test_ids_are_unique_within_one_trace(request, which: str) -> None:
     reached set against a catalogued one — so a duplicate does not degrade the
     map, it corrupts it: one entry silently stands in for two.
 
-    This is a canary rather than a proof. The id rule drops the extension from
-    the path's last segment, so `service.cpp` and `service.hpp` derive the same
-    stem, while `assign_ids` decides its `_l<line>` collision suffix from one
-    file's own contents. Two same-named function bodies across such a pair —
-    an inline method in a header and another class's method in the source
-    beside it, which is ordinary C++ — therefore collide, and nothing in the
-    rule prevents it. This assertion is what makes that loud the next time a
-    fixture reaches it.
+    The C fixture is built to reach the hardest case rather than to avoid it:
+    the id rule drops the extension from the path's last segment, so
+    `service.cpp` and `service.hpp` derive one stem, and `Describable::describe`
+    declared inline in the header sits beside `UserService::describe` defined in
+    the source — ordinary C++, and the shape that made this assertion fail
+    before `assign_ids` grew its `_f<rank>` suffix.
     """
     trace = _trace(request, which)
     seen: dict[str, dict] = {}
@@ -355,7 +357,10 @@ OVERRIDE_FAMILIES = {
         {"src_main_java_com_demo_userservice_describe",
          "src_main_java_com_demo_userstore_describe"},
     ),
-    "c-family": ("Describable::describe", {"src_service_describe"}),
+    # The one family whose members are split across a header and its source, so
+    # the ids carry the cross-file suffix: `src/service.cpp` ranks before
+    # `src/service.hpp`, and both fold to the stem `src_service`.
+    "c-family": ("Describable::describe", {"src_service_describe_f1"}),
 }
 
 
@@ -849,7 +854,7 @@ def test_c_tracer_catalogues_a_cpp_constructor_and_an_out_of_class_method(c_trac
     functions = _by_id(c_trace)
     assert "src_service_userservice" in functions, "a C++ constructor was not catalogued"
     assert functions["src_service_authenticate"]["qualname"] == "UserService::authenticate"
-    assert ("src_service_authenticate", "src_service_describe") in _edges(c_trace)
+    assert ("src_service_authenticate", "src_service_describe_f1") in _edges(c_trace)
 
 
 def test_c_tracer_reads_a_cpp_call_into_c(c_trace: dict) -> None:
