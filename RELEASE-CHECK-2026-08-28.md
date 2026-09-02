@@ -126,7 +126,8 @@ The two zeroes were checked rather than accepted:
 
 The last part of step 6 — build a whole map from tracer output rather than by
 re-reading — was run with `scripts/build-map.py` against PrimeVue. **It did not
-finish; see below.**
+finish; see below.** It was re-run after the fix and completes: 5,817 functions,
+no duplicate ids.
 
 ## What this pass found
 
@@ -176,9 +177,49 @@ either one reports both as reached — so a genuinely unreachable function is
 silently absent from the findings, which is the exact failure mode
 `detectorsSkipped` and the "ran and found nothing" line exist to prevent.
 
-**This is unresolved as of this pass.** It predates this release — the rule has
-been this way since the tracers landed — and fixing class 3 means changing a
-rule stated verbatim in four host templates.
+**Fixed after this pass**, in the commit that follows it. `derive_id` is
+untouched — the rule the four host templates state for an ordinary function is
+the same string it always was — and `assign_ids` grew the two suffixes the three
+mechanisms need:
+
+- Class 1 disappears by counting **derived ids** instead of names before
+  applying `_l<line>`. Nothing else changes: the suffix is still the definition
+  line, still decided from the file's own contents.
+- Class 2 gets `_<n>`, the definition's 1-based position among the same-id
+  definitions on its line, in source order — the only thing left to order them
+  by, since no record carries a column.
+- Class 3 gets `_f<rank>`, the file's position among the paths that derived the
+  id, sorted. This is the one part of the rule that looks outside a single file,
+  because the collision is between two of them, and it is applied only to the
+  ids two files **both** derived — a `.hpp` beside its `.cpp` shares a stem, but
+  suffixing every function in both would rename most of a C++ catalog to fix a
+  handful of ids. Keying the rank off the id rather than off the stem also
+  closes the case where two files with *different* stems still meet on one id,
+  which a stem-keyed rank would have walked straight past.
+
+Re-measured over the same corpora, from the same trace output:
+
+| Corpus | Functions | Duplicated ids, before → after |
+|---|---|---|
+| CPython standard library | 14,720 | 158 → **0** |
+| `/usr/include` | 12,765 | 106 → **0** |
+| PrimeVue | 5,817 | 107 → **0** |
+| TypeScript 5.6 compiler | 20,707 | 4 → **0** |
+| Commons Lang 3 + Gson | 4,594 | 3 → **0** |
+
+Each "before" is the pre-fix rule re-derived from the *same* trace output, so
+the two columns are the two rules over one catalog rather than two runs that
+might differ for another reason. Three of the corpora are not byte-identical to
+the ones above — the Java corpus here is Commons Lang 3 and Gson without Guava,
+JUnit or picocli, and the TypeScript compiler is 5.6.3 — so their totals are
+smaller; the four that are identical reproduce their counts exactly.
+
+2.6% of ids change in the standard library, 2.7% in `/usr/include`, 3.8% in
+PrimeVue — the colliding ones and the groups they belong to, and nothing else.
+
+The C fixture was rearranged in `1768daf` to dodge the `service.cpp` /
+`service.hpp` case rather than cover it; that is reverted, so the suite now
+proves the fix on the shape that first exposed it.
 
 ## Not covered by this pass
 
