@@ -374,14 +374,14 @@ class Repository:
     # -- ids
 
     def assign_ids(self) -> None:
-        """Give every function its map `id`, applying the collision suffix.
+        """Give every function its map `id`, applying the collision suffixes.
 
-        Per analyzer, which is per file: the suffix is decided from one file's
-        own contents, never from which functions a caller happened to ask about,
-        which is what keeps an id stable across runs.
+        Once, over every analyzer's functions together. The per-file suffixes
+        are still decided from one file's own contents -- `assign_ids` groups by
+        file before it counts -- but the suffix for two *paths* that fold to one
+        id stem cannot be, so it needs the whole catalog in one call.
         """
-        for analyzer in self.analyzers.values():
-            common.assign_ids(analyzer.functions)
+        common.assign_ids([fn for a in self.analyzers.values() for fn in a.functions])
 
     def index(self) -> None:
         for analyzer in self.analyzers.values():

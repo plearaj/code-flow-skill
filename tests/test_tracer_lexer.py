@@ -183,3 +183,75 @@ def test_collision_suffixes_come_from_the_line_not_the_order() -> None:
     ]
     _common.assign_ids(functions)
     assert [fn["id"] for fn in functions] == ["a_get_l10", "a_get_l38", "a_new"]
+
+
+def test_two_names_that_derive_one_id_are_a_collision() -> None:
+    """The suffix is decided by derived id, not by name.
+
+    `__add__` and `add` are different names and one id, so counting names left
+    both of them unsuffixed and sharing it. This is the mechanism behind 158 of
+    the CPython standard library's duplicated ids, every C++ destructor beside
+    its constructor, and every Java `Builder`/`builder()` pair.
+    """
+    functions = [
+        {"file": "d.py", "name": "__add__", "line": 12},
+        {"file": "d.py", "name": "add", "line": 40},
+        {"file": "d.py", "name": "subtract", "line": 60},
+    ]
+    _common.assign_ids(functions)
+    assert [fn["id"] for fn in functions] == ["d_add_l12", "d_add_l40", "d_subtract"]
+
+
+def test_two_definitions_on_one_line_are_separated_by_position() -> None:
+    """`_l<line>` cannot separate two definitions that share a line.
+
+    `void set(int); void set(char);` written on one line is an overload set, and
+    so is a bundled file's `function f(){}function F(){}`. No record carries a
+    column, so the tie-break is source order on that line. 105 of PrimeVue's 107
+    duplicated ids were this shape.
+    """
+    functions = [
+        {"file": "a.cpp", "name": "set", "line": 7},
+        {"file": "a.cpp", "name": "set", "line": 7},
+        {"file": "a.cpp", "name": "set", "line": 9},
+    ]
+    _common.assign_ids(functions)
+    assert [fn["id"] for fn in functions] == ["a_set_l7_1", "a_set_l7_2", "a_set_l9"]
+
+
+def test_two_paths_that_fold_to_one_stem_are_separated_by_rank() -> None:
+    """The collision the per-file suffixes cannot see.
+
+    `distutils/_msvccompiler.py` and `distutils/msvccompiler.py` derive the same
+    stem — the leading `_` collapses into the separator — so every function in
+    one shadowed its namesake in the other. Rank comes from sorting the
+    colliding paths, so it does not depend on which file was walked first.
+    """
+    functions = [
+        {"file": "distutils/msvccompiler.py", "name": "link", "line": 4},
+        {"file": "distutils/_msvccompiler.py", "name": "link", "line": 9},
+        {"file": "distutils/ccompiler.py", "name": "link", "line": 3},
+    ]
+    _common.assign_ids(functions)
+    assert [fn["id"] for fn in functions] == [
+        "distutils_msvccompiler_link_f2",
+        "distutils_msvccompiler_link_f1",
+        "distutils_ccompiler_link",
+    ]
+
+
+def test_a_repository_with_no_collisions_keeps_every_bare_id() -> None:
+    """The suffixes are the exception, not the shape. Ordinary code has to come
+    out of `assign_ids` looking exactly like the rule the templates state, or
+    every id in every hand-written map is wrong."""
+    functions = [
+        {"file": "src/web/views.py", "name": "login_view", "line": 10},
+        {"file": "src/web/models.py", "name": "User", "line": 3},
+        {"file": "src/main.py", "name": "main", "line": 1},
+    ]
+    _common.assign_ids(functions)
+    assert [fn["id"] for fn in functions] == [
+        "src_web_views_login_view",
+        "src_web_models_user",
+        "src_main_main",
+    ]

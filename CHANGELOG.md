@@ -214,6 +214,24 @@ from this repository at the same version.
 
 ### Fixed
 
+- **Two functions can no longer share one `id`.** The id rule folds a name into a slug
+  and the collision suffix counted *names*, so two different names that slug to one
+  string were both left unsuffixed and sharing it: `__add__` and `add`, a Java `Builder`
+  constructor and its `builder()` factory, `~Widget` and `Widget`, `_M_x` and `_M_X`.
+  Two definitions on one line had nothing to separate them either, and two file paths
+  can fold to one stem — `service.cpp` beside `service.hpp`, or
+  `distutils/_msvccompiler.py` beside `distutils/msvccompiler.py`. Measured over
+  third-party code, that was **158 duplicated ids in the CPython standard library, 107
+  in PrimeVue, 106 in `/usr/include`, 4 in the TypeScript compiler** — ordinary code,
+  not a minifier curiosity. The damage is silent: `/code-flow.quality` computes
+  `unreached` by subtracting reached ids from catalogued ones, so reaching either
+  function marked both reached and a genuinely unreachable function simply never
+  appeared in the findings. `assign_ids` now counts derived ids rather than names, adds
+  a position suffix when a line holds two of them, and adds a `_f<rank>` suffix for the
+  ids two files both derived. All four counts above are now zero, and building
+  a whole map from tracer output over PrimeVue — the run that first tripped the
+  assertion — completes. The id rule in all four host templates says all of this, so a
+  map written by hand and a map written by a tracer still agree.
 - **An empty `git ls-files` no longer means "this repository has no code".** Both file
   listers returned null for the cases their docstrings named — not a git checkout, git
   not installed — and the caller walked the tree for those. Neither treated git
@@ -228,6 +246,13 @@ from this repository at the same version.
   real binding in between. One grouped expression swallowed an exported arrow function
   three lines below it, and the map simply did not contain it. Only whitespace or a
   return-type annotation may now sit between a parameter list and the arrow.
+- **A spread call is a call again.** The TypeScript tracer's call loop rejects a call
+  whose name is preceded by a word character or a dot, which is what stops `a.b(`
+  counting once as `b` and again as `a.b` after the regex has captured the whole path.
+  A spread's third dot sits in exactly that position and means the opposite thing, so
+  every `...f()` was dropped from the graph — and a call missing from the graph reaches
+  the report as an `unreached` finding, which reads as *delete this*. Re-mapping this
+  repository with the fix took it from 237 to 248 functions reached.
 - **`collectFunctions` and `collectComponents` split along the seams they already had**
   — 169 and 144 lines become 12 and 15. Three collectors over declarations, bindings
   and classes; four framework passes over Angular, single-file components, React and

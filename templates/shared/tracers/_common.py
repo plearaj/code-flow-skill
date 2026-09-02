@@ -57,25 +57,81 @@ def derive_id(file: str, name: str) -> str:
 
 
 def assign_ids(functions: List[Dict[str, Any]]) -> None:
-    """Set `id` on every record in ``functions``, in place.
+    """Set a unique `id` on every record in ``functions``, in place.
 
-    A name defined more than once in one file — an overload set in C++, two
-    classes with a `get` in Python, a trait impl and an inherent impl in Rust —
-    gets `_l<line>` appended to every one of its ids, including the first. The
-    collision is decided from the file's own contents, so moving an unrelated
-    file never renames anything, and the suffix comes from the definition line,
-    so two same-named functions cannot swap identities when one of them moves.
+    Call this once with the whole repository's functions. Three suffixes are
+    applied, in order, and each one is added only where the step before it left
+    two records sharing a string -- so on code where nothing collides, every id
+    is the bare `derive_id` result and looks exactly like the map templates say.
+
+    **`_l<line>`, when one file derives one id twice.** Two same-named methods
+    on two classes, an overload set, or -- and this is the part that counts by
+    id rather than by name -- two *different* names that derive the same id.
+    Python's `__add__` and `add` both slug to `add`; Java's `Builder`
+    constructor and its `builder()` factory both slug to `builder`; C++'s
+    `~Widget` and `Widget` both slug to `widget`. Counting names missed every
+    one of those: 158 duplicated ids in the CPython standard library alone.
+    Every member of the group is suffixed, including the first, so a caller
+    that asked about one of them still sees the same id as a caller that asked
+    about all of them.
+
+    **`_<n>`, when two of those are on the same line.** A bundled file's
+    `function f(){}function F(){}` is one line and two definitions, and no
+    record carries a column, so the line cannot separate them. `n` is the
+    1-based position among the same-id definitions on that line, in source
+    order.
+
+    **`_f<rank>`, when two files derive one id.** The rule drops the extension
+    from the path's last segment, so `service.cpp` and `service.hpp` fold to one
+    stem, and it collapses underscore runs, so `distutils/_msvccompiler.py` and
+    `distutils/msvccompiler.py` do too -- the leading `_` becomes a separator
+    and merges into the one before it. This is the one suffix not decided from a
+    single file's contents, because the collision is not inside a single file,
+    and it is applied only to the ids two files actually both derived: a header
+    beside its source shares a stem, but suffixing every function in both would
+    rename most of a C++ catalog to fix a handful of ids. `rank` is the file's
+    1-based position among those files' paths, sorted in code-point order, so it
+    is fixed by the repository's file names rather than by traversal order.
     """
-    counts: Dict[Tuple[str, str], int] = {}
+    _suffix_within_files(functions)
+    _suffix_across_files(functions)
+
+
+def _suffix_within_files(functions: List[Dict[str, Any]]) -> None:
+    """Apply the `_l<line>` and `_<n>` suffixes, per file, per derived id."""
+    groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for fn in functions:
-        key = (fn["file"], fn["name"])
-        counts[key] = counts.get(key, 0) + 1
+        groups.setdefault((fn["file"], derive_id(fn["file"], fn["name"])), []).append(fn)
+    for (_file, base), group in groups.items():
+        if len(group) == 1:
+            group[0]["id"] = base
+            continue
+        by_line: Dict[Any, List[Dict[str, Any]]] = {}
+        for fn in group:
+            by_line.setdefault(fn["line"], []).append(fn)
+        for line, on_line in by_line.items():
+            if len(on_line) == 1:
+                on_line[0]["id"] = "{}_l{}".format(base, line)
+            else:
+                for position, fn in enumerate(on_line, 1):
+                    fn["id"] = "{}_l{}_{}".format(base, line, position)
+
+
+def _suffix_across_files(functions: List[Dict[str, Any]]) -> None:
+    """Apply the `_f<rank>` suffix wherever one id was derived from two files."""
+    files_by_id: Dict[str, Set[str]] = {}
     for fn in functions:
-        base = derive_id(fn["file"], fn["name"])
-        if counts[(fn["file"], fn["name"])] > 1:
-            fn["id"] = "{}_l{}".format(base, fn["line"])
-        else:
-            fn["id"] = base
+        files_by_id.setdefault(fn["id"], set()).add(fn["file"])
+    ranks = {
+        fid: {path: rank for rank, path in enumerate(sorted(paths), 1)}
+        for fid, paths in files_by_id.items()
+        if len(paths) > 1
+    }
+    if not ranks:
+        return
+    for fn in functions:
+        if fn["id"] in ranks:
+            fn["id"] = "{}_f{}".format(fn["id"], ranks[fn["id"]][fn["file"]])
 
 
 # --- discovery -------------------------------------------------------------
