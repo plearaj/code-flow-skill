@@ -24,13 +24,14 @@ const SCAFFOLDS = [
   "templates/shared/report.template.html",
   "templates/shared/index.template.html",
   "templates/shared/bundle.template.html",
+  "templates/shared/qa.template.html",
 ];
 
 const CHECKLIST = `
 Release checklist — the rendering and the skill loading no test here covers
 ===========================================================================
 
-Steps 1-3 cover the four HTML scaffolds:
+Steps 1-3 cover the five HTML scaffolds:
 
   ${SCAFFOLDS.join("\n  ")}
 
@@ -40,7 +41,7 @@ test here would still pass. templates/shared/bundle.template.html is the one
 that most needs opening: it does what the other three do in a single
 document, and nothing in either suite renders it.
 
-Step 4 covers the two skills. Their names, frontmatter and Codex policy file
+Step 4 covers the four skills. Their names, frontmatter and Codex policy file
 are checked against what the vendors document; nothing here starts a host and
 watches it load one.
 
@@ -49,11 +50,18 @@ Step 5 covers the user theme, which nothing in either suite renders either.
 Step 6 covers the five tracers. Their contract is tested against fixtures; how
 well their heuristics do on somebody else's repository is not, and cannot be.
 
-  1. Run /code-flow.map and /code-flow.quality against any project. Open the
-     resulting Code_Flows/index.html, Code_Flows/<flow>.html and
-     Code_Flows/quality-report.html in a browser. Confirm each draws its
-     flow list, its diagram or its findings — not a blank page, not a raw
-     JSON dump.
+  1. Run /code-flow.map, /code-flow.quality, /code-flow.qa and
+     /code-flow.violations against any project. Open the resulting
+     Code_Flows/index.html, Code_Flows/<flow>.html,
+     Code_Flows/quality-report.html, Code_Flows/qa-report.html and
+     Code_Flows/violations-report.html in a browser. Confirm each draws its
+     flow list, its diagram, its findings or its checked flows — not a blank
+     page, not a raw JSON dump.
+
+     violations-report.html renders through report.template.html with
+     meta.kind "violations": confirm its heading reads Violations and that
+     its banner names only rule-violation as clean, never the twelve quality
+     detectors that never ran.
 
      Then open a generated Code_Flows/code-flow.html (run with --output both
      or --output bundle to get one) and walk it: the landing view lists the
@@ -117,7 +125,7 @@ well their heuristics do on somebody else's repository is not, and cannot be.
      run /code-flow.map --whole-code-base --tracer on there and confirm the
      map actually used the output rather than re-reading the tree.
 
-Do this for ALL FOUR files, and do step 4 for at least one host. A change to
+Do this for ALL FIVE files, and do step 4 for at least one host. A change to
 any scaffold's rendering — or to a skill's name or frontmatter — re-opens the
 gap, and the suites will not tell you.
 `;
@@ -132,7 +140,7 @@ if (process.env.CODE_FLOW_RELEASE_CHECKED === "1") {
 console.error(
   `Publish blocked: the checklist above has not been acknowledged.
 
-Once you have actually opened all four pages, re-run with:
+Once you have actually opened all five pages, re-run with:
 
   bash / zsh:
     CODE_FLOW_RELEASE_CHECKED=1 npm publish --access public

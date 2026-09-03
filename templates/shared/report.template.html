@@ -266,10 +266,22 @@ function el(tag, cls, text, parent){
 function count(x){ return (typeof x === "number" && isFinite(x)) ? x : null; }
 function plural(n, one, many){ return n === 1 ? one : many; }
 
+/* ---- what this document is ------------------------------------------------
+   Two commands render through this page. The quality command sweeps thirteen
+   detectors; the violations command checks rules the user named, and nothing
+   else. They share a findings shape, so they share a page -- but a violations
+   report rendered as a quality one would claim that twelve detectors ran and
+   found nothing, which is the confident-wrong statement the whole banner exists
+   to prevent. `meta.kind` is what tells them apart, and it defaults to quality
+   so that every report written before it existed renders as it always did. */
+var KIND = meta.kind === "violations" ? "violations" : "quality";
+var HEADING = KIND === "violations" ? "Code Flow — Violations" : "Code Flow — Quality Report";
+document.title = HEADING;
+
 /* ---- header ---- */
 var topbar = el("header", "topbar");
 var titles = el("div", "titles", null, topbar);
-el("h1", null, "Code Flow — Quality Report", titles);
+el("h1", null, HEADING, titles);
 var sub = [];
 if (meta.generated) sub.push("generated " + meta.generated);
 if (meta.mapGenerated) sub.push("from a map of " + meta.mapGenerated);
@@ -309,6 +321,13 @@ function fact(text, warn){ return el("li", warn ? "warn" : null, text, facts); }
 
 if (count(coverage.functionsCatalogued) !== null){
   fact(coverage.functionsCatalogued + " functions catalogued");
+}
+if (KIND === "violations" && count(coverage.filesRead) !== null){
+  /* How much source the run actually opened. A violations report that settled
+     its rules from the map alone reads 0 here, which is a fact about the run
+     rather than a fault -- and a rule marked `partial` below is only legible
+     next to it. */
+  fact(coverage.filesRead + " source " + plural(coverage.filesRead, "file", "files") + " read");
 }
 if (count(coverage.filesChanged) !== null){
   fact(coverage.filesChanged + " of the files the map recorded " +
@@ -369,7 +388,7 @@ if (skipped.length){
     var why = SKIP_REASONS[name] || "reason not recorded in this report";
     fact(String(name) + " did not run: " + why, true);
   });
-} else {
+} else if (KIND !== "violations"){
   fact("No detectors were skipped");
 }
 /* A detector that ran and found nothing looks exactly like one that never ran:
@@ -383,11 +402,15 @@ var ALL_DETECTORS = ["duplicate-intent", "repeated-sequence", "complexity-hotspo
   "unreached", "single-responsibility", "interface-segregation", "dependency-cycle",
   "shallow-module", "pass-through", "internals-coupled-test", "open-closed",
   "liskov-substitution", "rule-violation"];
+/* Which of them this document could have been clean about. A violations run
+   never had the other twelve: naming them clean would be the same false
+   reassurance in the opposite direction. */
+var KIND_DETECTORS = KIND === "violations" ? ["rule-violation"] : ALL_DETECTORS;
 var reportedBy = {};
 findings.forEach(function(f){ if (f && f.detector) reportedBy[String(f.detector)] = 1; });
 var skippedBy = {};
 skipped.forEach(function(name){ skippedBy[String(name)] = 1; });
-var clean = ALL_DETECTORS.filter(function(name){
+var clean = KIND_DETECTORS.filter(function(name){
   /* rule-violation checks rules somebody wrote down. With none loaded it neither
      ran nor was skipped, so it is not clean -- it has nothing to be clean about. */
   if (name === "rule-violation" && !coverage.rulesLoaded) return false;

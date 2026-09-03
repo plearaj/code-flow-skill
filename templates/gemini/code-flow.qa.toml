@@ -1,0 +1,294 @@
+description = "Walk every flow the code-flow map recorded and check it still holds against current source, click through every documented component and route, and report each one as passing, drifted, broken or unchecked with the check that decided it."
+
+prompt = '''
+## Code Flow — QA Walkthrough
+
+A map is a claim about the code: *this function calls that one, execution arrives
+here from there, this page renders that component.* This walks the map this
+project has already written under `Code_Flows/` and checks the claim against the
+code as it is now -- every node, every edge, every documented component and route
+-- and reports each flow as passing, drifted, broken or unchecked, naming the
+check that decided it.
+
+Static by default, so it runs anywhere the source does and needs nothing
+installed. `--live` additionally starts the application and exercises it through a
+browser, which is the only way to catch a page that renders nothing while every
+function it needs is still sitting there in the source.
+
+This command **never edits source code**, and never fixes what it finds. A QA
+pass that quietly repaired things would be a QA pass nobody can reproduce.
+
+### User Input
+
+The user specified: $ARGUMENTS
+
+### Instructions
+
+Follow these steps exactly.
+
+#### 1. Read the Arguments
+
+By default this checks every flow in the registry. The request may narrow and
+deepen that:
+
+- **One or more flow names**, matched against each registry entry's `slug` and
+  `title`, case-insensitively. Only those are checked. A name matching nothing is
+  an error worth stopping for — say which names you did not recognise and list
+  the slugs that exist, because silently checking all fourteen flows when the user
+  asked about one is a report about the wrong thing.
+- `--live` — after the static walk, actually run the application and exercise it.
+  Off by default. What it does and refuses to do is step 5.
+- `--base-url <url>` — attach to an application already running there instead of
+  starting one. Implies `--live`.
+- `--frontend off` — skip the component and route walk even where the map
+  recorded a frontend. Off by default; use it when the UI is known to be
+  mid-rewrite and its findings would drown the rest.
+
+#### 2. Load the Map
+
+Read three artifacts, in this order:
+
+1. `Code_Flows/index.json` — the flow registry, the file census, and coverage.
+2. `Code_Flows/inventory.json` — the function catalog, and `components` and
+   `routes` where the map recorded a frontend.
+3. `Code_Flows/<slug>.json` — one per entry in the index's `flows` array, after
+   any narrowing from step 1.
+
+**If `index.json` is missing, stop** and tell the user to run `/code-flow.map`
+first. This command checks a map against the code; with no map there is no claim
+to check.
+
+**If `inventory.json` is missing or does not parse**, carry on with the flows
+alone and record it: the flow walk in step 3 needs only the sidecars, but the
+component and route walk in step 4 needs the catalog and cannot run without it.
+
+**If a flow sidecar is missing or does not parse**, that flow's status is
+`unchecked` with that as the reason. It is never `pass`, and never quietly
+absent.
+
+Never overwrite an artifact that does not parse.
+
+#### 3. Walk Each Flow Against Source
+
+A mapped flow is a claim: *this function, at this line, calls that one, and
+execution arrives here from there.* Walking it is checking that claim against the
+code as it is now, one node and one edge at a time.
+
+For each flow, run these checks in order and record the outcome of every one —
+including the ones that passed, because a report that lists only failures cannot
+be told apart from a report of a walk that never happened:
+
+- **`entry-exists`** — the node whose `kind` is `entry` names a `file` that
+  exists and a `line` that still holds a definition of that function. An entry
+  that is gone means the flow no longer starts where the map says it does, and
+  nothing downstream of it is worth checking.
+- **`node-resolves`** — for every node, the `file` exists and its `line` holds a
+  definition of the node's function. Where the definition has moved but the same
+  file still defines that name, this is drift, not breakage: record the line it
+  is on now.
+- **`edge-holds`** — for every edge, the caller's body still contains a call to
+  the callee's name. This is a text check over the caller's body, not a proof:
+  say so, and treat a miss as drift to confirm rather than a verdict. A call made
+  through a variable, a registry, a decorator or dependency injection is invisible
+  here, and the map itself carries the same limitation.
+- **`reachable`** — every node is reachable from the entry by following edges.
+  A node that is not is either an edge the map lost or a node that never belonged;
+  either way the diagram shows something the code does not.
+- **`current`** — the flow's files match the `size` and `hash` `index.json`
+  recorded. A flow over files that have all changed can still pass every check
+  above and still be describing yesterday's code, and the reader has to be told.
+
+**Read the caller's body, not the whole file.** The node's `line` and the next
+definition after it bound it. A whole-file search finds the callee's name in an
+import, a comment or an unrelated function, and reports an edge as holding when
+it does not.
+
+**Never edit anything to make a check pass.** This command reports; the fixing is
+the user's, and a QA pass that quietly repaired what it found would be a QA pass
+whose findings nobody can reproduce.
+
+#### 4. Walk the Components and Routes
+
+Skip this entirely when `--frontend off` was passed, when `inventory.json` carries
+no `components`, or when it carries an empty array — a repository with no UI is
+not a repository with a broken one, and an empty section here reads as a failure.
+
+For each component in the catalog:
+
+- **`component-exists`** — its `file` and `line` still declare a component of that
+  name.
+- **`children-render`** — every id in its `children` is still in the catalog, and
+  the parent's own source still references that child's name. A child that has
+  been catalogued but is no longer rendered is drift; a child that is gone from
+  the catalog entirely is breakage in the parent that renders it.
+- **`props-match`** — every name in `inputs` and `outputs` is still declared by
+  the component. A prop the map records and the component no longer accepts is a
+  caller passing something into nothing.
+
+For each route in `routes`:
+
+- **`route-resolves`** — the `component` id is still in the catalog, and its file
+  still exists. A route pointing at a component that is gone is a page that cannot
+  render, and it is the single most common thing a map catches after a refactor.
+
+Record every component and route checked, with its outcome, the same way step 3
+records every node.
+
+#### 5. Exercise It Live
+
+Run this **only when `--live` or `--base-url` was passed.** Without them the
+report says so and nothing here happens — a static run is a complete run, not a
+truncated one.
+
+**5a. Get the application running.** With `--base-url`, do not start anything:
+assume what is at that URL is what the user wants exercised. Otherwise find the
+project's own way of starting a development server — `package.json` scripts
+(`dev`, `start`, `serve`), a `Procfile`, `docker-compose.yml`, `manage.py
+runserver`, a `Makefile` target — and use it, unchanged. Do not invent a command,
+do not add flags the project does not use, and do not install anything. If you
+cannot find one, or it does not come up, record every check in this step as
+`unchecked` with the reason and the command you tried, and go to step 6 with the
+static results intact. **A live pass that could not run is not a failed QA run.**
+
+**5b. What is allowed to happen.** This is the boundary, and it is not negotiable:
+
+- **Navigate and read.** Visit each documented route. Wait for the page to settle.
+  Read what rendered.
+- **Click what only navigates or reveals.** Links, tabs, accordions, menus,
+  toggles, pagination.
+- **Never submit a form, and never fire a mutating request on purpose.** No POST,
+  PUT, PATCH or DELETE that you initiated. No sign-up, no checkout, no delete
+  button, no "are you sure".
+- **Never touch anything outside the development environment the project started
+  for itself.** If `--base-url` points at something that is not obviously local,
+  say so and check nothing until the user confirms it is a throwaway environment.
+
+The reason for the line is simple: this is a QA pass over a map, and the user
+asked for a report. A report is not worth one row written to a real database.
+
+**5c. What to record.** For each route visited: the URL, the HTTP status, whether
+the component the map says renders there actually appeared, every console error,
+and every network request that failed. For each documented component reached:
+whether it rendered, and whether the children the map records appeared inside it.
+
+A console error is a finding. A component the map documents that never appeared
+on the route that should render it is a finding, and it is the one this whole
+mode exists to catch: it is invisible to every static check in steps 3 and 4,
+because the code is all still there.
+
+**5d. Leave nothing running.** Stop whatever you started, and say in the report
+that you did.
+
+#### 6. Decide a Status
+
+Give every flow, component and route exactly one status, from the checks recorded
+against it:
+
+- **`pass`** — every check that ran held.
+- **`drifted`** — the thing still works, but the map no longer describes it
+  accurately: a definition moved, a child is rendered that the map does not
+  record, a file changed since mapping. The remedy is re-mapping, and the report
+  says so.
+- **`broken`** — a check failed in a way that means it cannot work: an entry that
+  is gone, a called function that no longer exists, a route whose component is
+  not in the catalog, a page that threw in the console. The remedy is fixing the
+  code, and this is what a reader is looking for.
+- **`unchecked`** — nothing here could be settled: an unreadable sidecar, a file
+  that could not be read, a live pass that never started. Never `pass`.
+
+**`broken` outranks `drifted` outranks `pass`.** One broken check makes the whole
+flow broken, however many others held — a flow that works four steps out of five
+does not work.
+
+**Say what a status rests on.** Every status carries the checks that produced it,
+each named, each with its own outcome. A reader who disagrees with a verdict has
+to be able to see which check produced it and go and look at the same line.
+
+#### 7. Write the Report Data
+
+Write `Code_Flows/qa-report.json` first. It is the data; step 8's markdown and
+HTML are two renderings of it.
+
+```json
+{
+  "schema": 1,
+  "meta": { "root": "C:/Users/example/project", "generated": "2026-09-02",
+            "live": false, "baseUrl": null, "frontend": true,
+            "mapGenerated": "2026-09-01", "mapMode": "whole-code-base",
+            "mapDetail": "standard" },
+  "coverage": { "flowsInRegistry": 14, "flowsChecked": 14, "flowsUnreadable": 0,
+                "componentsChecked": 31, "routesChecked": 9,
+                "filesChanged": 6, "checksRun": 412, "checksFailed": 7,
+                "liveStatus": "not-run", "liveReason": "--live was not passed" },
+  "flows": [
+    { "slug": "user_login", "title": "User Login", "status": "broken",
+      "entry": "src_web_views_login_view", "nodes": 9,
+      "checks": [
+        { "check": "entry-exists", "outcome": "pass", "detail": "" },
+        { "check": "edge-holds", "outcome": "fail",
+          "detail": "src_web_views_login_view no longer calls session_store.put",
+          "file": "src/web/views.py", "line": 41 }
+      ] }
+  ],
+  "components": [
+    { "id": "src_pages_userlistpage_userlistpage", "name": "UserListPage",
+      "file": "src/pages/UserListPage.tsx", "status": "drifted",
+      "checks": [ { "check": "children-render", "outcome": "fail",
+                    "detail": "UserCard is catalogued but no longer referenced here",
+                    "file": "src/pages/UserListPage.tsx", "line": 6 } ] }
+  ],
+  "routes": [
+    { "path": "/users", "component": "src_pages_userlistpage_userlistpage",
+      "status": "pass", "checks": [] }
+  ]
+}
+```
+
+`meta.live` is whether step 5 ran at all, and `coverage.liveStatus` is one of
+`not-run`, `ran` or `failed-to-start`, with `liveReason` filled in for anything
+but `ran`. Those two together are what stop a reader taking a static pass for a
+live one.
+
+Every `checks` entry carries `check` (the name from steps 3, 4 and 5), `outcome`
+(`pass`, `fail` or `unchecked`), and a `detail` sentence that is empty on a pass
+and says what was found on anything else. `file` and `line` are present wherever
+the check looked at a specific place — which is every failure except one that
+never got to look.
+
+`checksRun` and `checksFailed` count across flows, components and routes
+together, and a reader can reconcile them against the arrays.
+
+`meta.root` is the one absolute path in the file; every other path is
+repo-relative with forward slashes.
+
+#### 8. Write the Report
+
+**8a. The markdown.** Render `Code_Flows/qa-report.md` from the JSON you just
+wrote. Nothing in it may contradict that file.
+
+Lead with the verdict line — how many flows passed, drifted, are broken and were
+unchecked — then whether the live pass ran, and if not, why. Then one section per
+status, `broken` first: a reader opening this file wants the broken ones without
+scrolling. Within each, one row per flow, component or route, with the checks that
+decided it.
+
+Close with what was **not** checked: flows the request narrowed away, the
+component walk if `--frontend off` was passed, the live pass if it did not run,
+and every `unchecked` status with its reason. This is the section that keeps a
+green report honest.
+
+**8b. The page.** Read `.code-flow/qa.template.html` and write
+`Code_Flows/qa-report.html` as an **exact copy** of that template with two tokens
+replaced. `__QA_DATA__` becomes the JSON object from step 7. `__THEME_CSS__`
+becomes the contents of `.code-flow/theme.css`, or an empty string if that file
+does not exist or cannot be read. Change nothing else. Inside every string value,
+replace each `</` with `<\/` — a literal `</script>` would terminate the data
+block.
+
+If `.code-flow/qa.template.html` does not exist, say so, skip the page, and tell
+the user to reinstall `code-flow`. The JSON and the markdown are the report; the
+page is a third rendering of it.
+
+Finally, report all three file paths to the user, with the verdict line and the
+number of broken flows.
+'''

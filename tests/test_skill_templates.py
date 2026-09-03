@@ -55,6 +55,8 @@ import pytest
 SKILL_TEMPLATES = (
     ("code-flow-map", "code-flow.map.toml"),
     ("code-flow-quality", "code-flow.quality.toml"),
+    ("code-flow-qa", "code-flow.qa.toml"),
+    ("code-flow-violations", "code-flow.violations.toml"),
 )
 
 # Every file that carries a command's `description`, keyed by the skill it
@@ -73,6 +75,18 @@ DESCRIPTION_SOURCES = (
         "claude/code-flow.quality.md",
         "copilot/code-flow.quality.prompt.md",
         "gemini/code-flow.quality.toml",
+    ),
+    (
+        "code-flow-qa",
+        "claude/code-flow.qa.md",
+        "copilot/code-flow.qa.prompt.md",
+        "gemini/code-flow.qa.toml",
+    ),
+    (
+        "code-flow-violations",
+        "claude/code-flow.violations.md",
+        "copilot/code-flow.violations.prompt.md",
+        "gemini/code-flow.violations.toml",
     ),
 )
 
@@ -101,6 +115,8 @@ _SUBSTITUTIONS = (
     ("The user's input (`$ARGUMENTS`)", "The user's request"),
     ("code-flow.map", "code-flow-map"),
     ("code-flow.quality", "code-flow-quality"),
+    ("code-flow.qa", "code-flow-qa"),
+    ("code-flow.violations", "code-flow-violations"),
 )
 
 
@@ -310,6 +326,8 @@ def test_skill_disables_implicit_invocation_on_codex(
     (
         ("code-flow-map", ("--whole-code-base", "--detail", "--output")),
         ("code-flow-quality", ("--read-code",)),
+        ("code-flow-qa", ("--live", "--base-url", "--frontend")),
+        ("code-flow-violations", ("--no-read-code", "--severity")),
     ),
 )
 def test_skill_advertises_its_flags_in_the_argument_hint(

@@ -1,0 +1,4 @@
+# Codex reads implicit-invocation policy from here, not from SKILL.md's
+# `disable-model-invocation`. Same rule, different host, different spelling.
+policy:
+  allow_implicit_invocation: false

@@ -34,13 +34,14 @@ test("prepublish check blocks the publish when the checklist is unacknowledged",
   // The scaffold count lives in two places: the checklist on stdout and this
   // last instruction on stderr. Only the first was pinned, so when the bundle
   // made it four the blocked message kept telling people to open three — the
-  // very last thing they read before publishing.
+  // very last thing they read before publishing. The QA scaffold made it five,
+  // and this is what kept the two in step that time.
   assert.doesNotMatch(
     r.stderr,
-    /all three pages/i,
-    "the blocked message still names three scaffolds"
+    /all (three|four) pages/i,
+    "the blocked message names a stale scaffold count"
   );
-  assert.match(r.stderr, /all four pages/i, "the blocked message must name all four scaffolds");
+  assert.match(r.stderr, /all five pages/i, "the blocked message must name all five scaffolds");
 });
 
 test("prepublish check passes once the checklist is acknowledged", () => {
@@ -67,8 +68,9 @@ test("prepublish check names every scaffold and every manual step", () => {
   assert.match(r.stdout, /rather than\s+twice/i, "checklist does not cover duplicate registration");
   assert.match(r.stdout, /Copilot CLI/i, "checklist does not distinguish the two Copilot surfaces");
   assert.match(r.stdout, /bundle\.template\.html/, "checklist does not name the bundle scaffold");
+  assert.match(r.stdout, /qa\.template\.html/, "checklist does not name the QA scaffold");
   assert.match(r.stdout, /theme\.css/, "checklist does not cover a themed render");
-  assert.match(r.stdout, /ALL FOUR/i, "checklist still says three scaffolds");
+  assert.match(r.stdout, /ALL FIVE/i, "checklist names a stale scaffold count");
 });
 
 test("README's Before-publishing scaffold list matches the script's SCAFFOLDS", () => {
