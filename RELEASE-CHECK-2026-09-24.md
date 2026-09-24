@@ -285,7 +285,9 @@ repositories, and reported in conversation on 2026-09-24. It could not be done
 from here: there is no Claude Code, Gemini CLI, Copilot, Codex or Antigravity host
 in this environment to install into and watch discover a skill. Claude did not
 observe the run, so this section records that it happened rather than what it
-showed. The host it was run on, and whether the explicit-invocation sub-step —
+showed. It was installed from the 1.3.0 source, not from npm — whose latest is
+still 1.1.0 and carries only two of the four skills — so it exercised the skills
+this release actually ships. The host it was run on, and whether the explicit-invocation sub-step —
 that a host presents these skills as invoked-by-name only, which is what every
 `No` row in the README's guarantee table claims — was looked at, are not recorded
 here.
