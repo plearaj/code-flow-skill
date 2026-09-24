@@ -753,10 +753,17 @@ function collectClasses(rel, src, masked, lineStarts, spans) {
     const headEnd = open;
     const heritage = src.slice(m.index, headEnd);
     const decorators = decoratorsBefore(src, masked, m.index);
+    // `(?:^|[^\w$.])` above consumes the character before the declaration
+    // whenever there is one, and that character is almost always the newline
+    // ending the line above -- so m.index sits on the previous line. Step over
+    // it before asking for a line number, or every class in the file reports
+    // the line before the one it is written on. The leading group matched `^`
+    // when m[0] starts with a word character, and consumed nothing.
+    const declStart = m.index + (/^[\w$]/.test(m[0]) ? 0 : 1);
     const record = {
       name,
       file: rel,
-      line: lineAt(lineStarts, m.index),
+      line: lineAt(lineStarts, declStart),
       start: m.index,
       bodyStart: open,
       bodyEnd: end,

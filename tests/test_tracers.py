@@ -579,6 +579,37 @@ def test_typescript_tracer_names_the_frameworks_it_found(ts_trace: dict) -> None
     assert "express" in ts_trace["frameworks"]["backend"]
 
 
+def test_typescript_tracer_points_a_component_at_the_line_it_is_declared_on(
+    ts_trace: dict,
+) -> None:
+    """A component's `line` is the whole point of recording one: it is what a
+    reader follows to go and look. The class regex consumes the character before
+    `export`, which is the newline ending the line above, so a line number taken
+    from the match start named the line above the class -- every Angular
+    component, service, pipe and module, and every React class component, off by
+    exactly one. A `.vue` file is excluded because there is no declaration in it
+    to point at: the file is the component, and line 1 is the honest answer."""
+    app = REPO_ROOT / "tests" / "fixtures" / "ts-app"
+    checked = 0
+    for component in ts_trace["components"]:
+        if component["file"].endswith(".vue"):
+            continue
+        lines = (app / component["file"]).read_text(encoding="utf-8").splitlines()
+        assert 0 < component["line"] <= len(lines), (
+            f"{component['name']} is recorded at line {component['line']}, which is "
+            f"outside {component['file']}"
+        )
+        assert component["name"] in lines[component["line"] - 1], (
+            f"{component['name']} is recorded at {component['file']}:{component['line']}, "
+            f"but that line reads {lines[component['line'] - 1].strip()!r}"
+        )
+        checked += 1
+    assert checked >= 6, (
+        "this fixture is supposed to hold Angular and React components with a "
+        f"declaration line to check; only {checked} had one"
+    )
+
+
 def test_typescript_tracer_maps_the_angular_component_tree(ts_trace: dict) -> None:
     """Angular's tree is in its templates, not its imports: the parent names the
     child by selector. A tracer that only followed imports would report every

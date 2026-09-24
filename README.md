@@ -221,12 +221,19 @@ cp /path/to/code-flow-skill/templates/copilot/code-flow.quality.prompt.md .githu
 cp /path/to/code-flow-skill/templates/copilot/code-flow.qa.prompt.md .github/prompts/code-flow.qa.prompt.md
 cp /path/to/code-flow-skill/templates/copilot/code-flow.violations.prompt.md .github/prompts/code-flow.violations.prompt.md
 
-# Flow index, interactive viewer, report and QA scaffolds (needed for all tools)
+# Flow index, viewer, report, QA and bundle scaffolds, and your theme
+# (needed for all tools)
 mkdir -p .code-flow
 cp /path/to/code-flow-skill/templates/shared/viewer.template.html .code-flow/viewer.template.html
 cp /path/to/code-flow-skill/templates/shared/report.template.html .code-flow/report.template.html
 cp /path/to/code-flow-skill/templates/shared/qa.template.html .code-flow/qa.template.html
 cp /path/to/code-flow-skill/templates/shared/index.template.html .code-flow/index.template.html
+cp /path/to/code-flow-skill/templates/shared/bundle.template.html .code-flow/bundle.template.html
+cp /path/to/code-flow-skill/templates/shared/theme.css .code-flow/theme.css
+
+# The five static tracers (needed for --tracer, which every tool can use)
+mkdir -p .code-flow/tracers
+cp /path/to/code-flow-skill/templates/shared/tracers/* .code-flow/tracers/
 ```
 
 On Windows PowerShell, substitute `New-Item -ItemType Directory -Force` for `mkdir -p` and `Copy-Item` for `cp`.
@@ -991,8 +998,9 @@ Everything 1.0 adds is listed in [CHANGELOG.md](CHANGELOG.md).
 ### Before publishing
 
 No test in this repository executes any scaffold's rendering — `templates/shared/viewer.template.html`,
-`templates/shared/report.template.html`, `templates/shared/index.template.html` and
-`templates/shared/bundle.template.html` are checked for what their prompt-filled content says,
+`templates/shared/report.template.html`, `templates/shared/qa.template.html`,
+`templates/shared/index.template.html` and `templates/shared/bundle.template.html` are
+checked for what their prompt-filled content says,
 never for how a browser draws it. That gap is accepted (see
 `docs/superpowers/specs/2026-08-07-phase3b-report-viewer-design.md`, Decision 1), on the
 condition that a human closes it by hand before every release:
