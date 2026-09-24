@@ -16,8 +16,8 @@ prose instructs, then served over `http://127.0.0.1:4319` and opened in headless
 Chromium. Every number below was read out of the live document, not out of the
 source that produced it.
 
-**Step 4 was not performed — see "Not covered by this pass" at the end. It is
-outstanding and a human has to do it before publishing.**
+**Step 4 was performed by the maintainer, on their own project, outside this
+environment — see "Step 4" at the end. Claude did not observe it.**
 
 ## What produced the data
 
@@ -278,20 +278,27 @@ it settles that it is not one — `candidates(base).find((c) => fileSet.has(c)) 
 builds a list, filters it with a predicate and falls back to null, which is three
 pieces of work rather than a hand-off. Dropped, and the coverage banner says so.
 
-## Not covered by this pass
+## Step 4 — the skills on a real host
 
-**Step 4 — installing into a scratch project and loading a skill on a real
-host — was not performed and remains outstanding.** It cannot be done from here:
-there is no Claude Code, Gemini CLI, Copilot, Codex or Antigravity host in this
-environment to install into and watch discover a skill. It now covers **four**
-skills rather than three (`code-flow-map`, `code-flow-quality`, `code-flow-qa`,
-`code-flow-violations`), and the sub-step that has never been observed on a
-running host in this repository — that a host presents these skills as
-explicitly-invoked only, which is what every `No` row in the README's guarantee
-table claims — is still unobserved.
+**Performed by the maintainer on the Red Sea Project**, one of their own
+repositories, and reported in conversation on 2026-09-24. It could not be done
+from here: there is no Claude Code, Gemini CLI, Copilot, Codex or Antigravity host
+in this environment to install into and watch discover a skill. Claude did not
+observe the run, so this section records that it happened rather than what it
+showed. The host it was run on, and whether the explicit-invocation sub-step —
+that a host presents these skills as invoked-by-name only, which is what every
+`No` row in the README's guarantee table claims — was looked at, are not recorded
+here.
 
-A human has to do step 4 before `npm publish` or the PyPI workflow dispatch.
-Nothing else in the checklist is outstanding.
+It covers **four** skills as of 1.3.0 (`code-flow-map`, `code-flow-quality`,
+`code-flow-qa`, `code-flow-violations`). It holds for this branch as well as for
+`master`: the checklist says a change to a skill's name or frontmatter re-opens
+the step, and nothing here touches one. The diff changes the TypeScript tracer,
+one test, `README.md`, `CHANGELOG.md` and this file — no `SKILL.md`, no
+`agents/openai.yaml`, no command template under `templates/claude/`,
+`templates/gemini/` or `templates/copilot/`, and neither installer.
+
+With it, nothing in the checklist is outstanding.
 
 ## Suite state at the time of this pass
 
