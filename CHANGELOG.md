@@ -62,6 +62,20 @@ from this repository at the same version.
   `meta.kind` now tells the page which it is; it defaults to quality, so every report
   written before it existed renders exactly as it always did.
 
+### Fixed
+
+- **A class is catalogued at the line it is declared on.** The TypeScript tracer took a
+  class's line from the start of its regex match, and that pattern opens with a group
+  that consumes the character *before* the declaration — the newline ending the line
+  above, in every class not written at byte 0 of its file. So every Angular component,
+  directive, pipe, service and module, and every React class component, carried a `line`
+  one short: `export class DashboardComponent` on line 8 was recorded at 7. A `file:line`
+  is what the map, the report and the QA walkthrough exist to hand a reader, and an id
+  carries the line whenever two definitions in a file share a name — so the wrong line
+  also reached the identifier the call graph refers to a function by. Eleven ids change
+  across PrimeVue 5.0.1's 5,817. `.vue` and `.svelte` components still report line 1,
+  which is not the same bug: a single-file component has no declaration to point at.
+
 ## [1.2.0]
 
 ### Added — automated tracing
